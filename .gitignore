@@ -35,5 +35,8 @@ tmpclaude-*
 # Claude Code local settings
 .claude/settings.local.json
 
+# Claude Skills (local, generated)
+.claude/Skills/
+
 # Temporary original files
 temp_original.txt
