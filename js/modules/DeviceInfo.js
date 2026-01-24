@@ -33,10 +33,15 @@ class DeviceInfo {
     // Panel her zaman gorunur
     this.showPanel();
 
+    // Event listener referansları (memory leak önleme - VuMeter pattern)
+    this._onStreamStarted = (stream) => this.updateStreamInfo(stream);
+    this._onProfileChanged = (data) => this.updateTargetBitrate(data);
+    this._onLoopbackStats = (stats) => this.updateActualBitrate(stats);
+
     // Event dinleyiciler
-    eventBus.on('stream:started', (stream) => this.updateStreamInfo(stream));
-    eventBus.on('profile:changed', (data) => this.updateTargetBitrate(data));
-    eventBus.on('loopback:stats', (stats) => this.updateActualBitrate(stats));
+    eventBus.on('stream:started', this._onStreamStarted);
+    eventBus.on('profile:changed', this._onProfileChanged);
+    eventBus.on('loopback:stats', this._onLoopbackStats);
   }
 
   /**
@@ -335,6 +340,15 @@ class DeviceInfo {
     if (this.channelsEl) this.channelsEl.textContent = '--';
     if (this.targetBitrateEl) this.targetBitrateEl.textContent = '--';
     if (this.actualBitrateEl) this.actualBitrateEl.textContent = '--';
+  }
+
+  /**
+   * Cleanup - EventBus listener'larini kaldir (memory leak onleme)
+   */
+  destroy() {
+    eventBus.off('stream:started', this._onStreamStarted);
+    eventBus.off('profile:changed', this._onProfileChanged);
+    eventBus.off('loopback:stats', this._onLoopbackStats);
   }
 }
 

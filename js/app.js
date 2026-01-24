@@ -17,11 +17,11 @@ import Recorder from './modules/Recorder.js';
 import Monitor from './modules/Monitor.js';
 import StatusManager from './modules/StatusManager.js';
 import DeviceInfo from './modules/DeviceInfo.js';
-import { formatTime, createAudioContext, getAudioContextOptions, stopStreamTracks, toggleDisplay, createMediaRecorder, needsBufferSetting, usesWebAudio, usesWasmOpus, usesMediaRecorder, wrapAsyncHandler } from './modules/utils.js';
-import { createPassthroughWorkletNode, ensurePassthroughWorklet, isAudioWorkletSupported } from './modules/WorkletHelper.js';
+import { stopStreamTracks, toggleDisplay, needsBufferSetting, usesWebAudio, wrapAsyncHandler } from './modules/utils.js';
+import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
-import { PROFILES, SETTINGS, PROFILE_CATEGORIES } from './modules/Config.js';
-import { DELAY, SIGNAL, bytesToKB, AUDIO, BUFFER, calculateLatencyMs } from './modules/constants.js';
+import { PROFILES, SETTINGS } from './modules/Config.js';
+import { AUDIO, BUFFER, calculateLatencyMs } from './modules/constants.js';
 import loopbackManager from './modules/LoopbackManager.js';
 import profileController from './modules/ProfileController.js';
 import uiStateManager from './modules/UIStateManager.js';
@@ -346,7 +346,7 @@ function isLoopbackEnabled() {
 }
 
 function getOpusBitrate() {
-  return getRadioValue('bitrate', 32000, true);
+  return getRadioValue('bitrate', SETTINGS.bitrate.default, true);
 }
 
 function getTimeslice() {

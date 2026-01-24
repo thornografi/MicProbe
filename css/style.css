@@ -2288,6 +2288,63 @@ label.option-disabled::after {
 
 /* ========== RESPONSIVE ========== */
 
+/* ========== SIDEBAR RESPONSIVE (768-1200px) ========== */
+/* Küçük ekranlı laptop'lar için kademeli daraltma
+   Varsayılan sidebar: 282px (variables.css)
+
+   Breakpoint Hesaplaması:
+   ─────────────────────────────────────────────────
+   768-1023px:  220px (~78% of 282px) - Kompakt mod
+   1024-1200px: 250px (~89% of 282px) - Orta mod
+   >1200px:     282px (varsayılan)    - Tam genişlik
+
+   NOT: CSS media query condition'larında variable kullanılamadığından
+   width değerleri hardcoded. Sidebar genişliği değişirse burası da güncellenmeli.
+*/
+
+/* 768-1023px arası: Sidebar kompakt (~78% daraltma) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar {
+    width: 220px; /* 282px * 0.78 ≈ 220px */
+  }
+
+  .sidebar .nav-section-title {
+    font-size: 10px;   /* Varsayılan: 12px (--fs-xs) */
+    letter-spacing: 1px; /* Daha sıkı spacing */
+  }
+
+  .sidebar .nav-item {
+    padding: 8px 12px;  /* Varsayılan: 10px 16px */
+    font-size: 13px;    /* Varsayılan: 14px (--fs-base) */
+  }
+
+  .sidebar .nav-item svg {
+    width: 16px;  /* Varsayılan: 18px */
+    height: 16px;
+  }
+
+  /* Gradient line - sidebar genişliğiyle senkron */
+  .app-layout::before {
+    left: 220px;
+  }
+}
+
+/* 1024-1200px arası: Sidebar orta (~89% daraltma) */
+@media (min-width: 1024px) and (max-width: 1200px) {
+  .sidebar {
+    width: 250px; /* 282px * 0.89 ≈ 250px */
+  }
+
+  .sidebar .nav-item {
+    padding: 9px 14px; /* Varsayılan: 10px 16px - hafif daraltma */
+  }
+
+  /* Gradient line - sidebar genişliğiyle senkron */
+  .app-layout::before {
+    left: 250px;
+  }
+}
+
 /* Büyük tablet ve altı - sağ boşluğu kademeli azalt */
 @media (max-width: 1200px) {
   .content-container {

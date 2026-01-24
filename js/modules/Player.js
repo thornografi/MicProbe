@@ -37,9 +37,13 @@ class Player {
 
     this.bindEvents();
 
+    // Event listener referansları (memory leak önleme - VuMeter pattern)
+    this._onRecordingCompleted = (data) => this.load(data);
+    this._onRecordingStarted = () => this.reset();
+
     // Event dinle
-    eventBus.on('recording:completed', (data) => this.load(data));
-    eventBus.on('recording:started', () => this.reset());
+    eventBus.on('recording:completed', this._onRecordingCompleted);
+    eventBus.on('recording:started', this._onRecordingStarted);
   }
 
   bindEvents() {
@@ -287,14 +291,7 @@ class Player {
     this.isEnded = false;
 
     // Seek sirasinda instant update - transition'siz
-    if (this.progressFillEl) {
-      this.progressFillEl.classList.add('no-transition');
-      this.progressFillEl.style.transform = `scaleX(${percent})`;
-      // Bir sonraki frame'de transition'i geri ac (normal playback icin)
-      requestAnimationFrame(() => {
-        this.progressFillEl.classList.remove('no-transition');
-      });
-    }
+    this.setProgressFill(percent, { disableTransition: true });
 
     // Seek sonrasi ended/replay ikonunu senkronize et (ozellikle sona seek edildiyse)
     if (!this.isPlaying) {
@@ -439,6 +436,23 @@ class Player {
     }
 
     this.playBtnEl.innerHTML = this.shouldReplayOnNextPlay() ? REPLAY_ICON : PLAY_ICON;
+  }
+
+  /**
+   * Cleanup - EventBus listener'larini kaldir (memory leak onleme)
+   */
+  destroy() {
+    this.stopProgressLoop();
+    this.audio.pause();
+    this.audio.src = '';
+
+    if (this.currentUrl) {
+      URL.revokeObjectURL(this.currentUrl);
+      this.currentUrl = null;
+    }
+
+    eventBus.off('recording:completed', this._onRecordingCompleted);
+    eventBus.off('recording:started', this._onRecordingStarted);
   }
 }
 

@@ -136,14 +136,10 @@ export const SETTINGS = {
 };
 
 // Varsayilan profil degerleri
-// NOT: Bu degerler SETTINGS.*.default ile tutarli olmali
-const DEFAULT_VALUES = {
-  ec: true, ns: true, agc: true,
-  sampleRate: 48000, channelCount: 1,
-  pipeline: 'standard', encoder: 'mediarecorder', buffer: 4096,
-  loopback: true, bitrate: 64000, mediaBitrate: 0,
-  timeslice: 0
-};
+// DRY: SETTINGS.*.default'dan otomatik türetilir (manuel sync gereksiz)
+const DEFAULT_VALUES = Object.fromEntries(
+  Object.entries(SETTINGS).map(([key, setting]) => [key, setting.default])
+);
 
 // Profil fabrika fonksiyonu - tekrari onler
 // settings objesi: { locked: [], editable: [], allowedValues: [], detection: {} } veya 'all' string'i
