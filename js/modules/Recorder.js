@@ -5,7 +5,7 @@
  */
 import eventBus from './EventBus.js';
 import { requestStream } from './StreamHelper.js';
-import { createAudioContext, getAudioContextOptions, stopStreamTracks, createMediaRecorder, usesWebAudio, usesWasmOpus, usesMediaRecorder, usesPcmWav, getStreamErrorMessage } from './utils.js';
+import { createAudioContext, getAudioContextOptions, stopStreamTracks, createMediaRecorder, usesWebAudio, usesWasmOpus, usesMediaRecorder, usesPcmWav, getStreamErrorMessage, formatTimestampYYMMDDHHMMSS, calculateActualBitrate } from './utils.js';
 import { BUFFER, bytesToKB } from './constants.js';
 import { createPipeline, isPipelineSupported } from '../pipelines/PipelineFactory.js';
 import { SETTINGS } from './Config.js';
@@ -226,8 +226,8 @@ class Recorder {
       eventBus.emit('recording:started');
 
     } catch (err) {
-      // Spesifik hata mesajlari
-      const userMessage = this._getErrorMessage(err);
+      // Spesifik hata mesajlari (DRY: utils.js helper kullaniliyor)
+      const userMessage = getStreamErrorMessage(err);
 
       eventBus.emit('log:error', {
         category: 'recorder',
@@ -360,13 +360,11 @@ class Recorder {
         const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
         const blob = new Blob(this.chunks, { type: mimeType });
         const suffix = this.pipelineType === 'direct' ? '' : `_${this.pipelineType}`;
-        const filename = `kayit${suffix}_${Date.now()}.webm`;
+        const filename = `kayit${suffix}_${formatTimestampYYMMDDHHMMSS()}.webm`;
 
-        // Gercek bitrate hesapla
+        // Gercek bitrate hesapla (DRY: helper kullan)
         const durationMs = Date.now() - this.startTime;
-        const durationSec = durationMs / 1000;
-        const actualBitrate = durationSec > 0 ? Math.round((blob.size * 8) / durationSec) : 0;
-        const actualBitrateKbps = (actualBitrate / 1000).toFixed(1);
+        const { bps: actualBitrate, kbps: actualBitrateKbps } = calculateActualBitrate(blob.size, durationMs);
 
         // Istenen vs gercek karsilastirmasi
         const requestedBitrate = this.mediaBitrate || 0;
@@ -411,15 +409,6 @@ class Recorder {
     } else {
       this.mediaRecorder.start();
     }
-  }
-
-  /**
-   * Hata mesajini kullanici dostu formata cevir
-   * DRY: utils.js getStreamErrorMessage() helper kullaniliyor
-   * @private
-   */
-  _getErrorMessage(err) {
-    return getStreamErrorMessage(err);
   }
 
   async cleanupWebAudio(forceClose = false) {
@@ -483,7 +472,7 @@ class Recorder {
         eventBus.emit('recording:completed', {
           blob: result.blob,
           mimeType: 'audio/wav',
-          filename: `kayit_raw_${Date.now()}.wav`,
+          filename: `kayit_raw_${formatTimestampYYMMDDHHMMSS()}.wav`,
           pipeline: this.pipelineType,
           encoder: this.encoder,
           useWebAudio: true,
@@ -514,16 +503,15 @@ class Recorder {
         // Strategy'den final blob'u al
         const result = await this.pipelineStrategy.finishOpusEncoding();
 
+        // Gercek bitrate hesapla (DRY: helper kullan)
         const durationMs = Date.now() - this.startTime;
-        const durationSec = durationMs / 1000;
-        const actualBitrate = durationSec > 0 ? Math.round((result.blob.size * 8) / durationSec) : 0;
-        const actualBitrateKbps = (actualBitrate / 1000).toFixed(1);
+        const { bps: actualBitrate, kbps: actualBitrateKbps } = calculateActualBitrate(result.blob.size, durationMs);
 
         eventBus.emit('log', `Kayit tamamlandi: ${bytesToKB(result.blob.size).toFixed(1)} KB (Gercek: ~${actualBitrateKbps} kbps, ${result.pageCount} page)`);
         eventBus.emit('recording:completed', {
           blob: result.blob,
           mimeType: 'audio/ogg; codecs=opus',
-          filename: `kayit_wasm_opus_${Date.now()}.ogg`,
+          filename: `kayit_wasm_opus_${formatTimestampYYMMDDHHMMSS()}.ogg`,
           pipeline: this.pipelineType,
           encoder: this.encoder,
           useWebAudio: true,

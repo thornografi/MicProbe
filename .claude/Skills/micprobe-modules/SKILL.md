@@ -189,8 +189,13 @@ Recorder, pipeline kurulumu icin Strategy Pattern kullanir. Yeni pipeline ekleme
 - `scriptprocessor` → ScriptProcessorNode → **SADECE WASM Opus** (MediaRecorder passthrough kaldirildi)
 - `worklet` → AudioWorkletNode → **WASM Opus veya PCM/WAV** (Raw Recording icin 16-bit WAV destegi)
 
-**NOT:** ScriptProcessor ve Worklet pipeline'lari artik sadece WASM Opus encoder ile calisir.
+**NOT:** ScriptProcessor pipeline sadece WASM Opus kullanir. WorkletPipeline hem WASM Opus hem PCM/WAV destekler.
 MediaRecorder passthrough desteği ölü kod olarak tespit edilip kaldırıldı.
+
+**AudioWorklet process() Lifetime:**
+- `process()` metodu `true` dönerse processor aktif kalır
+- `false` dönerse processor ve node garbage collect edilir
+- Kayıt bitene kadar `true` dönmeli, aksi halde ses kesilir
 
 **Pipeline Cleanup Pattern (Race Condition Prevention):**
 Cleanup sırasında audio thread'den hala event'ler gelebilir:

@@ -15,6 +15,22 @@ export function formatTime(seconds) {
 }
 
 /**
+ * Timestamp'i YYMMDDHHMMSS formatina cevir (local time)
+ * Ornek: 2025-01-09 07:05:03 -> "250109070503"
+ * @param {Date} date - Opsiyonel Date (default: now)
+ * @returns {string}
+ */
+export function formatTimestampYYMMDDHHMMSS(date = new Date()) {
+  const yy = String(date.getFullYear() % 100).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${yy}${mm}${dd}${hh}${min}${ss}`;
+}
+
+/**
  * Tarayicida desteklenen en uygun audio MediaRecorder mimeType'i dondurur.
  * Amac: Testler arasinda daha tutarli codec/container secimi (tercihen Opus/WebM)
  * @returns {string} mimeType veya '' (bulunamadi)
@@ -350,6 +366,33 @@ export function cleanupActivatorAudio(audio) {
  */
 export function usesPcmWav(encoder) {
   return encoder === 'pcm-wav';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Duration & Bitrate Helper Functions (DRY - Player/Recorder)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Duration degerinin gecerli olup olmadigini kontrol eder
+ * Number.isFinite() kullanir (global isFinite'dan daha strict)
+ * @param {number} duration - Kontrol edilecek duration
+ * @returns {boolean} - Gecerli finite pozitif sayi ise true
+ */
+export function isValidDuration(duration) {
+  return Number.isFinite(duration) && duration > 0;
+}
+
+/**
+ * Blob boyutu ve sure'den gercek bitrate hesaplar
+ * DRY: Recorder.js'de 3 yerde ayni hesaplama yapiliyor
+ * @param {number} blobSize - Blob boyutu (byte)
+ * @param {number} durationMs - Kayit suresi (milisaniye)
+ * @returns {{bps: number, kbps: string}} - Bitrate (bps ve kbps formatinda)
+ */
+export function calculateActualBitrate(blobSize, durationMs) {
+  const durationSec = durationMs / 1000;
+  const bitrate = durationSec > 0 ? Math.round((blobSize * 8) / durationSec) : 0;
+  return { bps: bitrate, kbps: (bitrate / 1000).toFixed(1) };
 }
 
 /**
