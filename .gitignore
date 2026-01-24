@@ -38,5 +38,8 @@ tmpclaude-*
 # Claude Skills (local, generated)
 .claude/Skills/
 
+# Markdown files
+*.md
+
 # Temporary original files
 temp_original.txt
