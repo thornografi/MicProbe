@@ -5,6 +5,7 @@
  */
 
 import { PROFILES, SETTINGS } from './Config.js';
+import { ENCODER } from './constants.js';
 import { formatTime, needsBufferSetting, shouldDisableTimeslice } from './utils.js';
 
 /**
@@ -324,7 +325,7 @@ class UIStateManager {
     this.radioGroups.bitrate.forEach(r => r.disabled = shouldBeDisabled('bitrate') || !isLoopbackOn);
 
     // Timeslice selector - profil kilidi + MediaRecorder kullanilmiyorsa disabled (DRY helper)
-    const selectedEncoder = document.querySelector('input[name="encoder"]:checked')?.value || 'mediarecorder';
+    const selectedEncoder = document.querySelector('input[name="encoder"]:checked')?.value || ENCODER.DEFAULT;
     this.radioGroups.timeslice.forEach(r => r.disabled = shouldBeDisabled('timeslice') || shouldDisableTimeslice(isLoopbackOn, selectedEncoder));
 
     // MediaBitrate selector - profil kilidi + loopback ON ise disabled
@@ -352,21 +353,6 @@ class UIStateManager {
         monitorBtnText.textContent = isMonitoring ? 'Stop' : 'Monitor';
       }
     }
-  }
-
-  /**
-   * Preparing state goster - buton metni updateButtonStates'de zaten guncelleniyor
-   * Overlay kaldirildi, buton uzerinde "Preparing..." gosteriliyor
-   */
-  showPreparingState() {
-    // No-op: Buton metni updateButtonStates() icinde guncelleniyor
-  }
-
-  /**
-   * Preparing state gizle - buton metni updateButtonStates'de zaten guncelleniyor
-   */
-  hidePreparingState() {
-    // No-op: Buton metni updateButtonStates() icinde guncelleniyor
   }
 
   /**

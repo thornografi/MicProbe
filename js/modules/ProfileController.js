@@ -6,7 +6,7 @@
 
 import eventBus from './EventBus.js';
 import { PROFILES, SETTINGS, PROFILE_TIPS } from './Config.js';
-import { toggleDisplay, needsBufferSetting, usesWasmOpus, shouldDisableTimeslice } from './utils.js';
+import { toggleDisplay, needsBufferSetting, usesWasmOpus, shouldDisableTimeslice, log } from './utils.js';
 
 /**
  * Dinamik kilit politikasi - DRY: Tek noktadan kilit kurallari
@@ -128,9 +128,7 @@ class ProfileController {
 
     // Aktif stream varsa once durdur
     if (wasActive) {
-      eventBus.emit('log:ui', {
-        message: `Profil degisiyor, ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatilacak...`
-      });
+      log.ui(`Profil degisiyor, ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatilacak...`, {});
 
       if (previousMode === 'monitoring') {
         await this.callbacks.stopMonitoring();
@@ -182,17 +180,11 @@ class ProfileController {
 
     // Locked ayarlari logla
     if (lockedSettings.length > 0) {
-      eventBus.emit('log:system', {
-        message: `Profil: ${profile.label} - Kilitli ayarlar: ${lockedSettings.join(', ')}`,
-        details: { profileId, locked: lockedSettings, editable: editableSettings }
-      });
+      log.system(`Profil: ${profile.label} - Kilitli ayarlar: ${lockedSettings.join(', ')}`, { profileId, locked: lockedSettings, editable: editableSettings });
     }
 
-    eventBus.emit('log', `Profil: ${profile.label}`);
-    eventBus.emit('log:system', {
-      message: 'Profil uygulandi',
-      details: { profileId, category: profile.category, ...values }
-    });
+    log.profile(`Profil: ${profile.label}`);
+    log.system('Profil uygulandi', { profileId, category: profile.category, ...values });
 
     // Kategori bazli UI guncelle (call vs record)
     this.callbacks.updateCategoryUI(profileId);
@@ -207,9 +199,7 @@ class ProfileController {
     if (wasActive) {
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      eventBus.emit('log:ui', {
-        message: `Yeni profil ile ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatiliyor...`
-      });
+      log.ui(`Yeni profil ile ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatiliyor...`, {});
 
       if (previousMode === 'monitoring') {
         await this.callbacks.startMonitoring();

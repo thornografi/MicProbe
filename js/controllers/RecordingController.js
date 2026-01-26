@@ -4,6 +4,7 @@
  * DIP: Bagimliliklar dependency injection ile alinir
  */
 import eventBus from '../modules/EventBus.js';
+import { log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
 
 class RecordingController {
   constructor() {
@@ -39,6 +40,9 @@ class RecordingController {
    * Kayit baslatma - toggle mantigi
    */
   async toggle() {
+    // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
+    if (this.deps.getIsPreparing?.()) return;
+
     if (this.deps.getCurrentMode() === 'recording') {
       await this.stop();
     } else {
@@ -56,20 +60,14 @@ class RecordingController {
     // Encoder profil tarafindan belirleniyor (artik kullanici secimi yok)
     const encoder = this.deps.getEncoder();
 
-    eventBus.emit('log:recorder', {
-      message: 'Kayit baslat butonuna basildi',
-      details: { constraints, webAudioEnabled: useWebAudio, pipeline, encoder }
-    });
+    log.recorder('Kayit baslat butonuna basildi', { constraints, webAudioEnabled: useWebAudio, pipeline, encoder });
 
     try {
       // Kayit baslarken oynaticiyi durdur
       this.deps.player?.pause();
 
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
-      this.deps.setCurrentMode('recording');
-      this.deps.setIsPreparing(true);
-      this.deps.uiStateManager?.updateButtonStates();
-      this.deps.uiStateManager?.showPreparingState();
+      beginPreparing(this.deps, 'recording');
 
       // Normal kayit (Recorder modulu uzerinden)
       const timeslice = this.deps.getTimeslice();
@@ -79,20 +77,15 @@ class RecordingController {
       await this.deps.recorder.start(constraints, pipeline, encoder, timeslice, bufferSize, mediaBitrate);
 
       // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
-      this.deps.setIsPreparing(false);
-      this.deps.uiStateManager?.updateButtonStates();
-      this.deps.uiStateManager?.hidePreparingState();
+      endPreparing(this.deps);
       this.deps.uiStateManager?.startTimer();
 
     } catch (err) {
-      eventBus.emit('log:error', { message: 'Kayit baslatilamadi', details: { error: err.message } });
-      eventBus.emit('log', `❌ HATA: ${err.message}`);
+      log.error('Kayit baslatilamadi', { error: err.message });
+      log.error(`HATA: ${err.message}`);
 
       // Temizlik
-      this.deps.setIsPreparing(false);
-      this.deps.setCurrentMode(null);
-      this.deps.uiStateManager?.updateButtonStates();
-      this.deps.uiStateManager?.hidePreparingState();
+      resetState(this.deps);
       this.deps.uiStateManager?.stopTimer();
     }
   }
@@ -101,19 +94,13 @@ class RecordingController {
    * Kayit durdur
    */
   async stop() {
-    eventBus.emit('log:recorder', {
-      message: 'Kayit durduruluyor',
-      details: {}
-    });
+    log.recorder('Kayit durduruluyor', {});
 
     try {
       this.deps.uiStateManager?.stopTimer();
       await this.deps.recorder?.stop();
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'Kayit durdurma hatasi',
-        details: { error: err.message, stack: err.stack }
-      });
+      log.error('Kayit durdurma hatasi', { error: err.message, stack: err.stack });
     } finally {
       // Her durumda state reset - hata olsa bile UI tutarli kalsin
       this.deps.setCurrentMode(null);

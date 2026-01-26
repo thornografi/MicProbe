@@ -9,6 +9,7 @@
  */
 import eventBus from './EventBus.js';
 import { AUDIO } from './constants.js';
+import { log } from './utils.js';
 
 class AudioEngine {
   constructor() {
@@ -36,10 +37,7 @@ class AudioEngine {
    */
   async warmup() {
     if (this.isWarmedUp) {
-      eventBus.emit('log:webaudio', {
-        message: 'AudioEngine: Zaten warmup yapilmis',
-        details: { state: this.audioContext?.state }
-      });
+      log.webaudio('AudioEngine: Zaten warmup yapilmis', { state: this.audioContext?.state });
       return;
     }
 
@@ -56,29 +54,20 @@ class AudioEngine {
 
       this.isWarmedUp = true;
 
-      eventBus.emit('log:webaudio', {
-        message: 'AudioEngine: Warmup tamamlandi',
-        details: {
-          state: this.audioContext.state,
-          sampleRate: this.audioContext.sampleRate,
-          baseLatency: this.audioContext.baseLatency,
-          fftSize: this.fftSize
-        }
+      log.webaudio('AudioEngine: Warmup tamamlandi', {
+        state: this.audioContext.state,
+        sampleRate: this.audioContext.sampleRate,
+        baseLatency: this.audioContext.baseLatency,
+        fftSize: this.fftSize
       });
 
       // Suspended durumda baslarsa uyari ver
       if (this.audioContext.state === 'suspended') {
-        eventBus.emit('log:webaudio', {
-          message: 'AudioEngine: Context suspended - ilk kullanici etkilesiminde resume edilecek',
-          details: {}
-        });
+        log.webaudio('AudioEngine: Context suspended - ilk kullanici etkilesiminde resume edilecek', {});
       }
 
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'AudioEngine: Warmup hatasi',
-        details: { error: err.message }
-      });
+      log.error('AudioEngine: Warmup hatasi', { error: err.message });
       throw err;
     }
   }
@@ -95,10 +84,7 @@ class AudioEngine {
     if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();
 
-      eventBus.emit('log:webaudio', {
-        message: 'AudioEngine: Context resumed',
-        details: { state: this.audioContext.state }
-      });
+      log.webaudio('AudioEngine: Context resumed', { state: this.audioContext.state });
     }
 
     return this.audioContext;
@@ -129,13 +115,10 @@ class AudioEngine {
 
     this.isConnected = true;
 
-    eventBus.emit('log:webaudio', {
-      message: 'AudioEngine: Stream baglandi (VU Meter)',
-      details: {
-        streamId: stream.id,
-        channelCount: this.sourceNode.channelCount,
-        contextState: this.audioContext.state
-      }
+    log.webaudio('AudioEngine: Stream baglandi (VU Meter)', {
+      streamId: stream.id,
+      channelCount: this.sourceNode.channelCount,
+      contextState: this.audioContext.state
     });
 
     return this.analyserNode;
@@ -153,10 +136,7 @@ class AudioEngine {
 
     this.isConnected = false;
 
-    eventBus.emit('log:webaudio', {
-      message: 'AudioEngine: Stream disconnected (context acik)',
-      details: { contextState: this.audioContext?.state }
-    });
+    log.webaudio('AudioEngine: Stream disconnected (context acik)', { contextState: this.audioContext?.state });
   }
 
   /**
@@ -173,10 +153,7 @@ class AudioEngine {
     this.analyserNode = null;
     this.isWarmedUp = false;
 
-    eventBus.emit('log:webaudio', {
-      message: 'AudioEngine: Tamamen kapatildi',
-      details: {}
-    });
+    log.webaudio('AudioEngine: Tamamen kapatildi', {});
   }
 
   /**

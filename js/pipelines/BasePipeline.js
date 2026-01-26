@@ -11,6 +11,7 @@
 import eventBus from '../modules/EventBus.js';
 import { createOpusWorker, isWasmOpusSupported } from '../modules/OpusWorkerHelper.js';
 import { AUDIO } from '../modules/constants.js';
+import { disconnectNodes, log } from '../modules/utils.js';
 
 export default class BasePipeline {
   constructor(audioContext, sourceNode, destinationNode) {
@@ -57,32 +58,18 @@ export default class BasePipeline {
    * @returns {Promise<void>}
    */
   async cleanup() {
-    // Ortak temizlik mantigi
-    Object.values(this.nodes).forEach(node => {
-      if (node) {
-        try {
-          node.disconnect();
-        } catch {
-          // Node zaten disconnect olmus olabilir
-        }
-      }
-    });
-
-    // ScriptProcessor onaudioprocess temizligi
+    // ScriptProcessor onaudioprocess temizligi (disconnect oncesi)
     if (this.nodes.processor?.onaudioprocess) {
       this.nodes.processor.onaudioprocess = null;
     }
 
-    // AnalyserNode temizligi
-    if (this.analyserNode) {
-      try {
-        this.analyserNode.disconnect();
-      } catch {
-        // Node zaten disconnect olmus olabilir
-      }
-      this.analyserNode = null;
-    }
+    // DRY: disconnectNodes helper ile tum node'lari temizle
+    disconnectNodes([
+      ...Object.values(this.nodes),
+      this.analyserNode
+    ]);
 
+    this.analyserNode = null;
     this.nodes = { processor: null, mute: null, worklet: null };
   }
 
@@ -103,10 +90,10 @@ export default class BasePipeline {
   }
 
   /**
-   * Log helper
+   * Log helper (pipeline subclass'lari icin)
    */
   log(message, details = {}) {
-    eventBus.emit('log:webaudio', { message, details });
+    log.webaudio(message, details);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -139,10 +126,7 @@ export default class BasePipeline {
     };
 
     this.opusWorker.onError = (error) => {
-      eventBus.emit('log:error', {
-        message: `Opus encoder hatasi (${this.type})`,
-        details: { error: error.message }
-      });
+      log.error(`Opus encoder hatasi (${this.type})`, { error: error.message });
     };
 
     return opusBitrate;

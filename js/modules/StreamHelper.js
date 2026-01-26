@@ -3,6 +3,7 @@
  * requestStream fonksiyonu Monitor ve Recorder tarafindan kullanilir
  */
 import eventBus from './EventBus.js';
+import { log } from './utils.js';
 
 const DEFAULT_CONSTRAINTS = {
   echoCancellation: true,
@@ -19,13 +20,10 @@ export async function requestStream(constraints = {}) {
   const merged = { ...DEFAULT_CONSTRAINTS, ...constraints };
 
   const deviceLabel = merged.deviceId ? `[${typeof merged.deviceId === 'object' ? merged.deviceId.exact || merged.deviceId : merged.deviceId}]` : '[varsayilan]';
-  eventBus.emit('log', `Mikrofon isteniyor... ${deviceLabel} EC:${merged.echoCancellation} NS:${merged.noiseSuppression} AGC:${merged.autoGainControl}`);
+  log.stream(`Mikrofon isteniyor... ${deviceLabel} EC:${merged.echoCancellation} NS:${merged.noiseSuppression} AGC:${merged.autoGainControl}`);
 
   // Detayli log
-  eventBus.emit('log:stream', {
-    message: 'getUserMedia cagriliyor',
-    details: { constraints: merged }
-  });
+  log.stream('getUserMedia cagriliyor', { constraints: merged });
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -34,16 +32,14 @@ export async function requestStream(constraints = {}) {
     });
 
     const track = stream.getAudioTracks()[0];
+    // GUARD: Audio track yoksa hata
+    if (!track) {
+      throw new Error('Stream\'de audio track bulunamadi');
+    }
     const settings = track.getSettings();
 
     // Gercek ayarlari logla - tarayici farkli deger uygulayabilir
-    eventBus.emit('log', `Gercek Track Ayarlari:`);
-    eventBus.emit('log', `  - device: ${track.label || settings.deviceId || 'N/A'}`);
-    eventBus.emit('log', `  - echoCancellation: ${settings.echoCancellation}`);
-    eventBus.emit('log', `  - noiseSuppression: ${settings.noiseSuppression}`);
-    eventBus.emit('log', `  - autoGainControl: ${settings.autoGainControl}`);
-    eventBus.emit('log', `  - sampleRate: ${settings.sampleRate || 'N/A'}Hz`);
-    eventBus.emit('log', `  - channelCount: ${settings.channelCount || 'N/A'}`);
+    log.stream(`Gercek Track Ayarlari: device=${track.label || settings.deviceId || 'N/A'}, EC=${settings.echoCancellation}, NS=${settings.noiseSuppression}, AGC=${settings.autoGainControl}, sampleRate=${settings.sampleRate || 'N/A'}Hz, channelCount=${settings.channelCount || 'N/A'}`);
 
     // Constraint mismatch kontrolu - istenen vs gercek
     // NOT: Bazi tarayicilar (Safari, mobile) constraint degerlerini raporlamiyor (undefined doner)
@@ -69,33 +65,24 @@ export async function requestStream(constraints = {}) {
 
     if (mismatches.length > 0) {
       const mismatchNames = mismatches.map(m => m.name).join(', ');
-      eventBus.emit('log:warning', {
-        message: `Constraint uyumsuzlugu: ${mismatchNames}`,
-        details: { mismatches, requested: merged, actual: settings }
-      });
+      log.warning(`Constraint uyumsuzlugu: ${mismatchNames}`, { mismatches, requested: merged, actual: settings });
       eventBus.emit('constraint:mismatch', { mismatches, requested: merged, actual: settings });
     }
 
     // Detayli log
-    eventBus.emit('log:stream', {
-      message: 'MediaStream olusturuldu',
-      details: {
-        streamId: stream.id,
-        trackId: track.id,
-        trackLabel: track.label,
-        trackSettings: settings,
-        trackConstraints: track.getConstraints(),
-        trackCapabilities: track.getCapabilities?.() || 'N/A'
-      }
+    log.stream('MediaStream olusturuldu', {
+      streamId: stream.id,
+      trackId: track.id,
+      trackLabel: track.label,
+      trackSettings: settings,
+      trackConstraints: track.getConstraints(),
+      trackCapabilities: track.getCapabilities?.() || 'N/A'
     });
 
     return stream;
   } catch (err) {
-    eventBus.emit('log', 'HATA: Mikrofon erisimi basarisiz - ' + err.message);
-    eventBus.emit('log:error', {
-      message: 'getUserMedia hatasi',
-      details: { error: err.message, name: err.name }
-    });
+    log.error('Mikrofon erisimi basarisiz - ' + err.message);
+    log.error('getUserMedia hatasi', { error: err.message, name: err.name });
     throw err;
   }
 }

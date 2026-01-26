@@ -6,7 +6,7 @@
 
 import eventBus from '../modules/EventBus.js';
 import { PROFILES, SETTINGS } from '../modules/Config.js';
-import { SettingTypeHandlers } from '../modules/utils.js';
+import { SettingTypeHandlers, log } from '../modules/utils.js';
 
 /**
  * CustomSettingsPanelHandler class
@@ -68,9 +68,7 @@ class CustomSettingsPanelHandler {
       customSettingsContent.classList.toggle('collapsed');
       customSettingsToggle.classList.toggle('expanded');
 
-      eventBus.emit('log:ui', {
-        message: isCollapsed ? 'Ozel ayarlar acildi' : 'Ozel ayarlar kapatildi'
-      });
+      log.ui(isCollapsed ? 'Ozel ayarlar acildi' : 'Ozel ayarlar kapatildi', {});
     });
   }
 
@@ -116,9 +114,7 @@ class CustomSettingsPanelHandler {
       this.dependencies.profileController?.updateDynamicLocks();
       this.dependencies.profileController?.updateCustomSettingsPanelDynamicState();
 
-      eventBus.emit('log:ui', {
-        message: `Ayar degistirildi: ${key} = ${value}`
-      });
+      log.ui(`Ayar degistirildi: ${key} = ${value}`, {});
     });
   }
 

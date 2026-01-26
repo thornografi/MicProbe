@@ -6,7 +6,7 @@
  * Stream baslangicinda ve profil degisikliginde guncellenir
  */
 import eventBus from './EventBus.js';
-import { stopStreamTracks } from './utils.js';
+import { stopStreamTracks, log } from './utils.js';
 
 // Storage key for persisting mic selection
 const MIC_STORAGE_KEY = 'micprobe_selectedMic';
@@ -79,10 +79,7 @@ class DeviceInfo {
           try {
             await this.enumerateMicrophones();
           } catch (err) {
-            eventBus.emit('log:error', {
-              message: 'Mikrofon listesi yuklenemedi',
-              details: { error: err.message }
-            });
+            log.error('Mikrofon listesi yuklenemedi', { error: err.message });
           }
         }
       });
@@ -99,31 +96,24 @@ class DeviceInfo {
           localStorage.removeItem(MIC_STORAGE_KEY);
         }
 
-        eventBus.emit('log:stream', {
-          message: `Mikrofon secildi: ${selectedOption.textContent}`,
-          details: { deviceId: this.selectedDeviceId || 'default' }
-        });
+        log.stream(`Mikrofon secildi: ${selectedOption.textContent}`, { deviceId: this.selectedDeviceId || 'default' });
       });
     }
 
-    // Cihaz degisikligi dinle
-    if (navigator.mediaDevices?.addEventListener) {
-      navigator.mediaDevices.addEventListener('devicechange', async () => {
-        if (this.hasMicPermission) {
-          eventBus.emit('log:stream', {
-            message: 'Cihaz degisikligi algilandi, liste guncelleniyor...',
-            details: {}
-          });
-          try {
-            await this.enumerateMicrophones(true);
-          } catch (err) {
-            eventBus.emit('log:error', {
-              message: 'Cihaz degisikligi sonrasi liste guncellenemedi',
-              details: { error: err.message }
-            });
-          }
+    // Cihaz degisikligi dinle - named handler (memory leak onleme icin destroy()'da kaldirilir)
+    this._onDeviceChange = async () => {
+      if (this.hasMicPermission) {
+        log.stream('Cihaz degisikligi algilandi, liste guncelleniyor...', {});
+        try {
+          await this.enumerateMicrophones(true);
+        } catch (err) {
+          log.error('Cihaz degisikligi sonrasi liste guncellenemedi', { error: err.message });
         }
-      });
+      }
+    };
+
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', this._onDeviceChange);
     }
   }
 
@@ -165,10 +155,7 @@ class DeviceInfo {
     const selectedStillExists = realMics.some(m => m.deviceId === this.selectedDeviceId);
     if (this.selectedDeviceId && !selectedStillExists) {
       if (logWarnings) {
-        eventBus.emit('log:warning', {
-          message: 'Onceden secili mikrofon artik mevcut degil',
-          details: { lostDeviceId: this.selectedDeviceId.slice(0, 8) }
-        });
+        log.warning('Onceden secili mikrofon artik mevcut degil', { lostDeviceId: this.selectedDeviceId.slice(0, 8) });
       }
       this.selectedDeviceId = '';
       localStorage.removeItem(MIC_STORAGE_KEY);
@@ -215,18 +202,11 @@ class DeviceInfo {
       const realMics = this.buildMicrophoneDropdown(allMics, { logWarnings: true });
 
       if (!silent) {
-        eventBus.emit('log:stream', {
-          message: `${realMics.length} mikrofon bulundu`,
-          details: { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) }
-        });
+        log.stream(`${realMics.length} mikrofon bulundu`, { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) });
       }
     } catch (err) {
       this.hasMicPermission = false;
-      eventBus.emit('log:error', {
-        category: 'stream',
-        message: 'Mikrofon listesi alinamadi',
-        details: { error: err.message }
-      });
+      log.error('Mikrofon listesi alinamadi', { category: 'stream', error: err.message });
     }
   }
 
@@ -349,6 +329,11 @@ class DeviceInfo {
     eventBus.off('stream:started', this._onStreamStarted);
     eventBus.off('profile:changed', this._onProfileChanged);
     eventBus.off('loopback:stats', this._onLoopbackStats);
+
+    // devicechange listener cleanup
+    if (navigator.mediaDevices?.removeEventListener && this._onDeviceChange) {
+      navigator.mediaDevices.removeEventListener('devicechange', this._onDeviceChange);
+    }
   }
 }
 

@@ -249,12 +249,6 @@ export const PROFILES = {
       allowedValues: { mediaBitrate: [0, 16000, 24000, 32000] },  // 0 = VBR (varsayılan)
       detection: { method: 'WASM Worker', source: 'encoderWorker.min.js', details: 'AudioWorkletNode + WASM Opus VBR encoder (opus-recorder library), mediaBitrate:0 = VBR mode' } }),
 
-  'legacy': createProfile('legacy', 'Legacy Web Recording', 'ScriptProcessor + WASM Opus - legacy web recording simulation',
-    'history', 'record', { pipeline: 'scriptprocessor', encoder: 'wasm-opus', buffer: 1024, loopback: false },
-    { locked: ['pipeline', 'encoder'], editable: ['ec', 'ns', 'agc', 'buffer', 'mediaBitrate'],
-      detection: { method: 'ScriptProcessor', source: 'deprecated-api', details: 'ScriptProcessorNode (deprecated) for legacy browser compatibility' } }),
-    // allowedValues yok = tum degerler izinli
-
   'raw': createProfile('raw', 'Raw Recording', 'Worklet + PCM/WAV - uncompressed 16-bit WAV recording',
     'mic', 'record', { ec: false, ns: false, agc: false, pipeline: 'worklet', encoder: 'pcm-wav', loopback: false },
     { locked: ['pipeline', 'encoder'], editable: ['ec', 'ns', 'agc', 'sampleRate', 'channelCount'],
@@ -315,11 +309,6 @@ export const PROFILE_TIPS = {
     { step: 1, text: 'Make audio recording with <strong>Record</strong>' },
     { step: 2, text: 'Play back and compare quality' },
     { step: 3, text: 'Try different <strong>Timeslice</strong> values' }
-  ],
-  'legacy': [
-    { step: 1, text: 'Record with legacy API using <strong>Record</strong>' },
-    { step: 2, text: 'Play back and test compatibility' },
-    { step: 3, text: 'Adjust <strong>Buffer</strong> size' }
   ],
   'raw': [
     { step: 1, text: 'Make raw recording with <strong>Record</strong>' },

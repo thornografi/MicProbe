@@ -5,7 +5,7 @@
  */
 
 import eventBus from './EventBus.js';
-import { createAudioContext, getAudioContextOptions, stopStreamTracks, createAndPlayActivatorAudio, cleanupActivatorAudio } from './utils.js';
+import { createAudioContext, getAudioContextOptions, stopStreamTracks, createAndPlayActivatorAudio, cleanupActivatorAudio, disconnectNodes, log } from './utils.js';
 import { DELAY, SIGNAL, BUFFER, LOOPBACK } from './constants.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from './WorkletHelper.js';
 
@@ -90,10 +90,7 @@ class LoopbackManager {
   async setup(localStream, options = {}) {
     const { useWebAudio = false, opusBitrate = 32000 } = options;
 
-    eventBus.emit('log:stream', {
-      message: 'WebRTC Loopback kuruluyor',
-      details: { useWebAudio, opusBitrate }
-    });
+    log.stream('WebRTC Loopback kuruluyor', { useWebAudio, opusBitrate });
 
     this.localStream = localStream;
 
@@ -111,15 +108,12 @@ class LoopbackManager {
       const localTrack = localStream.getAudioTracks()[0];
       const localSampleRate = localTrack?.getSettings()?.sampleRate;
 
-      eventBus.emit('log:webaudio', {
-        message: 'Loopback: WebAudio pipeline aktif',
-        details: {
-          contextSampleRate: this.audioCtx.sampleRate,
-          micSampleRate: localSampleRate || 'N/A',
-          sampleRateMatch: !localSampleRate || localSampleRate === this.audioCtx.sampleRate,
-          state: this.audioCtx.state,
-          sendStreamActive: sendStream.active
-        }
+      log.webaudio('Loopback: WebAudio pipeline aktif', {
+        contextSampleRate: this.audioCtx.sampleRate,
+        micSampleRate: localSampleRate || 'N/A',
+        sampleRateMatch: !localSampleRate || localSampleRate === this.audioCtx.sampleRate,
+        state: this.audioCtx.state,
+        sendStreamActive: sendStream.active
       });
     }
 
@@ -133,10 +127,7 @@ class LoopbackManager {
         this.pc2.addIceCandidate(e.candidate).catch(err => {
           // Cleanup sirasinda hata normal - sessizce atla
           if (!this._isCleaningUp) {
-            eventBus.emit('log:warning', {
-              message: 'ICE candidate hatasi (pc2)',
-              details: { error: err.message }
-            });
+            log.warning('ICE candidate hatasi (pc2)', { error: err.message });
           }
         });
       }
@@ -146,10 +137,7 @@ class LoopbackManager {
         this.pc1.addIceCandidate(e.candidate).catch(err => {
           // Cleanup sirasinda hata normal - sessizce atla
           if (!this._isCleaningUp) {
-            eventBus.emit('log:warning', {
-              message: 'ICE candidate hatasi (pc1)',
-              details: { error: err.message }
-            });
+            log.warning('ICE candidate hatasi (pc1)', { error: err.message });
           }
         });
       }
@@ -157,36 +145,27 @@ class LoopbackManager {
 
     // Track handler - WebRTC'nin sagladigi stream'i kullan
     this.pc2.ontrack = (e) => {
-      eventBus.emit('log:stream', {
-        message: 'Loopback: Remote track alindi',
-        details: {
-          trackKind: e.track.kind,
-          trackId: e.track.id,
-          trackEnabled: e.track.enabled,
-          trackMuted: e.track.muted,
-          trackReadyState: e.track.readyState,
-          hasStreams: e.streams?.length > 0,
-          streamId: e.streams?.[0]?.id
-        }
+      log.stream('Loopback: Remote track alindi', {
+        trackKind: e.track.kind,
+        trackId: e.track.id,
+        trackEnabled: e.track.enabled,
+        trackMuted: e.track.muted,
+        trackReadyState: e.track.readyState,
+        hasStreams: e.streams?.length > 0,
+        streamId: e.streams?.[0]?.id
       });
 
       // KRITIK: WebRTC'nin sagladigi stream'i kullan, manuel olusturma!
       if (e.streams && e.streams.length > 0) {
         this.remoteStream = e.streams[0];
-        eventBus.emit('log:stream', {
-          message: 'Loopback: WebRTC stream kullaniliyor',
-          details: { streamId: this.remoteStream.id, active: this.remoteStream.active }
-        });
+        log.stream('Loopback: WebRTC stream kullaniliyor', { streamId: this.remoteStream.id, active: this.remoteStream.active });
       } else {
         // Fallback: Manuel stream olustur (eski yontem)
         if (!this.remoteStream) {
           this.remoteStream = new MediaStream();
         }
         this.remoteStream.addTrack(e.track);
-        eventBus.emit('log:stream', {
-          message: 'Loopback: Manuel stream olusturuldu (fallback)',
-          details: {}
-        });
+        log.stream('Loopback: Manuel stream olusturuldu (fallback)', {});
       }
     };
 
@@ -202,10 +181,7 @@ class LoopbackManager {
     const modifiedOfferSdp = this.setOpusBitrate(offer.sdp, opusBitrate);
     const modifiedOffer = { type: offer.type, sdp: modifiedOfferSdp };
 
-    eventBus.emit('log:stream', {
-      message: `Loopback: Opus bitrate ayarlandi - ${opusBitrate / 1000} kbps`,
-      details: { opusBitrate, sdpModified: modifiedOfferSdp !== offer.sdp }
-    });
+    log.stream(`Loopback: Opus bitrate ayarlandi - ${opusBitrate / 1000} kbps`, { opusBitrate, sdpModified: modifiedOfferSdp !== offer.sdp });
 
     await this.pc1.setLocalDescription(modifiedOffer);
     await this.pc2.setRemoteDescription(modifiedOffer); // ontrack burada tetiklenir
@@ -234,18 +210,15 @@ class LoopbackManager {
       await this._waitForTrackUnmute(remoteTrack);
     }
 
-    eventBus.emit('log:stream', {
-      message: `Loopback: WebRTC baglantisi kuruldu - ICE:${this.pc1.iceConnectionState}/${this.pc2.iceConnectionState} Track:${remoteTrack?.readyState} Muted:${remoteTrack?.muted}`,
-      details: {
-        pc1Ice: this.pc1.iceConnectionState,
-        pc2Ice: this.pc2.iceConnectionState,
-        remoteTrackCount: this.remoteStream.getAudioTracks().length,
-        remoteTrackEnabled: remoteTrack?.enabled,
-        remoteTrackReadyState: remoteTrack?.readyState,
-        remoteTrackMuted: remoteTrack?.muted,
-        remoteTrackLabel: remoteTrack?.label,
-        streamActive: this.remoteStream.active
-      }
+    log.stream(`Loopback: WebRTC baglantisi kuruldu - ICE:${this.pc1.iceConnectionState}/${this.pc2.iceConnectionState} Track:${remoteTrack?.readyState} Muted:${remoteTrack?.muted}`, {
+      pc1Ice: this.pc1.iceConnectionState,
+      pc2Ice: this.pc2.iceConnectionState,
+      remoteTrackCount: this.remoteStream.getAudioTracks().length,
+      remoteTrackEnabled: remoteTrack?.enabled,
+      remoteTrackReadyState: remoteTrack?.readyState,
+      remoteTrackMuted: remoteTrack?.muted,
+      remoteTrackLabel: remoteTrack?.label,
+      streamActive: this.remoteStream.active
     });
 
     // WebRTC getStats ile gercek bitrate olcumu baslat
@@ -267,12 +240,9 @@ class LoopbackManager {
 
       const timeout = setTimeout(() => {
         cleanupListeners();
-        eventBus.emit('log:error', {
-          message: 'Loopback: ICE baglanti zaman asimi',
-          details: {
-            pc1Ice: this.pc1.iceConnectionState,
-            pc2Ice: this.pc2.iceConnectionState
-          }
+        log.error('Loopback: ICE baglanti zaman asimi', {
+          pc1Ice: this.pc1.iceConnectionState,
+          pc2Ice: this.pc2.iceConnectionState
         });
         reject(new Error('ICE connection timeout'));
       }, LOOPBACK.ICE_WAIT_MS);
@@ -285,10 +255,7 @@ class LoopbackManager {
         const ice2 = this.pc2.iceConnectionState;
 
         if (ice1 !== lastIce1 || ice2 !== lastIce2) {
-          eventBus.emit('log:stream', {
-            message: `Loopback: ICE durumu ${ice1}/${ice2}`,
-            details: { pc1Ice: ice1, pc2Ice: ice2 }
-          });
+          log.stream(`Loopback: ICE durumu ${ice1}/${ice2}`, { pc1Ice: ice1, pc2Ice: ice2 });
           lastIce1 = ice1;
           lastIce2 = ice2;
         }
@@ -318,26 +285,17 @@ class LoopbackManager {
    * @private
    */
   async _waitForTrackUnmute(track) {
-    eventBus.emit('log:stream', {
-      message: 'Loopback: Track muted, unmute bekleniyor...',
-      details: { muted: track.muted }
-    });
+    log.stream('Loopback: Track muted, unmute bekleniyor...', { muted: track.muted });
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        eventBus.emit('log:error', {
-          message: 'Loopback: Track unmute zaman asimi',
-          details: { stillMuted: track.muted }
-        });
+        log.error('Loopback: Track unmute zaman asimi', { stillMuted: track.muted });
         resolve();
       }, 5000);
 
       track.onunmute = () => {
         clearTimeout(timeout);
-        eventBus.emit('log:stream', {
-          message: 'Loopback: Track unmuted!',
-          details: { muted: track.muted }
-        });
+        log.stream('Loopback: Track unmuted!', { muted: track.muted });
         resolve();
       };
 
@@ -403,10 +361,7 @@ class LoopbackManager {
           if (measurementCount > GRACE_MEASUREMENTS) {
             const deviation = Math.abs(actualBitrate - requestedBitrate) / requestedBitrate;
             if (deviation > 0.5) {
-              eventBus.emit('log:warning', {
-                message: `WebRTC bitrate sapmasi: Istenen ${requestedKbps}kbps, Gercek ~${actualKbps}kbps`,
-                details: { requestedBitrate, actualBitrate, deviation: (deviation * 100).toFixed(0) + '%' }
-              });
+              log.warning(`WebRTC bitrate sapmasi: Istenen ${requestedKbps}kbps, Gercek ~${actualKbps}kbps`, { requestedBitrate, actualBitrate, deviation: (deviation * 100).toFixed(0) + '%' });
             }
           }
         }
@@ -420,10 +375,7 @@ class LoopbackManager {
         if (statsErrorCount > 10) {
           clearInterval(this.statsInterval);
           this.statsInterval = null;
-          eventBus.emit('log:error', {
-            message: 'Loopback stats: Cok fazla hata, polling durduruluyor',
-            details: { errorCount: statsErrorCount, lastError: err.message }
-          });
+          log.error('Loopback stats: Cok fazla hata, polling durduruluyor', { errorCount: statsErrorCount, lastError: err.message });
         }
       }
     }, 2000);
@@ -461,10 +413,7 @@ class LoopbackManager {
       this.audioCtx = null;
     }
 
-    eventBus.emit('log:stream', {
-      message: 'Loopback: Kaynaklar temizlendi',
-      details: {}
-    });
+    log.stream('Loopback: Kaynaklar temizlendi', {});
 
     // Cleanup tamamlandı, flag'i sıfırla
     this._isCleaningUp = false;
@@ -472,27 +421,21 @@ class LoopbackManager {
 
   /**
    * Monitor playback kaynaklarini temizle
-   * DRY: Loop pattern ile node disconnect (Monitor.js ile tutarli)
+   * DRY: disconnectNodes helper ile node disconnect
    */
   async cleanupMonitorPlayback() {
-    // ScriptProcessor onaudioprocess temizle
+    // ScriptProcessor onaudioprocess temizle (disconnect oncesi)
     if (this.monitorProc?.onaudioprocess) {
       this.monitorProc.onaudioprocess = null;
     }
 
-    // DRY: Tum node'lari tek loop ile disconnect et
-    const nodes = [
+    // DRY: disconnectNodes helper ile tum node'lari temizle
+    disconnectNodes([
       this.monitorProc,
       this.monitorWorklet,
       this.monitorDelay,
       this.monitorSrc
-    ];
-
-    nodes.forEach(node => {
-      if (node) {
-        try { node.disconnect(); } catch { /* ignore */ }
-      }
-    });
+    ]);
 
     // Node referanslarini temizle
     this.monitorProc = null;
@@ -505,15 +448,9 @@ class LoopbackManager {
       try {
         const prevState = this.monitorCtx.state;
         await this.monitorCtx.close();
-        eventBus.emit('log:webaudio', {
-          message: 'Loopback Monitor: AudioContext kapatildi',
-          details: { previousState: prevState, newState: 'closed' }
-        });
+        log.webaudio('Loopback Monitor: AudioContext kapatildi', { previousState: prevState, newState: 'closed' });
       } catch (err) {
-        eventBus.emit('log:error', {
-          message: 'Loopback Monitor: AudioContext kapatma hatasi',
-          details: { error: err.message }
-        });
+        log.error('Loopback Monitor: AudioContext kapatma hatasi', { error: err.message });
       } finally {
         this.monitorCtx = null;
       }
@@ -588,19 +525,16 @@ class LoopbackManager {
       worklet: `WebRTC RemoteStream -> Source -> AudioWorklet(passthrough) -> DelayNode(${delaySeconds}s) -> Destination`
     };
 
-    eventBus.emit('log:webaudio', {
-      message: 'Loopback Monitor: Playback grafigi tamamlandi',
-      details: {
-        mode: safeMode,
-        contextSampleRate: this.monitorCtx.sampleRate,
-        remoteSampleRate: remoteSampleRate || 'N/A',
-        delaySeconds,
-        graph: graphByMode[safeMode] || graphByMode.standard
-      }
+    log.webaudio('Loopback Monitor: Playback grafigi tamamlandi', {
+      mode: safeMode,
+      contextSampleRate: this.monitorCtx.sampleRate,
+      remoteSampleRate: remoteSampleRate || 'N/A',
+      delaySeconds,
+      graph: graphByMode[safeMode] || graphByMode.standard
     });
 
     eventBus.emit('monitor:started', { mode: safeMode, delaySeconds, loopback: true });
-    eventBus.emit('log', `🎧 Loopback monitor aktif (${safeMode} + ${delaySeconds.toFixed(1)}s Delay -> Speaker)`);
+    log.loopback(`Loopback monitor aktif (${safeMode} + ${delaySeconds.toFixed(1)}s Delay -> Speaker)`);
   }
 
   /**

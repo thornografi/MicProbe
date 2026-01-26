@@ -7,6 +7,7 @@
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
 import { AUDIO, VU_METER } from './constants.js';
+import { log, disconnectNodes } from './utils.js';
 
 class VuMeter {
   constructor(config) {
@@ -98,10 +99,7 @@ class VuMeter {
 
     this.update();
 
-    eventBus.emit('log:audio', {
-      message: 'VU Meter: Pipeline analyser baglandi',
-      details: { fftSize: analyserNode.fftSize, source: 'pipeline' }
-    });
+    log.audio('VU Meter: Pipeline analyser baglandi', { fftSize: analyserNode.fftSize, source: 'pipeline' });
 
     eventBus.emit('vumeter:started');
   }
@@ -131,10 +129,7 @@ class VuMeter {
     // AudioContext bilgisini gonder (null kontrol ile)
     const ac = audioEngine.getContext();
     if (!ac) {
-      eventBus.emit('log:error', {
-        message: 'VuMeter: AudioEngine context hazir degil',
-        details: { isWarmedUp: audioEngine.isWarmedUp }
-      });
+      log.error('VuMeter: AudioEngine context hazir degil', { isWarmedUp: audioEngine.isWarmedUp });
       return;
     }
     eventBus.emit('vumeter:audiocontext', {
@@ -177,26 +172,16 @@ class VuMeter {
       this.remoteAnalyser.fftSize = AUDIO.FFT_SIZE;
       this.remoteSourceNode.connect(this.remoteAnalyser);
 
-      eventBus.emit('log:stream', {
-        message: 'VU Meter: Remote stream baglandi',
-        details: { streamId: stream.id }
-      });
+      log.stream('VU Meter: Remote stream baglandi', { streamId: stream.id });
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'VU Meter: Remote stream baglanti hatasi',
-        details: { error: err.message }
-      });
+      log.error('VU Meter: Remote stream baglanti hatasi', { error: err.message });
     }
   }
 
   stopRemote() {
-    if (this.remoteAnalyser) {
-      this.remoteAnalyser = null;
-    }
-    if (this.remoteSourceNode) {
-      this.remoteSourceNode.disconnect();
-      this.remoteSourceNode = null;
-    }
+    disconnectNodes([this.remoteAnalyser, this.remoteSourceNode]);
+    this.remoteAnalyser = null;
+    this.remoteSourceNode = null;
     if (this.remoteAudioCtx) {
       this.remoteAudioCtx.close().catch(() => {});
       this.remoteAudioCtx = null;
@@ -358,6 +343,18 @@ class VuMeter {
     this.stopRemote();
 
     eventBus.emit('vumeter:stopped');
+  }
+
+  /**
+   * VuMeter'i tamamen yok et (sayfa kapanista cagrilir)
+   * EventBus listener'larini kaldirir (memory leak onleme)
+   */
+  destroy() {
+    this.stop();
+    eventBus.off('stream:started', this._onStreamStarted);
+    eventBus.off('stream:stopped', this._onStreamStopped);
+    eventBus.off('loopback:remoteStream', this._onLoopbackRemote);
+    eventBus.off('pipeline:analyserReady', this._onAnalyserReady);
   }
 }
 

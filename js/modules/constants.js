@@ -55,6 +55,13 @@ export const LOG = {
   MAX_PER_CATEGORY: 500           // Kategori basina maksimum log sayisi
 };
 
+// === ENCODER ===
+export const ENCODER = {
+  DEFAULT: 'mediarecorder',       // Varsayilan encoder tipi
+  WASM_OPUS: 'wasm-opus',         // WASM Opus encoder
+  PCM_WAV: 'pcm-wav'              // PCM/WAV (raw) encoder
+};
+
 // === SIGNAL DETECTION (Loopback) ===
 export const SIGNAL = {
   MAX_WAIT_MS: 2000,              // Sinyal bekleme maksimum suresi

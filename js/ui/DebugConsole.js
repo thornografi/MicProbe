@@ -2,6 +2,7 @@
  * DebugConsole - HTML onclick ile cagirilan debug fonksiyonlari
  * window.* global fonksiyonlari bu modülde tanimlanir
  */
+import { log } from '../modules/utils.js';
 
 class DebugConsole {
   constructor() {
@@ -44,7 +45,7 @@ class DebugConsole {
         btn.classList.add('copied');
         setTimeout(() => btn.classList.remove('copied'), 1500);
       } else if (!success) {
-        eventBus.emit('log:error', { message: 'Kopyalama basarisiz', details: {} });
+        log.error('Kopyalama basarisiz', {});
       }
     };
 
@@ -74,7 +75,7 @@ class DebugConsole {
       const statsText = Object.entries(stats)
         .map(([cat, count]) => `${cat}: ${count}`)
         .join(' | ');
-      eventBus.emit('log', `📊 Stats: ${statsText}`);
+      log.system(`Stats: ${statsText}`);
       console.table(stats);
       return stats;
     };
@@ -98,28 +99,18 @@ class DebugConsole {
       const report = logManager.getSanityReport();
 
       if (report.ok) {
-        eventBus.emit('log:webaudio', {
-          message: 'Sanity Check: OK (supheli bulgu yok)',
-          details: report.summary
-        });
+        log.webaudio('Sanity Check: OK (supheli bulgu yok)', report.summary);
         console.table([]);
         return report;
       }
 
-      eventBus.emit('log:webaudio', {
-        message: `Sanity Check: ${report.issues.length} bulgu bulundu`,
-        details: report.summary
-      });
+      log.webaudio(`Sanity Check: ${report.issues.length} bulgu bulundu`, report.summary);
 
       for (const issue of report.issues) {
-        const payload = {
-          message: `Sanity: ${issue.code} - ${issue.message}`,
-          details: issue.details
-        };
         if (issue.severity === 'error') {
-          eventBus.emit('log:error', payload);
+          log.error(`Sanity: ${issue.code} - ${issue.message}`, issue.details);
         } else {
-          eventBus.emit('log:webaudio', payload);
+          log.webaudio(`Sanity: ${issue.code} - ${issue.message}`, issue.details);
         }
       }
 

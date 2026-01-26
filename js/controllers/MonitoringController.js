@@ -6,7 +6,7 @@
 import eventBus from '../modules/EventBus.js';
 import loopbackManager from '../modules/LoopbackManager.js';
 import { DELAY, TEST } from '../modules/constants.js';
-import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio } from '../modules/utils.js';
+import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
 import { requestStream } from '../modules/StreamHelper.js';
 
 class MonitoringController {
@@ -57,6 +57,9 @@ class MonitoringController {
    * Monitor toggle
    */
   async toggle() {
+    // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
+    if (this.deps.getIsPreparing?.()) return;
+
     if (this.deps.getCurrentMode() === 'monitoring') {
       await this.stop();
     } else {
@@ -76,20 +79,14 @@ class MonitoringController {
     // Pipeline aciklamasi
     const pipelineDesc = this._buildPipelineDescription(useLoopback, pipeline);
 
-    eventBus.emit('log:stream', {
-      message: 'Monitor Baslat butonuna basildi',
-      details: { constraints, webAudioEnabled: useWebAudio, loopbackEnabled: useLoopback, pipeline, pipelineDesc }
-    });
+    log.stream('Monitor Baslat butonuna basildi', { constraints, webAudioEnabled: useWebAudio, loopbackEnabled: useLoopback, pipeline, pipelineDesc });
 
     try {
       // Player'i durdur
       this.deps.player?.pause();
 
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
-      this.deps.setCurrentMode('monitoring');
-      this.deps.setIsPreparing(true);
-      this.deps.uiStateManager?.updateButtonStates();
-      this.deps.uiStateManager?.showPreparingState();
+      beginPreparing(this.deps, 'monitoring');
 
       if (useLoopback) {
         await this._startLoopbackMonitoring(constraints, pipeline);
@@ -98,14 +95,11 @@ class MonitoringController {
       }
 
     } catch (err) {
-      eventBus.emit('log:error', { message: 'Monitor baslatilamadi', details: { error: err.message } });
-      eventBus.emit('log', `❌ HATA: ${err.message}`);
+      log.error('Monitor baslatilamadi', { error: err.message });
+      log.error(`HATA: ${err.message}`);
 
       // Temizlik
-      this.deps.setIsPreparing(false);
-      this.deps.setCurrentMode(null);
-      this.deps.uiStateManager?.updateButtonStates();
-      this.deps.uiStateManager?.hidePreparingState();
+      resetState(this.deps);
       await loopbackManager.cleanupMonitorPlayback();
       await loopbackManager.cleanup();
       stopStreamTracks(this.loopbackLocalStream);
@@ -117,7 +111,7 @@ class MonitoringController {
    * Loopback monitoring
    */
   async _startLoopbackMonitoring(constraints, pipeline) {
-    eventBus.emit('log', '🔄 Loopback modunda monitor baslatiliyor...');
+    log.loopback('Loopback modunda monitor baslatiliyor...');
 
     // Mikrofon al (requestStream ile constraint mismatch kontrolu dahil)
     this.loopbackLocalStream = await requestStream(constraints);
@@ -136,15 +130,13 @@ class MonitoringController {
     });
 
     // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
-    this.deps.setIsPreparing(false);
-    this.deps.uiStateManager?.updateButtonStates();
-    this.deps.uiStateManager?.hidePreparingState();
+    endPreparing(this.deps);
 
     // Events
     eventBus.emit('stream:started', this.loopbackLocalStream);  // Local VU Meter
     eventBus.emit('loopback:remoteStream', remoteStream);       // Remote VU Meter
 
-    eventBus.emit('log', '🎧 Loopback monitor hazir');
+    log.loopback('Loopback monitor hazir');
   }
 
   /**
@@ -170,9 +162,7 @@ class MonitoringController {
     }
 
     // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
-    this.deps.setIsPreparing(false);
-    this.deps.uiStateManager?.updateButtonStates();
-    this.deps.uiStateManager?.hidePreparingState();
+    endPreparing(this.deps);
   }
 
   /**
@@ -181,10 +171,7 @@ class MonitoringController {
   async stop() {
     const useLoopback = this.deps.isLoopbackEnabled();
 
-    eventBus.emit('log:stream', {
-      message: 'Monitor durduruluyor',
-      details: { loopbackEnabled: useLoopback }
-    });
+    log.stream('Monitor durduruluyor', { loopbackEnabled: useLoopback });
 
     try {
       if (useLoopback) {
@@ -193,10 +180,7 @@ class MonitoringController {
         await this.deps.monitor?.stop();
       }
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'Monitor durdurma hatasi',
-        details: { error: err.message, stack: err.stack, loopback: useLoopback }
-      });
+      log.error('Monitor durdurma hatasi', { error: err.message, stack: err.stack, loopback: useLoopback });
     } finally {
       // Her durumda state reset - hata olsa bile UI tutarli kalsin
       this.deps.setCurrentMode(null);
@@ -222,7 +206,7 @@ class MonitoringController {
     await loopbackManager.cleanup();
 
     eventBus.emit('stream:stopped');
-    eventBus.emit('log', '⏹️ Loopback monitor durduruldu');
+    log.loopback('Loopback monitor durduruldu');
     eventBus.emit('monitor:stopped', { mode: stoppedMode, loopback: true });
   }
 
@@ -233,6 +217,9 @@ class MonitoringController {
    * Skype/Zoom pattern: Kayit sirasinda tiklanirsa erken durdur ve playback'e gec
    */
   async toggleTest() {
+    // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
+    if (this.deps.getIsPreparing?.()) return;
+
     if (this.testPhase === 'recording') {
       // Erken durdur -> playback'e gec (iptal degil)
       await this.stopTestRecording();
@@ -250,19 +237,14 @@ class MonitoringController {
     const constraints = this.deps.getConstraints();
     const opusBitrate = this.deps.getOpusBitrate();
 
-    eventBus.emit('log:stream', {
-      message: 'Test kaydi baslatiliyor',
-      details: { constraints, opusBitrate, duration: TEST.DURATION_MS }
-    });
+    log.stream('Test kaydi baslatiliyor', { constraints, opusBitrate, duration: TEST.DURATION_MS });
 
     try {
       // Player'i durdur
       this.deps.player?.pause();
 
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
-      this.deps.setCurrentMode('test-recording');
-      this.deps.setIsPreparing(true);
-      this.deps.uiStateManager?.updateButtonStates();
+      beginPreparing(this.deps, 'test-recording');
 
       // Mikrofon al
       this.loopbackLocalStream = await requestStream(constraints);
@@ -287,8 +269,7 @@ class MonitoringController {
 
       // State guncelle - mode zaten set edildi, sadece preparing'i kapat
       this.testPhase = 'recording';
-      this.deps.setIsPreparing(false);
-      this.deps.uiStateManager?.updateButtonStates();
+      endPreparing(this.deps);
 
       // VU Meter icin event'ler
       eventBus.emit('stream:started', this.loopbackLocalStream);
@@ -297,11 +278,11 @@ class MonitoringController {
       // Timer baslat
       this._startTestTimer();
       eventBus.emit('test:recording-started', { durationMs: TEST.DURATION_MS });
-      eventBus.emit('log', `🎙️ Test kaydi basladi (${TEST.DURATION_MS / 1000}sn)`);
+      log.stream(`Test kaydi basladi (${TEST.DURATION_MS / 1000}sn)`);
 
     } catch (err) {
-      eventBus.emit('log:error', { message: 'Test kaydi baslatilamadi', details: { error: err.message } });
-      eventBus.emit('log', `❌ Test hatasi: ${err.message}`);
+      log.error('Test kaydi baslatilamadi', { error: err.message });
+      log.error(`Test hatasi: ${err.message}`);
       // Preparing flag'i temizle (UI "Preparing" durumunda takilmasin)
       this.deps.setIsPreparing(false);
       await this._cleanupTest();
@@ -314,13 +295,13 @@ class MonitoringController {
   async stopTestRecording() {
     this._clearTestTimer();
 
-    eventBus.emit('log:stream', { message: 'Test kaydi durduruluyor' });
+    log.stream('Test kaydi durduruluyor', {});
 
     // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
     const stopPromise = new Promise(resolve => {
       this.testMediaRecorder.onstop = () => {
         this.testAudioBlob = new Blob(this.testChunks, { type: this.testMediaRecorder.mimeType || 'audio/webm' });
-        eventBus.emit('log', `📊 MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
+        log.recorder(`MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
         resolve();
       };
     });
@@ -342,7 +323,7 @@ class MonitoringController {
     this.loopbackLocalStream = null;
 
     eventBus.emit('test:recording-stopped');
-    eventBus.emit('log', '📼 Test kaydi tamamlandi, playback basliyor...');
+    log.stream('Test kaydi tamamlandi, playback basliyor...');
 
     // Playback'e gec
     await this.startTestPlayback();
@@ -354,11 +335,8 @@ class MonitoringController {
   async startTestPlayback() {
     // Blob kontrolu
     if (!this.testAudioBlob || this.testAudioBlob.size === 0) {
-      eventBus.emit('log:error', {
-        message: 'Test playback hatasi: Ses verisi yok',
-        details: { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 }
-      });
-      eventBus.emit('log', '❌ Test kaydı boş - ses verisi alınamadı');
+      log.error('Test playback hatasi: Ses verisi yok', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
+      log.error('Test kaydi bos - ses verisi alinamadi');
       await this._cleanupTest();
       return;
     }
@@ -367,17 +345,14 @@ class MonitoringController {
     this.deps.setCurrentMode('test-playback');
     this.deps.uiStateManager?.updateButtonStates();
 
-    eventBus.emit('log:stream', {
-      message: 'Test playback baslatiliyor',
-      details: { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type }
-    });
+    log.stream('Test playback baslatiliyor', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
 
     // Basit Audio element ile oynat
     this.testAudioUrl = URL.createObjectURL(this.testAudioBlob);
     this.testAudioElement = new Audio(this.testAudioUrl);
 
     this.testAudioElement.onended = async () => {
-      eventBus.emit('log', '✅ Test tamamlandi');
+      log.stream('Test tamamlandi');
       await this._cleanupTest();
       eventBus.emit('test:completed');
     };
@@ -387,22 +362,16 @@ class MonitoringController {
       const mediaError = this.testAudioElement?.error;
       const errorCode = mediaError?.code;
       const errorMsg = mediaError?.message || 'Unknown error';
-      eventBus.emit('log:error', {
-        message: 'Test playback hatasi',
-        details: { errorCode, errorMsg, blobType: this.testAudioBlob?.type }
-      });
+      log.error('Test playback hatasi', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
       await this._cleanupTest();
     };
 
     try {
       await this.testAudioElement.play();
       eventBus.emit('test:playback-started');
-      eventBus.emit('log', '🔊 Test playback basladi');
+      log.player('Test playback basladi');
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'Test play hatasi',
-        details: { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size }
-      });
+      log.error('Test play hatasi', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
       await this._cleanupTest();
     }
   }
@@ -416,7 +385,7 @@ class MonitoringController {
       this.testAudioElement.onended = null;
       this.testAudioElement.onerror = null;
     }
-    eventBus.emit('log', '⏹️ Test playback durduruldu');
+    log.player('Test playback durduruldu');
     await this._cleanupTest();
     eventBus.emit('test:playback-stopped');
   }
@@ -427,7 +396,7 @@ class MonitoringController {
   async cancelTest() {
     this._clearTestTimer();
 
-    eventBus.emit('log:stream', { message: 'Test iptal ediliyor' });
+    log.stream('Test iptal ediliyor', {});
 
     if (this.testMediaRecorder?.state !== 'inactive') {
       this.testMediaRecorder.stop();
@@ -439,7 +408,7 @@ class MonitoringController {
     stopStreamTracks(this.loopbackLocalStream);
     this.loopbackLocalStream = null;
 
-    eventBus.emit('log', '🚫 Test iptal edildi');
+    log.stream('Test iptal edildi');
     await this._cleanupTest();
     eventBus.emit('test:cancelled');
   }
@@ -508,8 +477,7 @@ class MonitoringController {
     this.testActivatorAudio = null;
 
     this.testPhase = null;
-    this.deps.setCurrentMode(null);
-    this.deps.uiStateManager?.updateButtonStates();
+    resetState(this.deps);
   }
 
   // === HELPER METODLAR ===

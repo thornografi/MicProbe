@@ -3,7 +3,7 @@
  * OCP: Farkli format destekleri eklenebilir
  */
 import eventBus from './EventBus.js';
-import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration } from './utils.js';
+import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log } from './utils.js';
 import { BYTES } from './constants.js';
 
 // Clean Code: Tekrarlayan SVG iconlari constant olarak
@@ -118,10 +118,7 @@ class Player {
 
     // Duration bazen metadata ile gec gelir (webm/opus). Play'e basmadan sureyi gostermek icin probe et.
     this.probeDuration(blob, mimeType).catch((err) => {
-      eventBus.emit('log:error', {
-        message: 'Player: duration probe hatasi (kritik degil)',
-        details: { error: err.message }
-      });
+      log.error('Player: duration probe hatasi (kritik degil)', { error: err.message });
     });
 
     eventBus.emit('player:loaded', { filename, size: blob.size });
@@ -276,6 +273,9 @@ class Player {
   }
 
   seek(e) {
+    // NULL GUARD: progressBarEl yoksa seek yapilamaz
+    if (!this.progressBarEl) return;
+
     let duration = this.audio.duration;
 
     // Gecersiz duration'da fallback: knownDurationSeconds kullan

@@ -6,6 +6,7 @@
 import eventBus from '../modules/EventBus.js';
 import profileController from '../modules/ProfileController.js';
 import { PROFILES } from '../modules/Config.js';
+import { log } from '../modules/utils.js';
 
 class ProfileUIManager {
   constructor() {
@@ -84,9 +85,7 @@ class ProfileUIManager {
 
     // Aktif islem VEYA preparing varken profil degisikligine izin verme
     if (currentMode !== null || isPreparing) {
-      eventBus.emit('log:ui', {
-        message: 'Stop current operation before changing profile'
-      });
+      log.ui('Stop current operation before changing profile', {});
       return;
     }
 
@@ -101,14 +100,9 @@ class ProfileUIManager {
       this.updateNavItemSelection(profileId);
       this.callbacks.updateCustomSettingsPanel(profileId);
 
-      eventBus.emit('log:ui', {
-        message: `Senaryo degistirildi: ${PROFILES[profileId]?.label || profileId}`
-      });
+      log.ui(`Senaryo degistirildi: ${PROFILES[profileId]?.label || profileId}`, {});
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'Profil secimi hatasi',
-        details: { profileId, error: err.message }
-      });
+      log.error('Profil secimi hatasi', { profileId, error: err.message });
     }
   }
 

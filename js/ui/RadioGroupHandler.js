@@ -5,6 +5,7 @@
  */
 
 import eventBus from '../modules/EventBus.js';
+import { log } from '../modules/utils.js';
 
 /**
  * RadioGroupHandler - Static utility class
@@ -20,10 +21,7 @@ export class RadioGroupHandler {
     if (!checkbox) return;
 
     checkbox.addEventListener('change', (e) => {
-      eventBus.emit('log:stream', {
-        message: `${displayName}: ${e.target.checked ? 'ACIK' : 'KAPALI'}`,
-        details: { setting: settingName, value: e.target.checked }
-      });
+      log.stream(`${displayName}: ${e.target.checked ? 'ACIK' : 'KAPALI'}`, { setting: settingName, value: e.target.checked });
     });
   }
 

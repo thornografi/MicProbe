@@ -20,7 +20,7 @@ import BasePipeline from './BasePipeline.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from '../modules/WorkletHelper.js';
 import eventBus from '../modules/EventBus.js';
 import { OPUS } from '../modules/constants.js';
-import { createWavBlob } from '../modules/utils.js';
+import { createWavBlob, log } from '../modules/utils.js';
 
 export default class WorkletPipeline extends BasePipeline {
   constructor(audioContext, sourceNode, destinationNode) {
@@ -76,10 +76,7 @@ export default class WorkletPipeline extends BasePipeline {
     // Worklet'ten gelen PCM data'yi biriktir
     this.nodes.worklet.port.onmessage = (e) => {
       if (e.data.error) {
-        eventBus.emit('log:error', {
-          message: 'AudioWorklet hatasi (PCM/WAV)',
-          details: { error: e.data.error }
-        });
+        log.error('AudioWorklet hatasi (PCM/WAV)', { error: e.data.error });
         return;
       }
       if (e.data.pcm) {
@@ -127,10 +124,7 @@ export default class WorkletPipeline extends BasePipeline {
     this.nodes.worklet.port.onmessage = (e) => {
       // Worklet'ten gelen hata mesajlarini yakala
       if (e.data.error) {
-        eventBus.emit('log:error', {
-          message: 'AudioWorklet hatasi',
-          details: { error: e.data.error }
-        });
+        log.error('AudioWorklet hatasi', { error: e.data.error });
         return;
       }
       if (e.data.pcm) {
@@ -178,10 +172,7 @@ export default class WorkletPipeline extends BasePipeline {
         }
       }
     } catch (err) {
-      eventBus.emit('log:error', {
-        message: 'WASM Opus encode hatasi',
-        details: { error: err.message, stack: err.stack }
-      });
+      log.error('WASM Opus encode hatasi', { error: err.message, stack: err.stack });
     }
   }
 

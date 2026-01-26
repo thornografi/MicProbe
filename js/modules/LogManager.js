@@ -140,13 +140,21 @@ class LogManager {
     // Recorder event'leri (encoder-agnostic)
     eventBus.on('recorder:started', (details) => {
       const encoder = details?.encoder || 'unknown';
-      const msg = encoder === 'wasm-opus' ? 'WASM Opus encoder baslatildi' : 'MediaRecorder baslatildi';
+      const msg = encoder === 'wasm-opus'
+        ? 'WASM Opus encoder baslatildi'
+        : encoder === 'pcm-wav'
+          ? 'PCM/WAV encoder baslatildi'
+          : 'MediaRecorder baslatildi';
       this.log('recorder', msg, details || null);
     });
 
     eventBus.on('recorder:stopped', (details) => {
       const encoder = details?.encoder || 'unknown';
-      const msg = encoder === 'wasm-opus' ? 'WASM Opus encoder durduruldu' : 'MediaRecorder durduruldu';
+      const msg = encoder === 'wasm-opus'
+        ? 'WASM Opus encoder durduruldu'
+        : encoder === 'pcm-wav'
+          ? 'PCM/WAV encoder durduruldu'
+          : 'MediaRecorder durduruldu';
       this.log('recorder', msg, details || null);
     });
 
@@ -434,7 +442,9 @@ class LogManager {
         monitoringActive = false;
       }
 
-      if (category === 'recorder' && message === 'MediaRecorder baslatildi') {
+      // Tum encoder tiplerine gore kayit baslangici tespit et
+      const recorderStartMessages = ['MediaRecorder baslatildi', 'WASM Opus encoder baslatildi', 'PCM/WAV encoder baslatildi'];
+      if (category === 'recorder' && recorderStartMessages.includes(message)) {
         if (monitoringActive) {
           addIssue('error', 'CONCURRENT_MONITOR_AND_RECORD', 'Kayit basladi ama monitoring hali hazirda aktif gorunuyor', {
             lastWebAudioEnabled
@@ -443,7 +453,9 @@ class LogManager {
         recordingActive = true;
       }
 
-      if (category === 'recorder' && message === 'MediaRecorder durduruldu') {
+      // Tum encoder tiplerine gore kayit bitisi tespit et
+      const recorderStopMessages = ['MediaRecorder durduruldu', 'WASM Opus encoder durduruldu', 'PCM/WAV encoder durduruldu'];
+      if (category === 'recorder' && recorderStopMessages.includes(message)) {
         recordingActive = false;
       }
     }
