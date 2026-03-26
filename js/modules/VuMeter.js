@@ -6,7 +6,7 @@
  */
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
-import { AUDIO, VU_METER } from './constants.js';
+import { AUDIO, VU_METER, EVENTS } from './constants.js';
 import { log, disconnectNodes } from './utils.js';
 
 class VuMeter {
@@ -43,10 +43,10 @@ class VuMeter {
     this._onAnalyserReady = (analyserNode) => this.startWithAnalyser(analyserNode);
 
     // Event dinle
-    eventBus.on('stream:started', this._onStreamStarted);
-    eventBus.on('stream:stopped', this._onStreamStopped);
-    eventBus.on('loopback:remoteStream', this._onLoopbackRemote);
-    eventBus.on('pipeline:analyserReady', this._onAnalyserReady);
+    eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
+    eventBus.on(EVENTS.STREAM_STOPPED, this._onStreamStopped);
+    eventBus.on(EVENTS.LOOPBACK_REMOTE_STREAM, this._onLoopbackRemote);
+    eventBus.on(EVENTS.PIPELINE_ANALYSER_READY, this._onAnalyserReady);
 
     // Resize event'inde meter width'i guncelle
     // Memory leak fix: Named handler, stop()'ta removeEventListener icin
@@ -101,7 +101,7 @@ class VuMeter {
 
     log.audio('VU Meter: Pipeline analyser baglandi', { fftSize: analyserNode.fftSize, source: 'pipeline' });
 
-    eventBus.emit('vumeter:started');
+    eventBus.emit(EVENTS.VUMETER_STARTED);
   }
 
   async start(stream) {
@@ -132,7 +132,7 @@ class VuMeter {
       log.error('VuMeter: AudioEngine context hazir degil', { isWarmedUp: audioEngine.isWarmedUp });
       return;
     }
-    eventBus.emit('vumeter:audiocontext', {
+    eventBus.emit(EVENTS.VUMETER_AUDIOCONTEXT, {
       sampleRate: ac.sampleRate,
       baseLatency: ac.baseLatency,
       outputLatency: ac.outputLatency,
@@ -140,7 +140,7 @@ class VuMeter {
       fftSize: this.analyser.fftSize
     });
 
-    eventBus.emit('vumeter:started');
+    eventBus.emit(EVENTS.VUMETER_STARTED);
   }
 
   /**
@@ -215,103 +215,76 @@ class VuMeter {
     return maxSample;
   }
 
-  update() {
-    if (!this.analyser) return;
-
-    // Performans: Pipeline varsa kendi array'imizi, yoksa AudioEngine'den al
-    const dataArray = this._pipelineDataArray || audioEngine.getDataArray();
-    this.analyser.getByteTimeDomainData(dataArray);
-
-    // RMS ve maxSample hesapla
+  /**
+   * DRY: Ortak meter hesaplama ve render (local + remote icin)
+   * @returns {{ level: number, dB: number, peakLevel: number, peakHoldTime: number }}
+   */
+  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth) {
+    analyser.getByteTimeDomainData(dataArray);
     const rms = this.calculateRMS(dataArray);
-    const maxSample = this.calculatePeak(dataArray);
-
-    // dB hesapla - RMS tabanli (yumusak animasyon)
     const dB = rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
     const level = Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
 
+    if (barEl) barEl.style.width = `${level}%`;
+
+    // Peak hold + decay
+    if (level > peakLevel) {
+      peakLevel = level;
+      peakHoldTime = Date.now();
+    } else if (Date.now() - peakHoldTime > VU_METER.PEAK_HOLD_TIME_MS) {
+      peakLevel = Math.max(level, peakLevel - VU_METER.PEAK_DECAY_RATE);
+    }
+
+    if (peakEl) {
+      peakEl.style.transform = `translateX(${(peakLevel / 100) * meterWidth}px)`;
+    }
+
+    return { level, dB, peakLevel, peakHoldTime };
+  }
+
+  update() {
+    if (!this.analyser) return;
+
+    const dataArray = this._pipelineDataArray || audioEngine.getDataArray();
+    const result = this._renderMeter(
+      this.analyser, dataArray, this.barEl, this.peakEl,
+      this.peakLevel, this.peakHoldTime, this.meterWidth
+    );
+    this.peakLevel = result.peakLevel;
+    this.peakHoldTime = result.peakHoldTime;
+
     // Clipping tespiti (peak dB kullan - anlik tepe degeri)
+    const maxSample = this.calculatePeak(dataArray);
     const peakdB = maxSample > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(maxSample) : VU_METER.MIN_DB;
     const isClipping = peakdB >= VU_METER.CLIPPING_THRESHOLD_DB;
 
-    // Bar guncelle - soldan saga genisler
-    if (this.barEl) {
-      this.barEl.style.width = `${level}%`;
-    }
-
-    // Peak hold
-    if (level > this.peakLevel) {
-      this.peakLevel = level;
-      this.peakHoldTime = Date.now();
-    } else if (Date.now() - this.peakHoldTime > VU_METER.PEAK_HOLD_TIME_MS) {
-      this.peakLevel = Math.max(level, this.peakLevel - VU_METER.PEAK_DECAY_RATE);
-    }
-
-    // Peak indicator - translateX kullan (GPU accelerated)
-    if (this.peakEl) {
-      const peakX = (this.peakLevel / 100) * this.meterWidth;
-      this.peakEl.style.transform = `translateX(${peakX}px)`;
-    }
-
-    // Sinyal noktasi - sadece state degisince guncelle (gereksiz classList islemlerini onle)
-    const newDotState = isClipping ? 'clipping' : (level > VU_METER.DOT_ACTIVE_THRESHOLD ? 'active' : 'idle');
+    // Sinyal noktasi - sadece state degisince guncelle
+    const newDotState = isClipping ? 'clipping' : (result.level > VU_METER.DOT_ACTIVE_THRESHOLD ? 'active' : 'idle');
     if (this.dotEl && this.dotState !== newDotState) {
-      // Tek seferde className set et (classList.add/remove'dan daha hizli)
       this.dotEl.className = 'signal-dot' + (newDotState !== 'idle' ? ' ' + newDotState : '');
       this.dotState = newDotState;
     }
 
-    // Level event'i gonder (diger moduller kullanabilir)
-    eventBus.emit('vumeter:level', {
-      level,
-      peak: this.peakLevel,
-      dB: dB.toFixed(1),
-      isClipping
+    eventBus.emit(EVENTS.VUMETER_LEVEL, {
+      level: result.level, peak: this.peakLevel, dB: result.dB.toFixed(1), isClipping
     });
 
-    // Remote stream (codec sonrasi) VU meter guncelle
     this.updateRemote();
-
     this.animationId = requestAnimationFrame(() => this.update());
   }
 
-  /**
-   * Remote stream VU meter guncelle (loopback modunda)
-   */
   updateRemote() {
     if (!this.remoteAnalyser) return;
-
-    // Remote stream icin ayri dataArray (GC'den kacinmak icin cache'le)
     if (!this.remoteDataArray) {
       this.remoteDataArray = new Uint8Array(this.remoteAnalyser.frequencyBinCount);
     }
-    this.remoteAnalyser.getByteTimeDomainData(this.remoteDataArray);
 
-    // DRY: RMS hesaplama (local VU ile tutarli)
-    const rms = this.calculateRMS(this.remoteDataArray);
-
-    // dB ve level hesapla - RMS tabanli (yumusak animasyon)
-    const dB = rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
-    const remoteLevel = Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
-
-    // Remote bar guncelle - soldan saga genisler
-    if (this.remoteBarEl) {
-      this.remoteBarEl.style.width = `${remoteLevel}%`;
-    }
-
-    // Remote peak hold
-    if (remoteLevel > this.remotePeakLevel) {
-      this.remotePeakLevel = remoteLevel;
-      this.remotePeakHoldTime = Date.now();
-    } else if (Date.now() - this.remotePeakHoldTime > VU_METER.PEAK_HOLD_TIME_MS) {
-      this.remotePeakLevel = Math.max(remoteLevel, this.remotePeakLevel - VU_METER.PEAK_DECAY_RATE);
-    }
-
-    // Remote peak indicator
-    if (this.remotePeakEl) {
-      const peakX = (this.remotePeakLevel / 100) * this.remoteMeterWidth;
-      this.remotePeakEl.style.transform = `translateX(${peakX}px)`;
-    }
+    const result = this._renderMeter(
+      this.remoteAnalyser, this.remoteDataArray, this.remoteBarEl, this.remotePeakEl,
+      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth
+    );
+    this.remotePeakLevel = result.peakLevel;
+    this.remotePeakHoldTime = result.peakHoldTime;
   }
 
   stop() {
@@ -342,7 +315,7 @@ class VuMeter {
     // Remote stream'i de temizle
     this.stopRemote();
 
-    eventBus.emit('vumeter:stopped');
+    eventBus.emit(EVENTS.VUMETER_STOPPED);
   }
 
   /**
@@ -351,10 +324,10 @@ class VuMeter {
    */
   destroy() {
     this.stop();
-    eventBus.off('stream:started', this._onStreamStarted);
-    eventBus.off('stream:stopped', this._onStreamStopped);
-    eventBus.off('loopback:remoteStream', this._onLoopbackRemote);
-    eventBus.off('pipeline:analyserReady', this._onAnalyserReady);
+    eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
+    eventBus.off(EVENTS.STREAM_STOPPED, this._onStreamStopped);
+    eventBus.off(EVENTS.LOOPBACK_REMOTE_STREAM, this._onLoopbackRemote);
+    eventBus.off(EVENTS.PIPELINE_ANALYSER_READY, this._onAnalyserReady);
   }
 }
 

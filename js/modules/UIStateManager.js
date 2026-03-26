@@ -5,7 +5,7 @@
  */
 
 import { PROFILES, SETTINGS } from './Config.js';
-import { ENCODER } from './constants.js';
+import { ENCODER_TYPES, PIPELINE_TYPES, SETTING_NAMES, UI_CLASSES } from './constants.js';
 import { formatTime, needsBufferSetting, shouldDisableTimeslice } from './utils.js';
 
 /**
@@ -130,78 +130,178 @@ class UIStateManager {
   updateButtonStates() {
     const currentMode = this.getState.currentMode();
     const isPreparing = this.getState.isPreparing();
-    const WORKLET_SUPPORTED = this.getState.isWorkletSupported();
-    const WASM_OPUS_SUPPORTED = this.getState.isWasmOpusSupported?.() ?? false;
 
-    const isIdle = currentMode === null;
-    const isRecording = currentMode === 'recording';
-    const isMonitoring = currentMode === 'monitoring';
-    const isTestRecording = currentMode === 'test-recording';
-    const isTestPlayback = currentMode === 'test-playback';
-    const isTesting = isTestRecording || isTestPlayback;
+    const flags = {
+      isIdle: currentMode === null,
+      isRecording: currentMode === 'recording',
+      isMonitoring: currentMode === 'monitoring',
+      isTestRecording: currentMode === 'test-recording',
+      isTestPlayback: currentMode === 'test-playback',
+      isPreparing
+    };
+    flags.isTesting = flags.isTestRecording || flags.isTestPlayback;
 
     // Global UI state - CSS whitelist yaklaşımı için
-    // body[data-app-state="recording/monitoring/testing/preparing"] tüm interactive elementleri disable eder
-    // isPreparing önce kontrol edilir - preparing sırasında diğer state'ler henüz set edilmemiş olabilir
     const appState = isPreparing ? 'preparing'
-      : isRecording ? 'recording'
-      : isMonitoring ? 'monitoring'
-      : isTesting ? 'testing'
+      : flags.isRecording ? 'recording'
+      : flags.isMonitoring ? 'monitoring'
+      : flags.isTesting ? 'testing'
       : 'idle';
     document.body.dataset.appState = appState;
 
-    const {
-      recordToggleBtn,
-      monitorToggleBtn,
-      testBtn,
-      testCountdownEl,
-      loopbackToggle,
-      ecCheckbox,
-      nsCheckbox,
-      agcCheckbox,
-      pipelineContainer,
-      encoderContainer,
-      timesliceContainer,
-      recordingPlayerCard,
-      playBtn,
-      progressBar,
-      downloadBtn,
-      micSelector,
-      refreshMicsBtn,
-      profileSelector
-    } = this.elements;
+    this._updateActionButtons(flags);
+    this._updateControlLocks(flags);
+    this._updateRadioGroups(flags);
+    this._updateButtonTexts(flags);
+  }
+
+  /**
+   * Ana aksiyon butonlarini guncelle (Record, Monitor, Test)
+   * @private
+   */
+  _updateActionButtons(flags) {
+    const { isRecording, isMonitoring, isTestRecording, isTestPlayback, isTesting, isPreparing } = flags;
+    const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
 
     // Toggle butonlarin active state'leri
-    recordToggleBtn?.classList.toggle('active', isRecording && !isPreparing);
-    monitorToggleBtn?.classList.toggle('active', isMonitoring && !isPreparing);
+    recordToggleBtn?.classList.toggle(UI_CLASSES.ACTIVE, isRecording && !isPreparing);
+    monitorToggleBtn?.classList.toggle(UI_CLASSES.ACTIVE, isMonitoring && !isPreparing);
 
-    // Preparing state kontrolü - sadece ilgili buton preparing görünsün
-    // Mode artık preparing başında set ediliyor, bu yüzden isPreparing && isX doğru çalışır
-    recordToggleBtn?.classList.toggle('preparing', isPreparing && isRecording);
-    monitorToggleBtn?.classList.toggle('preparing', isPreparing && isMonitoring);
+    // Preparing state kontrolü
+    recordToggleBtn?.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isRecording);
+    monitorToggleBtn?.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isMonitoring);
 
-    // Monitoring/Testing sirasinda kayit butonunu disable et ve tersi
-    // Kendi preparing'i sirasinda buton aktif kalmali (iptal edebilsin), baskasinin preparing'inde disabled
+    // Disable kontrolu
     if (recordToggleBtn) recordToggleBtn.disabled = isMonitoring || isTesting || (isPreparing && !isRecording);
     if (monitorToggleBtn) monitorToggleBtn.disabled = isRecording || isTesting || (isPreparing && !isMonitoring);
 
-    // Test butonu state'leri
+    // Test butonu
     if (testBtn) {
-      // Test sirasinda aktif, diger islemlerde disabled
-      testBtn.classList.toggle('recording', isTestRecording && !isPreparing);
-      testBtn.classList.toggle('playback', isTestPlayback);
-      testBtn.classList.toggle('preparing', isPreparing && isTesting);
-      // Test butonu: recording/monitoring sırasında veya kendi preparing'i dışındaki preparing'lerde disabled
+      testBtn.classList.toggle(UI_CLASSES.RECORDING, isTestRecording && !isPreparing);
+      testBtn.classList.toggle(UI_CLASSES.PLAYBACK, isTestPlayback);
+      testBtn.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isTesting);
       testBtn.disabled = isRecording || isMonitoring || (isPreparing && !isTesting);
+    }
+  }
 
-      // Test buton text
-      // Skype/Zoom pattern: Recording -> "Done" (erken bitir), Playback -> "Stop"
+  /**
+   * Control kilitleme durumlarini guncelle (ayarlar, profiller, linkler)
+   * @private
+   */
+  _updateControlLocks(flags) {
+    const { isIdle, isRecording, isMonitoring, isTesting, isPreparing } = flags;
+    const {
+      loopbackToggle, ecCheckbox, nsCheckbox, agcCheckbox,
+      pipelineContainer, encoderContainer, timesliceContainer,
+      recordingPlayerCard, playBtn, progressBar, downloadBtn,
+      micSelector, refreshMicsBtn, profileSelector
+    } = this.elements;
+
+    // Aktif islem sirasinda kayit tarafini kilitle
+    const disableRecordingUi = isMonitoring || isRecording || isTesting;
+    pipelineContainer?.classList.toggle(UI_CLASSES.DISABLED, !isIdle);
+    encoderContainer?.classList.toggle(UI_CLASSES.DISABLED, !isIdle);
+    timesliceContainer?.classList.toggle(UI_CLASSES.DISABLED, disableRecordingUi);
+    recordingPlayerCard?.classList.toggle(UI_CLASSES.DISABLED, disableRecordingUi);
+
+    if (playBtn) playBtn.disabled = disableRecordingUi;
+    if (progressBar) progressBar.classList.toggle(UI_CLASSES.NO_POINTER, disableRecordingUi);
+    if (downloadBtn) downloadBtn.setAttribute('aria-disabled', disableRecordingUi ? 'true' : 'false');
+
+    // Profil kilitleri
+    const profile = this.profileController?.getCurrentProfile();
+    const lockedSettings = profile?.lockedSettings || [];
+    const shouldBeDisabled = (key) => !isIdle || lockedSettings.includes(key);
+
+    // Ayar toggle'lari
+    if (loopbackToggle) loopbackToggle.disabled = shouldBeDisabled('loopback');
+    if (ecCheckbox) ecCheckbox.disabled = shouldBeDisabled('ec');
+    if (nsCheckbox) nsCheckbox.disabled = shouldBeDisabled('ns');
+    if (agcCheckbox) agcCheckbox.disabled = shouldBeDisabled('agc');
+
+    // Mikrofon secici
+    if (micSelector) micSelector.disabled = !isIdle;
+    if (refreshMicsBtn) refreshMicsBtn.disabled = !isIdle;
+
+    // Profil butonlari
+    const disableProfiles = !isIdle || isPreparing;
+    this.navItems.forEach(item => {
+      item.classList.toggle(UI_CLASSES.DISABLED, disableProfiles);
+      item.setAttribute('aria-disabled', disableProfiles ? 'true' : 'false');
+    });
+    this.scenarioCards.forEach(card => {
+      card.classList.toggle(UI_CLASSES.DISABLED, disableProfiles);
+      card.setAttribute('aria-disabled', disableProfiles ? 'true' : 'false');
+    });
+    if (profileSelector) profileSelector.disabled = disableProfiles;
+
+    // Header/Footer linkler
+    const { headerBrandLink, customSettingsToggle, footerBrandLink, settingsDrawer, drawerOverlay } = this.elements;
+    this._setLinkDisabled(headerBrandLink, !isIdle);
+    this._setLinkDisabled(customSettingsToggle, !isIdle);
+    this._setLinkDisabled(footerBrandLink, !isIdle);
+    this.footerLinks.forEach(link => this._setLinkDisabled(link, !isIdle));
+
+    // Settings drawer - aktif islem baslatildiginda kapat
+    if (!isIdle && settingsDrawer && settingsDrawer.classList.contains(UI_CLASSES.OPEN)) {
+      settingsDrawer.classList.remove(UI_CLASSES.OPEN);
+      if (drawerOverlay) drawerOverlay.classList.remove(UI_CLASSES.ACTIVE);
+      document.body.style.overflow = '';
+    }
+  }
+
+  /**
+   * Radio gruplarinin disable durumlarini guncelle
+   * @private
+   */
+  _updateRadioGroups(flags) {
+    const { isIdle } = flags;
+    const { loopbackToggle } = this.elements;
+    const WORKLET_SUPPORTED = this.getState.isWorkletSupported();
+    const WASM_OPUS_SUPPORTED = this.getState.isWasmOpusSupported?.() ?? false;
+
+    const profile = this.profileController?.getCurrentProfile();
+    const lockedSettings = profile?.lockedSettings || [];
+    const shouldBeDisabled = (key) => !isIdle || lockedSettings.includes(key);
+
+    const isLoopbackOn = loopbackToggle?.checked ?? false;
+
+    const disableRadioGroup = (radios, settingKey, extraCondition = false) => {
+      radios.forEach(radio => {
+        const extra = typeof extraCondition === 'function' ? extraCondition(radio) : extraCondition;
+        radio.disabled = shouldBeDisabled(settingKey) || extra;
+      });
+    };
+
+    const selectedEncoder = document.querySelector(`input[name="${SETTING_NAMES.ENCODER}"]:checked`)?.value || ENCODER_TYPES.DEFAULT;
+    const selectedPipeline = document.querySelector(`input[name="${SETTING_NAMES.PIPELINE}"]:checked`)?.value;
+
+    disableRadioGroup(this.radioGroups.pipeline, 'pipeline',
+      radio => radio.value === PIPELINE_TYPES.WORKLET && !WORKLET_SUPPORTED);
+    disableRadioGroup(this.radioGroups.encoder, 'encoder',
+      radio => radio.value === ENCODER_TYPES.WASM_OPUS && !WASM_OPUS_SUPPORTED);
+    disableRadioGroup(this.radioGroups.bitrate, 'bitrate', !isLoopbackOn);
+    disableRadioGroup(this.radioGroups.timeslice, 'timeslice', shouldDisableTimeslice(isLoopbackOn, selectedEncoder));
+    disableRadioGroup(this.radioGroups.mediaBitrate, 'mediaBitrate', isLoopbackOn);
+    disableRadioGroup(this.radioGroups.bufferSize, 'buffer', !needsBufferSetting(selectedPipeline));
+  }
+
+  /**
+   * Buton text'lerini guncelle
+   * @private
+   */
+  _updateButtonTexts(flags) {
+    const { isRecording, isMonitoring, isTestRecording, isTestPlayback, isTesting, isPreparing } = flags;
+    const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
+
+    // Test buton text
+    if (testBtn) {
       const testBtnText = testBtn.querySelector('.btn-text');
       if (testBtnText) {
         if (isPreparing && isTesting) {
           testBtnText.textContent = 'Preparing...';
         } else if (isTestRecording) {
-          testBtnText.textContent = 'Done';  // Kullanici konusmayi bitirdi, playback'e gec
+          testBtnText.textContent = 'Done';
         } else if (isTestPlayback) {
           testBtnText.textContent = 'Stop';
         } else {
@@ -210,132 +310,7 @@ class UIStateManager {
       }
     }
 
-    // Aktif islem sirasinda kayit tarafini tamamen kilitle (recording VEYA monitoring VEYA testing)
-    const disableRecordingUi = isMonitoring || isRecording || isTesting;
-    pipelineContainer?.classList.toggle('ui-disabled', !isIdle);
-    encoderContainer?.classList.toggle('ui-disabled', !isIdle);
-    timesliceContainer?.classList.toggle('ui-disabled', disableRecordingUi);
-    recordingPlayerCard?.classList.toggle('ui-disabled', disableRecordingUi);
-
-    if (playBtn) {
-      playBtn.disabled = disableRecordingUi;
-    }
-
-    if (progressBar) {
-      progressBar.classList.toggle('no-pointer-events', disableRecordingUi);
-    }
-
-    // Download butonu - CSS whitelist yaklaşımı pointer-events'i hallediyor
-    // href yönetimi kaldırıldı (Player.js set ediyor, üzerine yazılmasın)
-    if (downloadBtn) {
-      downloadBtn.setAttribute('aria-disabled', disableRecordingUi ? 'true' : 'false');
-    }
-
-    // Profil kilitleri kontrolu - ProfileController'dan al
-    const profile = this.profileController?.getCurrentProfile();
-    const lockedSettings = profile?.lockedSettings || [];
-
-    // Ayar toggle'lari icin disabled durumu hesapla
-    const shouldBeDisabled = (settingKey) => {
-      // Aktif islem varsa her zaman disabled
-      if (!isIdle) return true;
-      // Profil kilidi varsa disabled
-      return lockedSettings.includes(settingKey);
-    };
-
-    // Ayar toggle'lari - profil kilitleri + aktif mod kontrolu
-    if (loopbackToggle) loopbackToggle.disabled = shouldBeDisabled('loopback');
-    if (ecCheckbox) ecCheckbox.disabled = shouldBeDisabled('ec');
-    if (nsCheckbox) nsCheckbox.disabled = shouldBeDisabled('ns');
-    if (agcCheckbox) agcCheckbox.disabled = shouldBeDisabled('agc');
-
-    // Mikrofon secici - aktif islem varken degistirilemez (profil kilidi yok)
-    if (micSelector) micSelector.disabled = !isIdle;
-    if (refreshMicsBtn) refreshMicsBtn.disabled = !isIdle;
-
-    // Profil butonlari - aktif islem VEYA preparing varken degistirilemez
-    const disableProfiles = !isIdle || isPreparing;
-    this.navItems.forEach(item => {
-      item.classList.toggle('disabled', disableProfiles);
-      item.setAttribute('aria-disabled', disableProfiles ? 'true' : 'false');
-    });
-    this.scenarioCards.forEach(card => {
-      card.classList.toggle('disabled', disableProfiles);
-      card.setAttribute('aria-disabled', disableProfiles ? 'true' : 'false');
-    });
-    if (profileSelector) {
-      profileSelector.disabled = disableProfiles;
-    }
-
-    // Header brand link - aktif islem varken landing page'e donus yapilmasin
-    const { headerBrandLink, customSettingsToggle } = this.elements;
-    if (headerBrandLink) {
-      headerBrandLink.classList.toggle('disabled', !isIdle);
-      headerBrandLink.style.pointerEvents = isIdle ? '' : 'none';
-      headerBrandLink.setAttribute('aria-disabled', !isIdle ? 'true' : 'false');
-    }
-
-    // Custom settings toggle - aktif islem varken ayarlara erisim kapali
-    if (customSettingsToggle) {
-      customSettingsToggle.classList.toggle('disabled', !isIdle);
-      customSettingsToggle.style.pointerEvents = isIdle ? '' : 'none';
-      customSettingsToggle.setAttribute('aria-disabled', !isIdle ? 'true' : 'false');
-    }
-
-    // Footer brand link ve diger footer linkleri - aktif islem varken disabled
-    const { footerBrandLink, settingsDrawer, drawerOverlay } = this.elements;
-    if (footerBrandLink) {
-      footerBrandLink.classList.toggle('disabled', !isIdle);
-      footerBrandLink.style.pointerEvents = isIdle ? '' : 'none';
-      footerBrandLink.setAttribute('aria-disabled', !isIdle ? 'true' : 'false');
-    }
-
-    this.footerLinks.forEach(link => {
-      link.classList.toggle('disabled', !isIdle);
-      link.style.pointerEvents = isIdle ? '' : 'none';
-      link.setAttribute('aria-disabled', !isIdle ? 'true' : 'false');
-    });
-
-    // Settings drawer - aktif islem baslatildiginda drawer'i kapat
-    if (!isIdle && settingsDrawer && settingsDrawer.classList.contains('open')) {
-      settingsDrawer.classList.remove('open');
-      if (drawerOverlay) {
-        drawerOverlay.classList.remove('active');
-      }
-      // Body scroll lock'u kaldir
-      document.body.style.overflow = '';
-    }
-
-    // Loopback durumu - dinamik kilitleme kurallari icin
-    const isLoopbackOn = loopbackToggle?.checked ?? false;
-
-    // Pipeline selector - profil kilidi + aktif session kontrolu
-    this.radioGroups.pipeline.forEach(radio => {
-      const workletUnsupported = radio.value === 'worklet' && !WORKLET_SUPPORTED;
-      radio.disabled = shouldBeDisabled('pipeline') || workletUnsupported;
-    });
-
-    // Encoder selector - profil kilidi + WASM destegi kontrolu
-    this.radioGroups.encoder.forEach(radio => {
-      const wasmOpusUnsupported = radio.value === 'wasm-opus' && !WASM_OPUS_SUPPORTED;
-      radio.disabled = shouldBeDisabled('encoder') || wasmOpusUnsupported;
-    });
-
-    // Bitrate selector - profil kilidi + loopback OFF ise disabled
-    this.radioGroups.bitrate.forEach(r => r.disabled = shouldBeDisabled('bitrate') || !isLoopbackOn);
-
-    // Timeslice selector - profil kilidi + MediaRecorder kullanilmiyorsa disabled (DRY helper)
-    const selectedEncoder = document.querySelector('input[name="encoder"]:checked')?.value || ENCODER.DEFAULT;
-    this.radioGroups.timeslice.forEach(r => r.disabled = shouldBeDisabled('timeslice') || shouldDisableTimeslice(isLoopbackOn, selectedEncoder));
-
-    // MediaBitrate selector - profil kilidi + loopback ON ise disabled
-    this.radioGroups.mediaBitrate.forEach(r => r.disabled = shouldBeDisabled('mediaBitrate') || isLoopbackOn);
-
-    // Buffer size selector - profil kilidi + non-ScriptProcessor pipeline'da disabled
-    const selectedPipeline = document.querySelector('input[name="pipeline"]:checked')?.value;
-    this.radioGroups.bufferSize.forEach(r => r.disabled = shouldBeDisabled('buffer') || !needsBufferSetting(selectedPipeline));
-
-    // Buton text'lerini guncelle - sadece ilgili buton "Preparing..." göstersin
+    // Record/Monitor buton text
     const recordBtnText = recordToggleBtn?.querySelector('.btn-text');
     const monitorBtnText = monitorToggleBtn?.querySelector('.btn-text');
 
@@ -362,9 +337,15 @@ class UIStateManager {
     const { timerEl } = this.elements;
     if (!timerEl) return;
 
+    // Mevcut interval varsa temizle - double-start leak onleme
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+
     this.timerStartTime = Date.now();
     timerEl.textContent = '0:00';
-    timerEl.classList.add('visible');
+    timerEl.classList.add(UI_CLASSES.VISIBLE);
 
     this.timerInterval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - this.timerStartTime) / 1000);
@@ -382,8 +363,20 @@ class UIStateManager {
     }
     const { timerEl } = this.elements;
     if (timerEl) {
-      timerEl.classList.remove('visible');
+      timerEl.classList.remove(UI_CLASSES.VISIBLE);
     }
+  }
+
+  /**
+   * Link elementini disabled/enabled yapar (DRY: 3 satirlik pattern)
+   * @param {HTMLElement} element - Link elementi
+   * @param {boolean} disabled - Disabled durumu
+   */
+  _setLinkDisabled(element, disabled) {
+    if (!element) return;
+    element.classList.toggle(UI_CLASSES.DISABLED, disabled);
+    element.style.pointerEvents = disabled ? 'none' : '';
+    element.setAttribute('aria-disabled', disabled ? 'true' : 'false');
   }
 
   /**
@@ -405,7 +398,7 @@ class UIStateManager {
     });
 
     // Locked gorunumu
-    container.classList.toggle('locked', isDisabled);
+    container.classList.toggle(UI_CLASSES.LOCKED, isDisabled);
   }
 }
 

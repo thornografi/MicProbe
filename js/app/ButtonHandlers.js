@@ -4,6 +4,7 @@
  */
 
 import { wrapAsyncHandler } from '../modules/utils.js';
+import { EVENTS } from '../modules/constants.js';
 
 /**
  * Ana buton handler'larini kaydet
@@ -121,22 +122,16 @@ export function setupKeyboardHandlers(drawerControllers) {
  */
 export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
   // Test countdown event listener
-  eventBus.on('test:countdown', ({ remainingSec }) => {
+  eventBus.on(EVENTS.TEST_COUNTDOWN, ({ remainingSec }) => {
     if (testCountdownEl) {
       testCountdownEl.textContent = remainingSec > 0 ? `${remainingSec}s` : '';
     }
   });
 
   // Test tamamlandiginda/iptal edildiginde countdown temizle
-  eventBus.on('test:completed', () => {
-    if (testCountdownEl) testCountdownEl.textContent = '';
-  });
-  eventBus.on('test:cancelled', () => {
-    if (testCountdownEl) testCountdownEl.textContent = '';
-  });
-  eventBus.on('test:playback-stopped', () => {
-    if (testCountdownEl) testCountdownEl.textContent = '';
-  });
+  const clearCountdown = () => { if (testCountdownEl) testCountdownEl.textContent = ''; };
+  [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_PLAYBACK_STOPPED]
+    .forEach(event => eventBus.on(event, clearCountdown));
 }
 
 /**

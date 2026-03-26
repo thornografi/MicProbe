@@ -4,6 +4,7 @@
  * Kategori filtreleme destegi
  */
 import eventBus from './EventBus.js';
+import { EVENTS } from './constants.js';
 
 // Maksimum log sayisi - bellek korumasi
 const MAX_HISTORY = 1000;
@@ -18,11 +19,11 @@ class Logger {
     this.activeFilter = null; // null = hepsi, 'error' = sadece error vs.
 
     // Event dinle
-    eventBus.on('log', (msg) => this.log(msg, 'ui'));
-    eventBus.on('log:clear', () => this.clear());
+    eventBus.on(EVENTS.LOG, (msg) => this.log(msg, 'ui'));
+    eventBus.on(EVENTS.LOG_CLEAR, () => this.clear());
 
     // Kategorili loglar icin
-    eventBus.on('log:display', (data) => {
+    eventBus.on(EVENTS.LOG_DISPLAY, (data) => {
       this.log(data.message, data.category);
     });
   }
@@ -51,7 +52,7 @@ class Logger {
     this.appendToDisplay(formattedMessage, category);
 
     // Diger modullere bildir
-    eventBus.emit('log:added', { time, message: formattedMessage, category });
+    eventBus.emit(EVENTS.LOG_ADDED, { time, message: formattedMessage, category });
   }
 
   appendToDisplay(message, category) {

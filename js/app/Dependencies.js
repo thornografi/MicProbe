@@ -3,7 +3,7 @@
  */
 import { usesWebAudio } from '../modules/utils.js';
 import { SETTINGS } from '../modules/Config.js';
-import { AUDIO } from '../modules/constants.js';
+import { AUDIO, BUFFER, ENCODER_TYPES, SETTING_NAMES } from '../modules/constants.js';
 import { getStateAccessors } from './AppState.js';
 import { getRadioValue } from './SettingHelpers.js';
 
@@ -20,14 +20,14 @@ export function createControllerDeps(modules, elements, deviceInfo) {
 
   return {
     getConstraints: () => createConstraints(elements, deviceInfo),
-    getPipeline: () => getRadioValue('pipeline', 'standard'),
-    getEncoder: () => getEncoderValue(elements),
-    isLoopbackEnabled: () => elements.loopbackToggle.checked,
-    isWebAudioEnabled: () => usesWebAudio(getRadioValue('pipeline', 'standard')),
-    getOpusBitrate: () => getRadioValue('bitrate', SETTINGS.bitrate.default, true),
-    getTimeslice: () => getRadioValue('timeslice', 0, true),
-    getBufferSize: () => getRadioValue('bufferSize', 4096, true),
-    getMediaBitrate: () => getRadioValue('mediaBitrate', 0, true),
+    getPipeline: () => getRadioValue(SETTING_NAMES.PIPELINE, 'standard'),
+    getEncoder: () => getEncoderValue(),
+    isLoopbackEnabled: () => elements.loopbackToggle?.checked ?? false,
+    isWebAudioEnabled: () => usesWebAudio(getRadioValue(SETTING_NAMES.PIPELINE, 'standard')),
+    getOpusBitrate: () => getRadioValue(SETTING_NAMES.BITRATE, SETTINGS.bitrate.default, true),
+    getTimeslice: () => getRadioValue(SETTING_NAMES.TIMESLICE, 0, true),
+    getBufferSize: () => getRadioValue(SETTING_NAMES.BUFFER_SIZE, BUFFER.DEFAULT_SIZE, true),
+    getMediaBitrate: () => getRadioValue(SETTING_NAMES.MEDIA_BITRATE, 0, true),
     recorder,
     monitor,
     player,
@@ -41,11 +41,11 @@ export function createControllerDeps(modules, elements, deviceInfo) {
  */
 function createConstraints(elements, deviceInfo) {
   const constraints = {
-    echoCancellation: elements.ecCheckbox.checked,
-    noiseSuppression: elements.nsCheckbox.checked,
-    autoGainControl: elements.agcCheckbox.checked,
-    sampleRate: getRadioValue('sampleRate', AUDIO.DEFAULT_SAMPLE_RATE, true),
-    channelCount: getRadioValue('channelCount', 1, true)
+    echoCancellation: elements.ecCheckbox?.checked ?? false,
+    noiseSuppression: elements.nsCheckbox?.checked ?? false,
+    autoGainControl: elements.agcCheckbox?.checked ?? false,
+    sampleRate: getRadioValue(SETTING_NAMES.SAMPLE_RATE, AUDIO.DEFAULT_SAMPLE_RATE, true),
+    channelCount: getRadioValue(SETTING_NAMES.CHANNEL_COUNT, 1, true)
   };
 
   const deviceId = deviceInfo.getSelectedDeviceId();
@@ -59,10 +59,6 @@ function createConstraints(elements, deviceInfo) {
 /**
  * Encoder degerini al
  */
-function getEncoderValue(elements) {
-  const encoderSelect = document.querySelector('[data-setting="encoder"]');
-  if (encoderSelect) {
-    return encoderSelect.value;
-  }
-  return getRadioValue('encoder', 'mediarecorder');
+function getEncoderValue() {
+  return getRadioValue(SETTING_NAMES.ENCODER, ENCODER_TYPES.DEFAULT);
 }

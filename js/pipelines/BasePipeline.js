@@ -10,8 +10,8 @@
  */
 import eventBus from '../modules/EventBus.js';
 import { createOpusWorker, isWasmOpusSupported } from '../modules/OpusWorkerHelper.js';
-import { AUDIO } from '../modules/constants.js';
-import { disconnectNodes, log } from '../modules/utils.js';
+import { disconnectNodes, log, createAnalyserNode } from '../modules/utils.js';
+import { EVENTS } from '../modules/constants.js';
 
 export default class BasePipeline {
   constructor(audioContext, sourceNode, destinationNode) {
@@ -38,9 +38,7 @@ export default class BasePipeline {
    * @returns {AnalyserNode}
    */
   createAnalyser() {
-    this.analyserNode = this.audioContext.createAnalyser();
-    this.analyserNode.fftSize = AUDIO.FFT_SIZE;
-    this.analyserNode.smoothingTimeConstant = AUDIO.SMOOTHING_TIME_CONSTANT;
+    this.analyserNode = createAnalyserNode(this.audioContext);
     return this.analyserNode;
   }
 
@@ -122,7 +120,7 @@ export default class BasePipeline {
     });
 
     this.opusWorker.onProgress = (progress) => {
-      eventBus.emit('opus:progress', progress);
+      eventBus.emit(EVENTS.OPUS_PROGRESS, progress);
     };
 
     this.opusWorker.onError = (error) => {

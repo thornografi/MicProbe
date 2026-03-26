@@ -1,6 +1,7 @@
 /**
  * Pipeline & Encoder Helper Functions
  */
+import { ENCODER_TYPES, PIPELINE_TYPES } from '../constants.js';
 
 /**
  * Pipeline'in buffer ayari gerektirip gerektirmedigini dondurur
@@ -8,7 +9,7 @@
  * @returns {boolean}
  */
 export function needsBufferSetting(pipeline) {
-  return pipeline === 'scriptprocessor';
+  return pipeline === PIPELINE_TYPES.SCRIPTPROCESSOR;
 }
 
 /**
@@ -17,7 +18,7 @@ export function needsBufferSetting(pipeline) {
  * @returns {boolean}
  */
 export function usesWebAudio(pipeline) {
-  return pipeline !== 'direct';
+  return pipeline !== PIPELINE_TYPES.DIRECT;
 }
 
 /**
@@ -26,7 +27,7 @@ export function usesWebAudio(pipeline) {
  * @returns {boolean}
  */
 export function usesWasmOpus(encoder) {
-  return encoder === 'wasm-opus';
+  return encoder === ENCODER_TYPES.WASM_OPUS;
 }
 
 /**
@@ -35,7 +36,7 @@ export function usesWasmOpus(encoder) {
  * @returns {boolean}
  */
 export function usesMediaRecorder(encoder) {
-  return encoder === 'mediarecorder';
+  return encoder === ENCODER_TYPES.MEDIARECORDER;
 }
 
 /**
@@ -44,7 +45,7 @@ export function usesMediaRecorder(encoder) {
  * @returns {boolean}
  */
 export function usesPcmWav(encoder) {
-  return encoder === 'pcm-wav';
+  return encoder === ENCODER_TYPES.PCM_WAV;
 }
 
 /**

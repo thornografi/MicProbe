@@ -8,13 +8,14 @@ import DirectPipeline from './DirectPipeline.js';
 import StandardPipeline from './StandardPipeline.js';
 import ScriptProcessorPipeline from './ScriptProcessorPipeline.js';
 import WorkletPipeline from './WorkletPipeline.js';
+import { PIPELINE_TYPES } from '../modules/constants.js';
 
 // OCP: Yeni pipeline eklemek icin buraya ekle
 const PIPELINE_MAP = {
-  direct: DirectPipeline,
-  standard: StandardPipeline,
-  scriptprocessor: ScriptProcessorPipeline,
-  worklet: WorkletPipeline
+  [PIPELINE_TYPES.DIRECT]: DirectPipeline,
+  [PIPELINE_TYPES.STANDARD]: StandardPipeline,
+  [PIPELINE_TYPES.SCRIPTPROCESSOR]: ScriptProcessorPipeline,
+  [PIPELINE_TYPES.WORKLET]: WorkletPipeline
 };
 
 /**
@@ -59,7 +60,7 @@ export function isPipelineSupported(pipelineType) {
  * @returns {string[]}
  */
 export function getWebAudioPipelines() {
-  return Object.keys(PIPELINE_MAP).filter(type => type !== 'direct');
+  return Object.keys(PIPELINE_MAP).filter(type => type !== PIPELINE_TYPES.DIRECT);
 }
 
 export default {

@@ -2,6 +2,7 @@
  * Stream Helper Functions
  */
 import eventBus from '../EventBus.js';
+import { EVENTS } from '../constants.js';
 
 /**
  * MediaStream'in tum track'lerini durdurur
@@ -40,10 +41,23 @@ export function wrapAsyncHandler(fn, errorMessage) {
     try {
       return await fn(...args);
     } catch (err) {
-      eventBus.emit('log:error', {
+      eventBus.emit(EVENTS.LOG_ERROR, {
         message: errorMessage,
         details: { error: err.message, stack: err.stack }
       });
     }
   };
+}
+
+/**
+ * pipeline:analyserReady ve stream:started event'lerini DOGRU sirada emit eder.
+ * KRITIK: Bu siralama VuMeter icin zorunludur — ayri emit YAPMA, bu helper'i kullan.
+ * @param {AnalyserNode|null} analyserNode - Pipeline'dan gelen analyser (yoksa null)
+ * @param {MediaStream} stream - Baslayan stream
+ */
+export function emitStreamWithAnalyser(analyserNode, stream) {
+  if (analyserNode) {
+    eventBus.emit(EVENTS.PIPELINE_ANALYSER_READY, analyserNode);
+  }
+  eventBus.emit(EVENTS.STREAM_STARTED, stream);
 }

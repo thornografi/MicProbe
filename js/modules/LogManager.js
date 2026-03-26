@@ -10,7 +10,7 @@
  * 4. Console'a kisa versiyon yazar
  */
 import eventBus from './EventBus.js';
-import { DELAY, LOG } from './constants.js';
+import { DELAY, ENCODER_TYPES, LOG, PIPELINE_TYPES, EVENTS } from './constants.js';
 
 const LOG_CATEGORIES = {
   ERROR: 'error',
@@ -46,6 +46,28 @@ class LogManager {
     this._processEarlyErrors(); // index.html'de yakalanan erken hatalari isle
 
     this.log('system', 'LogManager baslatildi', { sessionId: this.sessionId });
+  }
+
+  /**
+   * Stack trace'den dosya:satir:sutun lokasyonu cikarir
+   * @param {string} stack - Error stack trace
+   * @returns {string|null} "filename.js:line:col" veya null
+   */
+  _extractLocation(stack) {
+    if (!stack) return null;
+    // Format 1: "at functionName (http://...:line:col)"
+    const match = stack.match(/at\s+.*?\s+\((.+?):(\d+):(\d+)\)/);
+    if (match) {
+      const [, file, line, col] = match;
+      return `${file.split('/').pop()}:${line}:${col}`;
+    }
+    // Format 2: "at http://...:line:col"
+    const altMatch = stack.match(/at\s+(.+?):(\d+):(\d+)/);
+    if (altMatch) {
+      const [, file, line, col] = altMatch;
+      return `${file.split('/').pop()}:${line}:${col}`;
+    }
+    return null;
   }
 
   /**
@@ -108,23 +130,23 @@ class LogManager {
 
   bindEvents() {
     // Genel log event'i
-    eventBus.on('log', (msg) => this.log('ui', msg));
+    eventBus.on(EVENTS.LOG, (msg) => this.log('ui', msg));
 
     // Kategorili event'ler
-    eventBus.on('log:error', (data) => this.log('error', data.message, data.details));
-    eventBus.on('log:audio', (data) => this.log('audio', data.message, data.details));
-    eventBus.on('log:stream', (data) => this.log('stream', data.message, data.details));
-    eventBus.on('log:webaudio', (data) => this.log('webaudio', data.message, data.details));
-    eventBus.on('log:recorder', (data) => this.log('recorder', data.message, data.details));
-    eventBus.on('log:system', (data) => this.log('system', data.message, data.details));
-    eventBus.on('log:ui', (data) => this.log('ui', data.message, data.details));
-    eventBus.on('log:warning', (data) => {
+    eventBus.on(EVENTS.LOG_ERROR, (data) => this.log('error', data.message, data.details));
+    eventBus.on(EVENTS.LOG_AUDIO, (data) => this.log('audio', data.message, data.details));
+    eventBus.on(EVENTS.LOG_STREAM, (data) => this.log('stream', data.message, data.details));
+    eventBus.on(EVENTS.LOG_WEBAUDIO, (data) => this.log('webaudio', data.message, data.details));
+    eventBus.on(EVENTS.LOG_RECORDER, (data) => this.log('recorder', data.message, data.details));
+    eventBus.on(EVENTS.LOG_SYSTEM, (data) => this.log('system', data.message, data.details));
+    eventBus.on(EVENTS.LOG_UI, (data) => this.log('ui', data.message, data.details));
+    eventBus.on(EVENTS.LOG_WARNING, (data) => {
       // Warning'lar ayri kategoride (console'da turuncu)
       this.log('warning', data.message, data.details);
     });
 
     // Stream event'leri
-    eventBus.on('stream:started', (stream) => {
+    eventBus.on(EVENTS.STREAM_STARTED, (stream) => {
       const track = stream?.getAudioTracks()[0];
       this.log('stream', 'Stream baslatildi', {
         trackId: track?.id,
@@ -133,32 +155,32 @@ class LogManager {
       });
     });
 
-    eventBus.on('stream:stopped', () => {
+    eventBus.on(EVENTS.STREAM_STOPPED, () => {
       this.log('stream', 'Stream durduruldu');
     });
 
     // Recorder event'leri (encoder-agnostic)
-    eventBus.on('recorder:started', (details) => {
+    eventBus.on(EVENTS.RECORDER_STARTED, (details) => {
       const encoder = details?.encoder || 'unknown';
-      const msg = encoder === 'wasm-opus'
+      const msg = encoder === ENCODER_TYPES.WASM_OPUS
         ? 'WASM Opus encoder baslatildi'
-        : encoder === 'pcm-wav'
+        : encoder === ENCODER_TYPES.PCM_WAV
           ? 'PCM/WAV encoder baslatildi'
           : 'MediaRecorder baslatildi';
       this.log('recorder', msg, details || null);
     });
 
-    eventBus.on('recorder:stopped', (details) => {
+    eventBus.on(EVENTS.RECORDER_STOPPED, (details) => {
       const encoder = details?.encoder || 'unknown';
-      const msg = encoder === 'wasm-opus'
+      const msg = encoder === ENCODER_TYPES.WASM_OPUS
         ? 'WASM Opus encoder durduruldu'
-        : encoder === 'pcm-wav'
+        : encoder === ENCODER_TYPES.PCM_WAV
           ? 'PCM/WAV encoder durduruldu'
           : 'MediaRecorder durduruldu';
       this.log('recorder', msg, details || null);
     });
 
-    eventBus.on('recording:completed', (data) => {
+    eventBus.on(EVENTS.RECORDING_COMPLETED, (data) => {
       this.log('recorder', 'Kayit tamamlandi', {
         filename: data.filename,
         size: data.blob?.size,
@@ -167,9 +189,9 @@ class LogManager {
     });
 
     // Monitor event'leri
-    eventBus.on('monitor:started', (data) => {
+    eventBus.on(EVENTS.MONITOR_STARTED, (data) => {
       const mode = data?.mode;
-      const category = (data?.loopback || mode === 'direct') ? 'stream' : 'webaudio';
+      const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
       this.log(category, 'Monitor baslatildi', {
         mode,
         delaySeconds: data?.delaySeconds,
@@ -177,18 +199,18 @@ class LogManager {
       });
     });
 
-    eventBus.on('monitor:stopped', (data) => {
+    eventBus.on(EVENTS.MONITOR_STOPPED, (data) => {
       const mode = data?.mode;
-      const category = (data?.loopback || mode === 'direct') ? 'stream' : 'webaudio';
+      const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
       this.log(category, 'Monitor durduruldu', { mode, loopback: !!data?.loopback });
     });
 
     // VU Meter event'leri (sadece onemli olanlar)
-    eventBus.on('vumeter:started', () => {
+    eventBus.on(EVENTS.VUMETER_STARTED, () => {
       this.log('audio', 'VU Meter baslatildi');
     });
 
-    eventBus.on('vumeter:stopped', () => {
+    eventBus.on(EVENTS.VUMETER_STOPPED, () => {
       this.log('audio', 'VU Meter durduruldu');
     });
 
@@ -200,20 +222,8 @@ class LogManager {
         : null;
 
       // Filename boşsa stack trace'den çıkar
-      if (!location && e.error?.stack) {
-        // Format 1: "at functionName (http://...:line:col)"
-        const stackMatch = e.error.stack.match(/at\s+.*?\s+\((.+?):(\d+):(\d+)\)/);
-        if (stackMatch) {
-          const [, file, line, col] = stackMatch;
-          location = `${file.split('/').pop()}:${line}:${col}`;
-        } else {
-          // Format 2: "at http://...:line:col"
-          const altMatch = e.error.stack.match(/at\s+(.+?):(\d+):(\d+)/);
-          if (altMatch) {
-            const [, file, line, col] = altMatch;
-            location = `${file.split('/').pop()}:${line}:${col}`;
-          }
-        }
+      if (!location) {
+        location = this._extractLocation(e.error?.stack);
       }
 
       location = location || 'unknown';
@@ -233,20 +243,7 @@ class LogManager {
       const reason = e.reason?.message || String(e.reason);
 
       // Stack trace'den lokasyon çıkar
-      let location = 'unknown';
-      if (e.reason?.stack) {
-        const stackMatch = e.reason.stack.match(/at\s+.*?\s+\((.+?):(\d+):(\d+)\)/);
-        if (stackMatch) {
-          const [, file, line, col] = stackMatch;
-          location = `${file.split('/').pop()}:${line}:${col}`;
-        } else {
-          const altMatch = e.reason.stack.match(/at\s+(.+?):(\d+):(\d+)/);
-          if (altMatch) {
-            const [, file, line, col] = altMatch;
-            location = `${file.split('/').pop()}:${line}:${col}`;
-          }
-        }
-      }
+      const location = this._extractLocation(e.reason?.stack) || 'unknown';
 
       const errorInfo = {
         stack: e.reason?.stack
@@ -316,7 +313,7 @@ class LogManager {
 
     // UI log event'i gonder (sadece onemli kategoriler)
     if (['error', 'warning', 'recorder', 'webaudio', 'stream'].includes(category)) {
-      eventBus.emit('log:display', { category, message, timestamp });
+      eventBus.emit(EVENTS.LOG_DISPLAY, { category, message, timestamp });
     }
   }
 
@@ -395,7 +392,7 @@ class LogManager {
       if (category === 'stream' && message === 'Monitor Baslat butonuna basildi') {
         const { webAudioEnabled, loopbackEnabled, pipeline, pipelineDesc } = details;
         // WebAudio kapaliyken pipeline 'direct' olmali
-        if (webAudioEnabled === false && pipeline && pipeline !== 'direct') {
+        if (webAudioEnabled === false && pipeline && pipeline !== PIPELINE_TYPES.DIRECT) {
           addIssue('error', 'MONITOR_MODE_MISMATCH', 'WebAudio Pipeline PASIF iken pipeline direct degil', {
             webAudioEnabled,
             pipeline,
@@ -485,44 +482,42 @@ class LogManager {
     };
   }
 
-  // Loglari JSON olarak export et
-  exportJSON() {
-    const data = {
-      sessionId: this.sessionId,
-      exportedAt: new Date().toISOString(),
-      logs: this.logs
-    };
-
+  /**
+   * JSON verisini dosya olarak indirir
+   * @param {Object} data - JSON olarak export edilecek veri
+   * @param {string} filename - Dosya adi
+   */
+  _downloadJSON(data, filename) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mic-probe-logs-${this.sessionId}.json`;
+    a.download = filename;
     a.click();
 
     URL.revokeObjectURL(url);
-    this.log('system', 'Loglar export edildi', { filename: a.download });
+  }
+
+  // Loglari JSON olarak export et
+  exportJSON() {
+    const filename = `mic-probe-logs-${this.sessionId}.json`;
+    this._downloadJSON({
+      sessionId: this.sessionId,
+      exportedAt: new Date().toISOString(),
+      logs: this.logs
+    }, filename);
+    this.log('system', 'Loglar export edildi', { filename });
   }
 
   // Kategoriye gore export
   exportCategory(category) {
-    const data = {
+    this._downloadJSON({
       sessionId: this.sessionId,
       category,
       exportedAt: new Date().toISOString(),
       logs: this.logs[category] || []
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mic-probe-${category}-${this.sessionId}.json`;
-    a.click();
-
-    URL.revokeObjectURL(url);
+    }, `mic-probe-${category}-${this.sessionId}.json`);
   }
 
   // Loglari temizle

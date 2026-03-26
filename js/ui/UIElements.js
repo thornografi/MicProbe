@@ -1,104 +1,129 @@
 /**
  * UI Element Referanslari
  * Tum DOM element referanslarini merkezi yonetim
+ *
+ * Null Guard: Her querySelector/getElementById sonrasi null check yapilir.
+ * Eksik element bulunursa console.warn ile bildirilir (silent failure onleme).
  */
+import { SETTING_NAMES } from '../modules/constants.js';
+
+// ============================================
+// NULL GUARD HELPER
+// ============================================
+function getEl(id) {
+  const el = document.getElementById(id);
+  if (!el) console.warn(`[UIElements] Element bulunamadi: #${id}`);
+  return el;
+}
+
+function queryEl(selector) {
+  const el = document.querySelector(selector);
+  if (!el) console.warn(`[UIElements] Element bulunamadi: ${selector}`);
+  return el;
+}
+
+function queryAll(selector) {
+  const els = document.querySelectorAll(selector);
+  if (els.length === 0) console.warn(`[UIElements] Koleksiyon bos: ${selector}`);
+  return els;
+}
 
 // ============================================
 // BUTON ELEMENTLERI
 // ============================================
-export const recordToggleBtn = document.getElementById('recordToggle');
-export const monitorToggleBtn = document.getElementById('monitorToggle');
-export const testBtn = document.getElementById('testBtn');
-export const testCountdownEl = document.getElementById('testCountdown');
-export const playBtnEl = document.getElementById('playBtn');
-export const downloadBtnEl = document.getElementById('downloadBtn');
-export const closeDrawerBtn = document.getElementById('closeDrawer');
-export const closeConsoleBtn = document.getElementById('closeConsole');
-export const devConsoleToggle = document.getElementById('devConsoleToggle');
-export const refreshMicsBtn = document.getElementById('refreshMics');
+export const recordToggleBtn = getEl('recordToggle');
+export const monitorToggleBtn = getEl('monitorToggle');
+export const testBtn = getEl('testBtn');
+export const testCountdownEl = getEl('testCountdown');
+export const playBtnEl = getEl('playBtn');
+export const downloadBtnEl = getEl('downloadBtn');
+export const closeDrawerBtn = getEl('closeDrawer');
+export const closeConsoleBtn = getEl('closeConsole');
+export const devConsoleToggle = getEl('devConsoleToggle');
+export const refreshMicsBtn = getEl('refreshMics');
 
 // ============================================
 // TOGGLE & CHECKBOX ELEMENTLERI
 // ============================================
-export const loopbackToggle = document.getElementById('loopbackToggle');
-export const ecCheckbox = document.getElementById('ec');
-export const nsCheckbox = document.getElementById('ns');
-export const agcCheckbox = document.getElementById('agc');
+export const loopbackToggle = getEl('loopbackToggle');
+export const ecCheckbox = getEl('ec');
+export const nsCheckbox = getEl('ns');
+export const agcCheckbox = getEl('agc');
 
 // ============================================
 // SELECTOR & INPUT ELEMENTLERI
 // ============================================
-export const profileSelector = document.getElementById('profileSelector');
-export const micSelector = document.getElementById('micSelector');
+export const profileSelector = getEl('profileSelector');
+export const micSelector = getEl('micSelector');
 
 // ============================================
 // CONTAINER ELEMENTLERI
 // ============================================
-export const opusBitrateContainer = document.getElementById('opusBitrateContainer');
-export const pipelineContainer = document.getElementById('pipelineContainer');
-export const encoderContainer = document.getElementById('encoderContainer');
-export const bufferSizeContainer = document.getElementById('bufferSizeContainer');
-export const bufferInfoText = document.getElementById('bufferInfoText');
-export const timesliceInfoEl = document.getElementById('timesliceInfo');
+export const opusBitrateContainer = getEl('opusBitrateContainer');
+export const pipelineContainer = getEl('pipelineContainer');
+export const encoderContainer = getEl('encoderContainer');
+export const bufferSizeContainer = getEl('bufferSizeContainer');
+export const bufferInfoText = getEl('bufferInfoText');
+export const timesliceInfoEl = getEl('timesliceInfo');
 
 // ============================================
 // PLAYER ELEMENTLERI
 // ============================================
-export const recordingPlayerEl = document.getElementById('recordingPlayer');
+export const recordingPlayerEl = getEl('recordingPlayer');
 export const recordingPlayerCardEl = recordingPlayerEl ? recordingPlayerEl.closest('.card') : null;
 export const recordingPlayerPanelEl = recordingPlayerEl ? recordingPlayerEl.closest('.panel-player') : null;
-export const progressBarEl = document.getElementById('progressBar');
+export const progressBarEl = getEl('progressBar');
 
 // ============================================
 // DRAWER ELEMENTLERI
 // ============================================
-export const settingsDrawer = document.getElementById('settingsDrawer');
-export const drawerOverlay = document.getElementById('drawerOverlay');
-export const devConsoleDrawer = document.getElementById('devConsoleDrawer');
+export const settingsDrawer = getEl('settingsDrawer');
+export const drawerOverlay = getEl('drawerOverlay');
+export const devConsoleDrawer = getEl('devConsoleDrawer');
 
 // ============================================
 // SECTION ELEMENTLERI
 // ============================================
-export const pipelineSection = document.getElementById('pipelineSection');
-export const webrtcSection = document.getElementById('webrtcSection');
-export const developerSection = document.getElementById('developerSection');
+export const pipelineSection = getEl('pipelineSection');
+export const webrtcSection = getEl('webrtcSection');
+export const developerSection = getEl('developerSection');
 
 // ============================================
 // CUSTOM SETTINGS PANEL
 // ============================================
-export const customSettingsToggle = document.getElementById('customSettingsToggle');
-export const customSettingsContent = document.getElementById('customSettingsContent');
-export const customSettingsGrid = document.getElementById('customSettingsGrid');
+export const customSettingsToggle = getEl('customSettingsToggle');
+export const customSettingsContent = getEl('customSettingsContent');
+export const customSettingsGrid = getEl('customSettingsGrid');
 
 // ============================================
 // SIDEBAR & HEADER ELEMENTLERI
 // ============================================
-export const pageTitle = document.getElementById('pageTitle');
-export const pageTitleIcon = document.getElementById('pageTitleIcon');
-export const pageSubtitle = document.getElementById('pageSubtitle');
-export const scenarioBadge = document.getElementById('scenarioBadge');
-export const scenarioTech = document.getElementById('scenarioTech');
-export const headerBrandLink = document.querySelector('.brand-mark');
-export const footerBrandLink = document.querySelector('.site-footer-brand');
-export const footerLinks = document.querySelectorAll('.site-footer-links a');
+export const pageTitle = getEl('pageTitle');
+export const pageTitleIcon = getEl('pageTitleIcon');
+export const pageSubtitle = getEl('pageSubtitle');
+export const scenarioBadge = getEl('scenarioBadge');
+export const scenarioTech = getEl('scenarioTech');
+export const headerBrandLink = queryEl('.brand-mark');
+export const footerBrandLink = queryEl('.site-footer-brand');
+export const footerLinks = queryAll('.site-footer-links a');
 
 // ============================================
 // TIMER ELEMENTLERI
 // ============================================
-export const timerEl = document.getElementById('recordingTimer');
+export const timerEl = getEl('recordingTimer');
 
 // ============================================
 // DATA-SETTING CONTAINER CACHE
 // ============================================
 export const settingContainers = {
   webaudio: document.querySelector('[data-setting="webaudio"]'),
-  pipeline: document.querySelector('[data-setting="pipeline"]'),
-  encoder: document.querySelector('[data-setting="encoder"]'),
+  pipeline: document.querySelector(`[data-setting="${SETTING_NAMES.PIPELINE}"]`),
+  encoder: document.querySelector(`[data-setting="${SETTING_NAMES.ENCODER}"]`),
   buffer: document.querySelector('[data-setting="buffer"]'),
   loopback: document.querySelector('[data-setting="loopback"]'),
-  bitrate: document.querySelector('[data-setting="bitrate"]'),
-  mediaBitrate: document.querySelector('[data-setting="mediaBitrate"]'),
-  timeslice: document.querySelector('[data-setting="timeslice"]')
+  bitrate: document.querySelector(`[data-setting="${SETTING_NAMES.BITRATE}"]`),
+  mediaBitrate: document.querySelector(`[data-setting="${SETTING_NAMES.MEDIA_BITRATE}"]`),
+  timeslice: document.querySelector(`[data-setting="${SETTING_NAMES.TIMESLICE}"]`)
 };
 
 export const timesliceContainerEl = settingContainers.timeslice;
@@ -106,17 +131,17 @@ export const timesliceContainerEl = settingContainers.timeslice;
 // ============================================
 // RADIO BUTON KOLEKSIYONLARI
 // ============================================
-export const pipelineRadios = document.querySelectorAll('input[name="pipeline"]');
-export const encoderRadios = document.querySelectorAll('input[name="encoder"]');
-export const bitrateRadios = document.querySelectorAll('input[name="bitrate"]');
-export const timesliceRadios = document.querySelectorAll('input[name="timeslice"]');
-export const bufferSizeRadios = document.querySelectorAll('input[name="bufferSize"]');
-export const mediaBitrateRadios = document.querySelectorAll('input[name="mediaBitrate"]');
-export const sampleRateRadios = document.querySelectorAll('input[name="sampleRate"]');
-export const channelCountRadios = document.querySelectorAll('input[name="channelCount"]');
+export const pipelineRadios = queryAll(`input[name="${SETTING_NAMES.PIPELINE}"]`);
+export const encoderRadios = queryAll(`input[name="${SETTING_NAMES.ENCODER}"]`);
+export const bitrateRadios = queryAll(`input[name="${SETTING_NAMES.BITRATE}"]`);
+export const timesliceRadios = queryAll(`input[name="${SETTING_NAMES.TIMESLICE}"]`);
+export const bufferSizeRadios = queryAll(`input[name="${SETTING_NAMES.BUFFER_SIZE}"]`);
+export const mediaBitrateRadios = queryAll(`input[name="${SETTING_NAMES.MEDIA_BITRATE}"]`);
+export const sampleRateRadios = queryAll(`input[name="${SETTING_NAMES.SAMPLE_RATE}"]`);
+export const channelCountRadios = queryAll(`input[name="${SETTING_NAMES.CHANNEL_COUNT}"]`);
 
 // ============================================
 // SENARYO & NAV KOLEKSIYONLARI
 // ============================================
-export const scenarioCards = document.querySelectorAll('.scenario-card');
-export const navItems = document.querySelectorAll('.nav-item[data-profile]');
+export const scenarioCards = queryAll('.scenario-card');
+export const navItems = queryAll('.nav-item[data-profile]');

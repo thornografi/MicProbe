@@ -15,7 +15,7 @@ export { log } from './log.js';
 export { formatTime, formatTimestampYYMMDDHHMMSS, toggleDisplay } from './ui.js';
 
 // Stream helpers
-export { stopStreamTracks, getStreamErrorMessage, wrapAsyncHandler } from './stream.js';
+export { stopStreamTracks, getStreamErrorMessage, wrapAsyncHandler, emitStreamWithAnalyser } from './stream.js';
 
 // Audio helpers
 export {
@@ -26,7 +26,13 @@ export {
   createAndPlayActivatorAudio,
   cleanupActivatorAudio,
   isValidDuration,
-  calculateActualBitrate
+  calculateActualBitrate,
+  createAnalyserNode,
+  bytesToKB,
+  calculateLatencyMs,
+  rmsToDb,
+  dbToPercent,
+  bitrateToKbps
 } from './audio.js';
 
 // WAV helpers

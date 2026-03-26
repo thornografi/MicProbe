@@ -29,6 +29,30 @@ const mimeTypes = {
   '.wasm': 'application/wasm'
 };
 
+const CSP_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "media-src 'self' blob:",
+  "worker-src 'self' blob:",
+  "connect-src 'self'"
+].join('; ');
+
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+
+function buildHeaders(contentType) {
+  const headers = { 'Content-Type': contentType, ...SECURITY_HEADERS };
+  if (contentType.startsWith('text/html')) {
+    headers['Content-Security-Policy'] = CSP_POLICY;
+  }
+  return headers;
+}
+
 function safeJoin(baseDir, requestPathname) {
   const normalized = path
     .normalize(requestPathname)
@@ -47,7 +71,7 @@ function safeJoin(baseDir, requestPathname) {
 
 const server = http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.writeHead(405, buildHeaders('text/plain; charset=utf-8'));
     res.end('405 Method Not Allowed');
     return;
   }
@@ -57,7 +81,7 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     pathname = url.pathname;
   } catch {
-    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.writeHead(400, buildHeaders('text/plain; charset=utf-8'));
     res.end('400 Bad Request');
     return;
   }
@@ -67,14 +91,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === '/favicon.ico') {
-    res.writeHead(204);
+    res.writeHead(204, SECURITY_HEADERS);
     res.end();
     return;
   }
 
   const filePath = safeJoin(__dirname, pathname);
   if (!filePath) {
-    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.writeHead(403, buildHeaders('text/plain; charset=utf-8'));
     res.end('403 Forbidden');
     return;
   }
@@ -90,11 +114,11 @@ const server = http.createServer((req, res) => {
           const indexPath = path.join(__dirname, 'index.html');
           fs.readFile(indexPath, (indexErr, indexContent) => {
             if (indexErr) {
-              res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+              res.writeHead(404, buildHeaders('text/plain; charset=utf-8'));
               res.end('404 Not Found');
               return;
             }
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.writeHead(200, buildHeaders('text/html; charset=utf-8'));
             if (req.method === 'HEAD') {
               res.end();
               return;
@@ -103,16 +127,16 @@ const server = http.createServer((req, res) => {
           });
           return;
         }
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.writeHead(404, buildHeaders('text/plain; charset=utf-8'));
         res.end('404 Not Found');
         return;
       }
-      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end(`500 Internal Server Error\n${err.code || err.message}`);
+      res.writeHead(500, buildHeaders('text/plain; charset=utf-8'));
+      res.end(`500 Internal Server Error\n${err.code || 'Unknown error'}`);
       return;
     }
 
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, buildHeaders(contentType));
     if (req.method === 'HEAD') {
       res.end();
       return;

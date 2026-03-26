@@ -4,6 +4,7 @@
  */
 import eventBus from './EventBus.js';
 import { log } from './utils.js';
+import { EVENTS } from './constants.js';
 
 const DEFAULT_CONSTRAINTS = {
   echoCancellation: true,
@@ -66,7 +67,7 @@ export async function requestStream(constraints = {}) {
     if (mismatches.length > 0) {
       const mismatchNames = mismatches.map(m => m.name).join(', ');
       log.warning(`Constraint uyumsuzlugu: ${mismatchNames}`, { mismatches, requested: merged, actual: settings });
-      eventBus.emit('constraint:mismatch', { mismatches, requested: merged, actual: settings });
+      eventBus.emit(EVENTS.CONSTRAINT_MISMATCH, { mismatches, requested: merged, actual: settings });
     }
 
     // Detayli log

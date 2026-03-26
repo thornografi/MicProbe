@@ -36,7 +36,7 @@ tmpclaude-*
 .claude/settings.local.json
 
 # Claude Skills (local, generated)
-.claude/Skills/
+.claude/skills/
 
 # Markdown files
 *.md

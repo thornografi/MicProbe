@@ -16,7 +16,7 @@ import { toggleDisplay, log } from './modules/utils.js';
 import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
 import loopbackManager from './modules/LoopbackManager.js';
-import profileController from './modules/ProfileController.js';
+import profileController from './controllers/ProfileController.js';
 import uiStateManager from './modules/UIStateManager.js';
 import recordingController from './controllers/RecordingController.js';
 import monitoringController from './controllers/MonitoringController.js';

@@ -4,6 +4,7 @@
  * DIP: Bagimliliklar dependency injection ile alinir
  */
 import eventBus from '../modules/EventBus.js';
+import { PIPELINE_TYPES } from '../modules/constants.js';
 import { log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
 
 class RecordingController {
@@ -11,7 +12,7 @@ class RecordingController {
     // Dependency injection ile gelen fonksiyonlar
     this.deps = {
       getConstraints: () => ({}),
-      getPipeline: () => 'direct',
+      getPipeline: () => PIPELINE_TYPES.DIRECT,
       getEncoder: () => 'mediarecorder',
       isWebAudioEnabled: () => false,
       getTimeslice: () => 0,
@@ -56,7 +57,7 @@ class RecordingController {
   async start() {
     const useWebAudio = this.deps.isWebAudioEnabled();
     const constraints = this.deps.getConstraints();
-    const pipeline = useWebAudio ? this.deps.getPipeline() : 'direct';
+    const pipeline = useWebAudio ? this.deps.getPipeline() : PIPELINE_TYPES.DIRECT;
     // Encoder profil tarafindan belirleniyor (artik kullanici secimi yok)
     const encoder = this.deps.getEncoder();
 
@@ -82,7 +83,6 @@ class RecordingController {
 
     } catch (err) {
       log.error('Kayit baslatilamadi', { error: err.message });
-      log.error(`HATA: ${err.message}`);
 
       // Temizlik
       resetState(this.deps);
@@ -103,8 +103,7 @@ class RecordingController {
       log.error('Kayit durdurma hatasi', { error: err.message, stack: err.stack });
     } finally {
       // Her durumda state reset - hata olsa bile UI tutarli kalsin
-      this.deps.setCurrentMode(null);
-      this.deps.uiStateManager?.updateButtonStates();
+      resetState(this.deps);
     }
   }
 }

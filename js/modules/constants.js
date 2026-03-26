@@ -55,18 +55,119 @@ export const LOG = {
   MAX_PER_CATEGORY: 500           // Kategori basina maksimum log sayisi
 };
 
-// === ENCODER ===
-export const ENCODER = {
-  DEFAULT: 'mediarecorder',       // Varsayilan encoder tipi
-  WASM_OPUS: 'wasm-opus',         // WASM Opus encoder
-  PCM_WAV: 'pcm-wav'              // PCM/WAV (raw) encoder
+// === PIPELINE TYPES ===
+export const PIPELINE_TYPES = {
+  DIRECT: 'direct',
+  STANDARD: 'standard',
+  SCRIPTPROCESSOR: 'scriptprocessor',
+  WORKLET: 'worklet'
 };
 
-// === SIGNAL DETECTION (Loopback) ===
-export const SIGNAL = {
-  MAX_WAIT_MS: 2000,              // Sinyal bekleme maksimum suresi
-  POLL_INTERVAL_MS: 50,           // Polling araligi
-  RMS_THRESHOLD: 0.001            // Sinyal algilama RMS esigi
+// === ENCODER TYPES ===
+export const ENCODER_TYPES = {
+  MEDIARECORDER: 'mediarecorder',
+  WASM_OPUS: 'wasm-opus',
+  PCM_WAV: 'pcm-wav',
+  DEFAULT: 'mediarecorder'        // Varsayilan encoder tipi
+};
+
+// === SETTING NAMES (Radio/Checkbox HTML name attribute'lari) ===
+export const SETTING_NAMES = {
+  PIPELINE: 'pipeline',
+  ENCODER: 'encoder',
+  BITRATE: 'bitrate',
+  TIMESLICE: 'timeslice',
+  BUFFER_SIZE: 'bufferSize',
+  MEDIA_BITRATE: 'mediaBitrate',
+  SAMPLE_RATE: 'sampleRate',
+  CHANNEL_COUNT: 'channelCount'
+};
+
+// === UI CSS CLASS NAMES ===
+export const UI_CLASSES = {
+  ACTIVE: 'active',
+  DISABLED: 'ui-disabled',
+  PREPARING: 'preparing',
+  RECORDING: 'recording',
+  PLAYBACK: 'playback',
+  OPEN: 'open',
+  VISIBLE: 'visible',
+  LOCKED: 'locked',
+  HIDDEN: 'hidden',
+  NO_POINTER: 'no-pointer-events'
+};
+
+// === EVENT NAMES ===
+export const EVENTS = {
+  // Stream
+  STREAM_STARTED: 'stream:started',
+  STREAM_STOPPED: 'stream:stopped',
+  // Recorder
+  RECORDER_STARTED: 'recorder:started',
+  RECORDER_STOPPED: 'recorder:stopped',
+  RECORDER_ERROR: 'recorder:error',
+  RECORDING_STARTED: 'recording:started',
+  RECORDING_COMPLETED: 'recording:completed',
+  RECORDING_FAILED: 'recording:failed',
+  // Monitor
+  MONITOR_STARTED: 'monitor:started',
+  MONITOR_STOPPED: 'monitor:stopped',
+  MONITOR_ERROR: 'monitor:error',
+  // Loopback
+  LOOPBACK_STARTED: 'loopback:started',
+  LOOPBACK_STOPPED: 'loopback:stopped',
+  LOOPBACK_REMOTE_STREAM: 'loopback:remoteStream',
+  LOOPBACK_STATS: 'loopback:stats',
+  // Test
+  TEST_RECORDING_STARTED: 'test:recording-started',
+  TEST_RECORDING_STOPPED: 'test:recording-stopped',
+  TEST_PLAYBACK_STARTED: 'test:playback-started',
+  TEST_PLAYBACK_STOPPED: 'test:playback-stopped',
+  TEST_COMPLETED: 'test:completed',
+  TEST_CANCELLED: 'test:cancelled',
+  TEST_COUNTDOWN: 'test:countdown',
+  // Pipeline
+  PIPELINE_ANALYSER_READY: 'pipeline:analyserReady',
+  // Opus
+  OPUS_PROGRESS: 'opus:progress',
+  // Player
+  PLAYER_RESET: 'player:reset',
+  PLAYER_PAUSED: 'player:paused',
+  PLAYER_ENDED: 'player:ended',
+  PLAYER_LOADED: 'player:loaded',
+  // VU Meter
+  VUMETER_STARTED: 'vumeter:started',
+  VUMETER_STOPPED: 'vumeter:stopped',
+  VUMETER_LEVEL: 'vumeter:level',
+  VUMETER_AUDIOCONTEXT: 'vumeter:audiocontext',
+  // Profile
+  PROFILE_CHANGED: 'profile:changed',
+  // Constraint
+  CONSTRAINT_MISMATCH: 'constraint:mismatch',
+  // Status
+  STATUS_CHANGED: 'status:changed',
+  // Log - Genel
+  LOG: 'log',
+  LOG_CLEAR: 'log:clear',
+  LOG_DISPLAY: 'log:display',
+  LOG_ADDED: 'log:added',
+  // Log - Kategoriler
+  LOG_ERROR: 'log:error',
+  LOG_WARNING: 'log:warning',
+  LOG_AUDIO: 'log:audio',
+  LOG_STREAM: 'log:stream',
+  LOG_WEBAUDIO: 'log:webaudio',
+  LOG_RECORDER: 'log:recorder',
+  LOG_SYSTEM: 'log:system',
+  LOG_UI: 'log:ui',
+  LOG_LOOPBACK: 'log:loopback',
+  LOG_PLAYER: 'log:player',
+  LOG_PIPELINE: 'log:pipeline',
+  LOG_ENCODER: 'log:encoder',
+  LOG_DEVICE: 'log:device',
+  LOG_CONSTRAINT: 'log:constraint',
+  LOG_PROFILE: 'log:profile',
+  LOG_VUMETER: 'log:vumeter'
 };
 
 // === LOOPBACK (WebRTC) ===
@@ -79,43 +180,3 @@ export const TEST = {
   DURATION_MS: 7000               // Test suresi (7 saniye)
 };
 
-// === HELPER FUNCTIONS ===
-
-/**
- * Byte'i KB'a cevir
- * @param {number} bytes
- * @returns {number} Kilobytes
- */
-export const bytesToKB = (bytes) => bytes / BYTES.PER_KB;
-
-/**
- * Buffer size'dan latency hesapla
- * @param {number} bufferSize - Buffer boyutu (samples)
- * @param {number} sampleRate - Sample rate (Hz)
- * @returns {number} Latency (ms)
- */
-export const calculateLatencyMs = (bufferSize, sampleRate = AUDIO.DEFAULT_SAMPLE_RATE) =>
-  (bufferSize / sampleRate) * 1000;
-
-/**
- * RMS degerini dB'e cevir
- * @param {number} rms - RMS degeri (0-1 arasi)
- * @returns {number} dB degeri (MIN_DB ile 0 arasi)
- */
-export const rmsToDb = (rms) =>
-  rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
-
-/**
- * dB degerini yuzdeye cevir (VU meter icin)
- * @param {number} dB - dB degeri
- * @returns {number} Yuzde (0-100 arasi)
- */
-export const dbToPercent = (dB) =>
-  Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
-
-/**
- * Bitrate'i kbps formatina cevir
- * @param {number} bps - Bits per second
- * @returns {string} Formatli string (orn: "64 kbps")
- */
-export const bitrateToKbps = (bps) => `${Math.round(bps / 1000)} kbps`;

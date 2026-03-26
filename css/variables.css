@@ -209,9 +209,14 @@
   --z-sticky: 200;
   --z-modal: 300;
   --z-tooltip: 400;
+  --z-drawer-overlay: 900;
+  --z-console-toggle: 900;
+  --z-drawer: 1000;
 
   /* ========== LAYOUT ========== */
   --sidebar-width: 282px;
+  --sidebar-width-compact: calc(var(--sidebar-width) * 0.78);  /* ~220px @ 768-1023px */
+  --sidebar-width-medium: calc(var(--sidebar-width) * 0.89);   /* ~250px @ 1024-1200px */
   --navbar-height: 72px;
   --sidebar-nav-top: 30px;
   --player-time-width: 105px;

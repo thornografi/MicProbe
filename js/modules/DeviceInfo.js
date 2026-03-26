@@ -7,6 +7,7 @@
  */
 import eventBus from './EventBus.js';
 import { stopStreamTracks, log } from './utils.js';
+import { EVENTS } from './constants.js';
 
 // Storage key for persisting mic selection
 const MIC_STORAGE_KEY = 'micprobe_selectedMic';
@@ -39,9 +40,9 @@ class DeviceInfo {
     this._onLoopbackStats = (stats) => this.updateActualBitrate(stats);
 
     // Event dinleyiciler
-    eventBus.on('stream:started', this._onStreamStarted);
-    eventBus.on('profile:changed', this._onProfileChanged);
-    eventBus.on('loopback:stats', this._onLoopbackStats);
+    eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
+    eventBus.on(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
+    eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
   }
 
   /**
@@ -326,9 +327,9 @@ class DeviceInfo {
    * Cleanup - EventBus listener'larini kaldir (memory leak onleme)
    */
   destroy() {
-    eventBus.off('stream:started', this._onStreamStarted);
-    eventBus.off('profile:changed', this._onProfileChanged);
-    eventBus.off('loopback:stats', this._onLoopbackStats);
+    eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
+    eventBus.off(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
+    eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
 
     // devicechange listener cleanup
     if (navigator.mediaDevices?.removeEventListener && this._onDeviceChange) {

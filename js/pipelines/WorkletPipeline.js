@@ -3,9 +3,9 @@
  * OCP: Yeni pipeline eklemek icin BasePipeline'i extend et
  * DRY: Opus worker islemleri BasePipeline'dan miras alinir
  *
- * Graph:
- *   Source -> AudioWorklet -> MuteGain -> AudioContext.destination
- *   (PCM data port uzerinden main thread'e, accumulator ile Opus worker'a)
+ * Graph (encoder'a gore degisir):
+ *   WASM Opus: Source -> AudioWorklet -> MuteGain -> destination (feedback onleme)
+ *   PCM/WAV:   Source -> AudioWorklet -> AnalyserNode (VU) (destination baglantisi yok)
  *
  * Desteklenen encoder'lar:
  * - wasm-opus: WASM Opus encoder (WhatsApp/Telegram pattern)
@@ -19,7 +19,7 @@
 import BasePipeline from './BasePipeline.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from '../modules/WorkletHelper.js';
 import eventBus from '../modules/EventBus.js';
-import { OPUS } from '../modules/constants.js';
+import { ENCODER_TYPES, OPUS } from '../modules/constants.js';
 import { createWavBlob, log } from '../modules/utils.js';
 
 export default class WorkletPipeline extends BasePipeline {
@@ -55,7 +55,7 @@ export default class WorkletPipeline extends BasePipeline {
     this.nodes.worklet = createPassthroughWorkletNode(this.audioContext);
 
     // Encoder moduna gore kurulum
-    if (encoder === 'pcm-wav') {
+    if (encoder === ENCODER_TYPES.PCM_WAV) {
       await this._setupPcmWav();
     } else {
       // WASM Opus encoder kurulumu (varsayilan)
@@ -64,41 +64,32 @@ export default class WorkletPipeline extends BasePipeline {
   }
 
   /**
+   * DRY: Ortak worklet graph kurulumu (PCM ve Opus icin)
+   * enablePcm -> onmessage handler -> analyser -> source connect -> worklet connect
+   */
+  _setupWorkletGraph(onPcmData) {
+    this.nodes.worklet.port.postMessage({ command: 'enablePcm' });
+    this.nodes.worklet.port.onmessage = (e) => {
+      if (e.data.error) {
+        log.error('AudioWorklet hatasi', { error: e.data.error });
+        return;
+      }
+      if (e.data.pcm) onPcmData(e.data.pcm);
+    };
+    this.createAnalyser();
+    this.sourceNode.connect(this.nodes.worklet);
+    this.nodes.worklet.connect(this.analyserNode);
+  }
+
+  /**
    * PCM/WAV encoder kurulumu (raw recording)
-   * Float32 PCM data biriktirip WAV blob olusturur
    */
   async _setupPcmWav() {
     this._pcmChunks = [];
-
-    // Worklet'e PCM gonderimini ac
-    this.nodes.worklet.port.postMessage({ command: 'enablePcm' });
-
-    // Worklet'ten gelen PCM data'yi biriktir
-    this.nodes.worklet.port.onmessage = (e) => {
-      if (e.data.error) {
-        log.error('AudioWorklet hatasi (PCM/WAV)', { error: e.data.error });
-        return;
-      }
-      if (e.data.pcm) {
-        // Float32Array kopyasini sakla
-        this._pcmChunks.push(new Float32Array(e.data.pcm));
-      }
-    };
-
-    // VU Meter icin AnalyserNode olustur
-    this.createAnalyser();
-
-    // Graph kur: Source -> Worklet -> MuteGain -> destination
-    this.sourceNode.connect(this.nodes.worklet);
-
-    // Fan-out: Worklet cikisindan VU Meter'a
-    this.nodes.worklet.connect(this.analyserNode);
-
-    // DRY: Ortak MuteGain pattern
-    this._createMuteGain(this.nodes.worklet);
+    this._setupWorkletGraph(pcm => this._pcmChunks.push(new Float32Array(pcm)));
 
     this.log('AudioWorklet + PCM/WAV grafigi baglandi', {
-      graph: 'Source -> Worklet -> [AnalyserNode (VU) + MuteGain -> Destination]',
+      graph: 'Source -> Worklet -> AnalyserNode (VU)',
       encoder: 'pcm-wav',
       sampleRate: this.audioContext.sampleRate,
       channels: this._channels
@@ -110,38 +101,11 @@ export default class WorkletPipeline extends BasePipeline {
    * DRY: Opus worker BasePipeline._initOpusWorker() ile olusturulur
    */
   async _setupWasmOpus(mediaBitrate) {
-    // DRY: Ortak Opus worker kurulumu (channels parametresi eklendi)
     const opusBitrate = await this._initOpusWorker(mediaBitrate, this._channels);
-
-    // Accumulator buffer olustur (128 sample -> 960 sample biriktir)
     this.accumulator = new Float32Array(OPUS.FRAME_SIZE);
     this.accumulatorIndex = 0;
 
-    // Worklet'e PCM gonderimini ac
-    this.nodes.worklet.port.postMessage({ command: 'enablePcm' });
-
-    // Worklet'ten gelen PCM data'yi dinle + error handler
-    this.nodes.worklet.port.onmessage = (e) => {
-      // Worklet'ten gelen hata mesajlarini yakala
-      if (e.data.error) {
-        log.error('AudioWorklet hatasi', { error: e.data.error });
-        return;
-      }
-      if (e.data.pcm) {
-        this._accumulateAndEncode(e.data.pcm);
-      }
-    };
-
-    // VU Meter icin AnalyserNode olustur
-    this.createAnalyser();
-
-    // Graph kur: Source -> Worklet -> MuteGain -> destination
-    this.sourceNode.connect(this.nodes.worklet);
-
-    // Fan-out: Worklet cikisindan VU Meter'a
-    this.nodes.worklet.connect(this.analyserNode);
-
-    // DRY: Ortak MuteGain pattern
+    this._setupWorkletGraph(pcm => this._accumulateAndEncode(pcm));
     this._createMuteGain(this.nodes.worklet);
 
     this.log('AudioWorklet + WASM Opus grafigi baglandi (fan-out)', {

@@ -1,3 +1,8 @@
+/**
+ * WorkletHelper - AudioWorkletNode basmakalip islemleri
+ * DRY: ensurePassthroughWorklet, createPassthroughWorkletNode tek yerde
+ */
+
 const PASSTHROUGH_PROCESSOR_NAME = 'passthrough-processor';
 const PASSTHROUGH_WORKLET_URL = new URL('../worklets/passthrough-processor.js', import.meta.url).href;
 

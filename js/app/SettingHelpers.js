@@ -2,7 +2,8 @@
  * SettingHelpers - Ayar yonetimi helper fonksiyonlari
  */
 import { SETTINGS } from '../modules/Config.js';
-import { AUDIO, BUFFER, calculateLatencyMs } from '../modules/constants.js';
+import { AUDIO, BUFFER, SETTING_NAMES } from '../modules/constants.js';
+import { calculateLatencyMs } from '../modules/utils.js';
 
 /**
  * Ayar key'ine gore UI elementlerini dondur (checkbox, radio grubu, toggle)
@@ -25,33 +26,25 @@ export function getSettingElements(settingKey) {
   return [];
 }
 
+/** DRY: Ortak disabled + label class toggle */
+function _toggleDisabledWithLabel(el, disabled, className) {
+  el.disabled = disabled;
+  el.closest('label')?.classList.toggle(className, disabled);
+}
+
 /**
  * Ayar elementlerini enable/disable et
  */
 export function setSettingDisabled(settingKey, disabled) {
-  const elements = getSettingElements(settingKey);
-  elements.forEach(el => {
-    el.disabled = disabled;
-    const label = el.closest('label');
-    if (label) {
-      label.classList.toggle('setting-locked', disabled);
-    }
-  });
+  getSettingElements(settingKey).forEach(el => _toggleDisabledWithLabel(el, disabled, 'setting-locked'));
 }
 
 /**
  * Belirli bir secenek (radio/option) enable/disable et
  */
 export function setOptionDisabled(settingKey, optionValue, disabled) {
-  const elements = getSettingElements(settingKey);
-  const targetEl = elements.find(el => el.value === optionValue);
-  if (targetEl) {
-    targetEl.disabled = disabled;
-    const label = targetEl.closest('label');
-    if (label) {
-      label.classList.toggle('option-disabled', disabled);
-    }
-  }
+  const targetEl = getSettingElements(settingKey).find(el => el.value === optionValue);
+  if (targetEl) _toggleDisabledWithLabel(targetEl, disabled, 'option-disabled');
 }
 
 /**

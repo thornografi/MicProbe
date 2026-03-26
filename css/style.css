@@ -1568,7 +1568,7 @@
   backdrop-filter: blur(var(--blur-lg));
   -webkit-backdrop-filter: blur(var(--blur-lg));
   border-left: 1px solid var(--glass-border);
-  z-index: 1000;
+  z-index: var(--z-drawer);
   display: flex;
   flex-direction: column;
   transition: right 0.3s ease;
@@ -1693,7 +1693,7 @@
   top: 50%;
   right: 0;
   transform: translateY(-50%);
-  z-index: 999;
+  z-index: var(--z-console-toggle);
   width: 40px;
   height: 80px;
   display: flex;
@@ -1915,7 +1915,7 @@ body.production .dev-console-toggle-btn {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(var(--blur-xs));
   -webkit-backdrop-filter: blur(var(--blur-xs));
-  z-index: 999;
+  z-index: var(--z-drawer-overlay);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
@@ -2305,7 +2305,7 @@ label.option-disabled::after {
 /* 768-1023px arası: Sidebar kompakt (~78% daraltma) */
 @media (min-width: 768px) and (max-width: 1023px) {
   .sidebar {
-    width: 220px; /* 282px * 0.78 ≈ 220px */
+    width: var(--sidebar-width-compact);
   }
 
   .sidebar .nav-section-title {
@@ -2325,14 +2325,14 @@ label.option-disabled::after {
 
   /* Gradient line - sidebar genişliğiyle senkron */
   .app-layout::before {
-    left: 220px;
+    left: var(--sidebar-width-compact);
   }
 }
 
 /* 1024-1200px arası: Sidebar orta (~89% daraltma) */
 @media (min-width: 1024px) and (max-width: 1200px) {
   .sidebar {
-    width: 250px; /* 282px * 0.89 ≈ 250px */
+    width: var(--sidebar-width-medium);
   }
 
   .sidebar .nav-item {
@@ -2341,7 +2341,7 @@ label.option-disabled::after {
 
   /* Gradient line - sidebar genişliğiyle senkron */
   .app-layout::before {
-    left: 250px;
+    left: var(--sidebar-width-medium);
   }
 }
 
@@ -2379,7 +2379,7 @@ label.option-disabled::after {
     top: var(--header-height); /* base'den geliyor */
     height: calc(100vh - var(--header-height));
     left: calc(-1 * var(--sidebar-width));
-    z-index: 100;
+    z-index: var(--z-dropdown);
     transition: left 0.3s ease;
   }
 

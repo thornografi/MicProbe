@@ -2,6 +2,7 @@
  * Audio Helper Functions - AudioContext, MediaRecorder, Node management
  */
 import eventBus from '../EventBus.js';
+import { AUDIO, BYTES, VU_METER, EVENTS } from '../constants.js';
 
 /**
  * AudioContext factory - Tek noktadan tutarli AudioContext olusturma
@@ -72,7 +73,7 @@ export function disconnectNodes(nodes, logEach = false) {
     try {
       node.disconnect();
       if (logEach) {
-        eventBus.emit('log:webaudio', {
+        eventBus.emit(EVENTS.LOG_WEBAUDIO, {
           message: `${name} disconnect edildi`,
           details: {}
         });
@@ -96,12 +97,12 @@ export async function createAndPlayActivatorAudio(remoteStream, context = 'loopb
 
   try {
     await audio.play();
-    eventBus.emit('log:stream', {
+    eventBus.emit(EVENTS.LOG_STREAM, {
       message: `${context}: Activator audio baslatildi`,
       details: { paused: audio.paused, muted: audio.muted }
     });
   } catch (err) {
-    eventBus.emit('log:warning', {
+    eventBus.emit(EVENTS.LOG_WARNING, {
       message: `${context}: Activator audio hatasi (devam ediliyor)`,
       details: { error: err.message }
     });
@@ -142,3 +143,57 @@ export function calculateActualBitrate(blobSize, durationMs) {
   const bitrate = durationSec > 0 ? Math.round((blobSize * 8) / durationSec) : 0;
   return { bps: bitrate, kbps: (bitrate / 1000).toFixed(1) };
 }
+
+/**
+ * AnalyserNode factory - VU Meter icin tutarli AnalyserNode olusturma
+ * DRY: BasePipeline, Monitor, AudioEngine ayni 3 satiri kullaniyordu
+ * @param {AudioContext} audioContext - AudioContext instance
+ * @returns {AnalyserNode} - Konfigüre edilmiş AnalyserNode
+ */
+export function createAnalyserNode(audioContext) {
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = AUDIO.FFT_SIZE;
+  analyser.smoothingTimeConstant = AUDIO.SMOOTHING_TIME_CONSTANT;
+  return analyser;
+}
+
+// === Hesaplama Fonksiyonlari (constants.js'den taşındı) ===
+
+/**
+ * Byte'i KB'a cevir
+ * @param {number} bytes
+ * @returns {number} Kilobytes
+ */
+export const bytesToKB = (bytes) => bytes / BYTES.PER_KB;
+
+/**
+ * Buffer size'dan latency hesapla
+ * @param {number} bufferSize - Buffer boyutu (samples)
+ * @param {number} sampleRate - Sample rate (Hz)
+ * @returns {number} Latency (ms)
+ */
+export const calculateLatencyMs = (bufferSize, sampleRate = AUDIO.DEFAULT_SAMPLE_RATE) =>
+  (bufferSize / sampleRate) * 1000;
+
+/**
+ * RMS degerini dB'e cevir
+ * @param {number} rms - RMS degeri (0-1 arasi)
+ * @returns {number} dB degeri (MIN_DB ile 0 arasi)
+ */
+export const rmsToDb = (rms) =>
+  rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
+
+/**
+ * dB degerini yuzdeye cevir (VU meter icin)
+ * @param {number} dB - dB degeri
+ * @returns {number} Yuzde (0-100 arasi)
+ */
+export const dbToPercent = (dB) =>
+  Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
+
+/**
+ * Bitrate'i kbps formatina cevir
+ * @param {number} bps - Bits per second
+ * @returns {string} Formatli string (orn: "64 kbps")
+ */
+export const bitrateToKbps = (bps) => `${Math.round(bps / 1000)} kbps`;

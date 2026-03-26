@@ -4,9 +4,10 @@
  * DRY: Tekrarlanan profil islemleri merkezi
  */
 
-import eventBus from './EventBus.js';
-import { PROFILES, SETTINGS, PROFILE_TIPS } from './Config.js';
-import { toggleDisplay, needsBufferSetting, usesWasmOpus, shouldDisableTimeslice, log } from './utils.js';
+import eventBus from '../modules/EventBus.js';
+import { PROFILES, SETTINGS, PROFILE_TIPS } from '../modules/Config.js';
+import { toggleDisplay, needsBufferSetting, usesWasmOpus, shouldDisableTimeslice, log } from '../modules/utils.js';
+import { PIPELINE_TYPES, EVENTS } from '../modules/constants.js';
 
 /**
  * Dinamik kilit politikasi - DRY: Tek noktadan kilit kurallari
@@ -108,8 +109,6 @@ class ProfileController {
 
     // Mevcut profil ID'sini guncelle
     this.currentProfileId = profileId;
-    this.applyProfileTheme(profileId);
-
     const values = profile.values;
     const lockedSettings = profile.lockedSettings || [];
     const editableSettings = profile.editableSettings || [];
@@ -122,9 +121,6 @@ class ProfileController {
     const currentMode = this.getState.currentMode();
     const wasActive = currentMode !== null;
     const previousMode = currentMode;
-
-    // Profil bazli bireysel ayar gorunurlugunu guncelle
-    this.updateSettingVisibility(profile);
 
     // Aktif stream varsa once durdur
     if (wasActive) {
@@ -151,7 +147,7 @@ class ProfileController {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         });
       } else if (setting.type === 'enum') {
-        const radio = elements.find(el => el.value == value);
+        const radio = elements.find(el => String(el.value) === String(value));
         if (radio) {
           radio.checked = true;
           radio.dispatchEvent(new Event('change', { bubbles: true }));
@@ -163,7 +159,7 @@ class ProfileController {
     // Bu siralama kritik: dispatchEvent'ler handler'lari tetikliyor ve
     // o handler'lar DOM'dan deger okuyor - onlar bittikten sonra
     // dogru Config degerlerini emit ediyoruz
-    eventBus.emit('profile:changed', { profile: profileId, values, category: profile.category });
+    eventBus.emit(EVENTS.PROFILE_CHANGED, { profile: profileId, values, category: profile.category });
 
     // Locked/Editable constraint'leri uygula
     this.applyProfileConstraints(profile);
@@ -207,17 +203,6 @@ class ProfileController {
         await this.callbacks.startRecording();
       }
     }
-  }
-
-  /**
-   * Profil tema token'larini uygula (UI accent renkleri)
-   * Not: Per-profile tema destegi kaldirildi, varsayilan degerler kullaniliyor
-   */
-  applyProfileTheme() {
-    if (typeof document === 'undefined') return;
-    const root = document.documentElement;
-    root.style.setProperty('--profile-accent', 'var(--color-accent-text)');
-    root.style.setProperty('--profile-accent-glow', 'rgba(var(--color-accent-text-rgb), 0.55)');
   }
 
   /**
@@ -394,11 +379,11 @@ class ProfileController {
     }
 
     // Pipeline bilgisi
-    if (profile.values.pipeline === 'scriptprocessor') {
+    if (profile.values.pipeline === PIPELINE_TYPES.SCRIPTPROCESSOR) {
       techParts.push('ScriptProcessor');
-    } else if (profile.values.pipeline === 'worklet') {
+    } else if (profile.values.pipeline === PIPELINE_TYPES.WORKLET) {
       techParts.push('AudioWorklet');
-    } else if (profile.values.pipeline === 'standard') {
+    } else if (profile.values.pipeline === PIPELINE_TYPES.STANDARD) {
       techParts.push('Standard');
     }
 

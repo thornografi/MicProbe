@@ -4,7 +4,7 @@
  */
 import eventBus from './EventBus.js';
 import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log } from './utils.js';
-import { BYTES } from './constants.js';
+import { BYTES, EVENTS } from './constants.js';
 
 // Clean Code: Tekrarlayan SVG iconlari constant olarak
 const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -42,8 +42,8 @@ class Player {
     this._onRecordingStarted = () => this.reset();
 
     // Event dinle
-    eventBus.on('recording:completed', this._onRecordingCompleted);
-    eventBus.on('recording:started', this._onRecordingStarted);
+    eventBus.on(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.on(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
   }
 
   bindEvents() {
@@ -121,7 +121,7 @@ class Player {
       log.error('Player: duration probe hatasi (kritik degil)', { error: err.message });
     });
 
-    eventBus.emit('player:loaded', { filename, size: blob.size });
+    eventBus.emit(EVENTS.PLAYER_LOADED, { filename, size: blob.size });
   }
 
   reset() {
@@ -158,7 +158,7 @@ class Player {
       this.noRecordingEl.style.display = 'block';
     }
 
-    eventBus.emit('player:reset');
+    eventBus.emit(EVENTS.PLAYER_RESET);
   }
 
   async probeDuration(blob, mimeType) {
@@ -228,7 +228,7 @@ class Player {
 
     this.syncPlayButtonIcon();
 
-    eventBus.emit('player:paused');
+    eventBus.emit(EVENTS.PLAYER_PAUSED);
   }
 
   togglePlay() {
@@ -354,7 +354,7 @@ class Player {
 
     this.syncPlayButtonIcon();
 
-    eventBus.emit('player:ended');
+    eventBus.emit(EVENTS.PLAYER_ENDED);
   }
 
   onLoaded() {
@@ -451,8 +451,8 @@ class Player {
       this.currentUrl = null;
     }
 
-    eventBus.off('recording:completed', this._onRecordingCompleted);
-    eventBus.off('recording:started', this._onRecordingStarted);
+    eventBus.off(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
   }
 }
 

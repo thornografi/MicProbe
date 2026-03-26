@@ -5,8 +5,8 @@
  */
 import eventBus from './EventBus.js';
 import { requestStream } from './StreamHelper.js';
-import { createAudioContext, getAudioContextOptions, stopStreamTracks, createMediaRecorder, usesWebAudio, usesWasmOpus, usesMediaRecorder, usesPcmWav, getStreamErrorMessage, formatTimestampYYMMDDHHMMSS, calculateActualBitrate, disconnectNodes, log } from './utils.js';
-import { BUFFER, bytesToKB } from './constants.js';
+import { createAudioContext, getAudioContextOptions, stopStreamTracks, createMediaRecorder, usesWebAudio, usesWasmOpus, usesMediaRecorder, usesPcmWav, getStreamErrorMessage, formatTimestampYYMMDDHHMMSS, calculateActualBitrate, disconnectNodes, log, bytesToKB, emitStreamWithAnalyser } from './utils.js';
+import { BUFFER, ENCODER_TYPES, PIPELINE_TYPES, EVENTS } from './constants.js';
 import { createPipeline, isPipelineSupported } from '../pipelines/PipelineFactory.js';
 import { SETTINGS } from './Config.js';
 
@@ -33,7 +33,7 @@ class Recorder {
 
     // Pipeline: WebAudio graph tipi (direct | standard | scriptprocessor | worklet)
     // Encoder: Kayit formati (mediarecorder | wasm-opus)
-    this.pipelineType = 'direct';
+    this.pipelineType = PIPELINE_TYPES.DIRECT;
     this.encoder = 'mediarecorder';
     this.startTime = null; // Kayit baslangic zamani (bitrate hesaplama icin)
 
@@ -67,18 +67,18 @@ class Recorder {
     }
   }
 
-  async start(constraints, pipelineParam = 'direct', encoderParam = 'mediarecorder', timeslice = 0, bufferSize = BUFFER.DEFAULT_SIZE, mediaBitrate = 0) {
+  async start(constraints, pipelineParam = PIPELINE_TYPES.DIRECT, encoderParam = 'mediarecorder', timeslice = 0, bufferSize = BUFFER.DEFAULT_SIZE, mediaBitrate = 0) {
     if (this.isRecording) return;
 
     // Pipeline ve encoder validasyonu (OCP: PipelineFactory destekli kontrol)
     const allowedEncoders = new Set(['mediarecorder', 'wasm-opus', 'pcm-wav']);
-    this.pipelineType = isPipelineSupported(pipelineParam) ? pipelineParam : 'direct';
+    this.pipelineType = isPipelineSupported(pipelineParam) ? pipelineParam : PIPELINE_TYPES.DIRECT;
     this.encoder = allowedEncoders.has(encoderParam) ? encoderParam : 'mediarecorder';
 
     // PCM/WAV encoder sadece worklet pipeline ile calisir
-    if (usesPcmWav(this.encoder) && this.pipelineType !== 'worklet') {
-      log.warning('PCM/WAV encoder worklet pipeline gerektiriyor, pipeline degistiriliyor', { requestedPipeline: this.pipelineType, newPipeline: 'worklet' });
-      this.pipelineType = 'worklet';
+    if (usesPcmWav(this.encoder) && this.pipelineType !== PIPELINE_TYPES.WORKLET) {
+      log.warning('PCM/WAV encoder worklet pipeline gerektiriyor, pipeline degistiriliyor', { requestedPipeline: this.pipelineType, newPipeline: PIPELINE_TYPES.WORKLET });
+      this.pipelineType = PIPELINE_TYPES.WORKLET;
     }
     this.timeslice = timeslice;
     this.mediaBitrate = mediaBitrate; // Hedef bitrate (MediaRecorder veya WASM Opus icin)
@@ -141,11 +141,6 @@ class Recorder {
           encoder: this.encoder
         });
 
-        // VU Meter icin pipeline'dan analyser'i gonder (encode oncesi islenmiş sinyal)
-        if (this.pipelineStrategy.analyserNode) {
-          eventBus.emit('pipeline:analyserReady', this.pipelineStrategy.analyserNode);
-        }
-
         // MediaRecorder icin WebAudio'dan gelen stream'i kullan
         if (needsMediaRecorder) {
           recordStream = this.destinationNode.stream;
@@ -153,18 +148,12 @@ class Recorder {
       } else {
         // Direct pipeline - VU Meter icin shared AudioContext kullan
         await this._ensureAudioContext();
-        this.pipelineStrategy = createPipeline('direct', this.audioContext, null, null);
+        this.pipelineStrategy = createPipeline(PIPELINE_TYPES.DIRECT, this.audioContext, null, null);
         await this.pipelineStrategy.setup({ stream: this.stream });
-
-        // VU Meter icin pipeline'dan analyser'i gonder
-        if (this.pipelineStrategy.analyserNode) {
-          eventBus.emit('pipeline:analyserReady', this.pipelineStrategy.analyserNode);
-        }
       }
 
-      // Stream event'i gonder (DeviceInfo ve LogManager dinler)
-      // pipeline:analyserReady SONRA emit edilir - VuMeter guard ile gereksiz baglanti onlenir
-      eventBus.emit('stream:started', this.stream);
+      // VU Meter + Stream event'leri (siralama garanti: analyserReady ONCE, stream:started SONRA)
+      emitStreamWithAnalyser(this.pipelineStrategy?.analyserNode, this.stream);
 
       // ═══════════════════════════════════════════════════════════════
       // ENCODER KURULUMU (MediaRecorder, WASM Opus veya PCM/WAV)
@@ -198,8 +187,8 @@ class Recorder {
       const modeText = `${pipelineLabel} + ${encoderLabel}`;
       const timesliceText = this.timeslice > 0 ? `, Timeslice: ${this.timeslice}ms` : '';
       log.recorder(`KAYIT basladi (${modeText}${timesliceText})`);
-      eventBus.emit('recorder:started', { encoder: this.encoder, pipeline: this.pipelineType });
-      eventBus.emit('recording:started');
+      eventBus.emit(EVENTS.RECORDER_STARTED, { encoder: this.encoder, pipeline: this.pipelineType });
+      eventBus.emit(EVENTS.RECORDING_STARTED);
 
     } catch (err) {
       // Spesifik hata mesajlari (DRY: utils.js helper kullaniliyor)
@@ -211,7 +200,7 @@ class Recorder {
       // NOT: stream:stopped EMIT ETME - stream:started henuz emit edilmedi
       // (stream:started bu try blogunun sonunda, catch oncesinde)
       // Bu balance bozulmasi ve yanlis pozitif uyarilari onler
-      eventBus.emit('recorder:error', err);
+      eventBus.emit(EVENTS.RECORDER_ERROR, err);
       throw err;
     }
   }
@@ -316,7 +305,7 @@ class Recorder {
       try {
         const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
         const blob = new Blob(this.chunks, { type: mimeType });
-        const suffix = this.pipelineType === 'direct' ? '' : `_${this.pipelineType}`;
+        const suffix = this.pipelineType === PIPELINE_TYPES.DIRECT ? '' : `_${this.pipelineType}`;
         const filename = `kayit${suffix}_${formatTimestampYYMMDDHHMMSS()}.webm`;
 
         // Gercek bitrate hesapla (DRY: helper kullan)
@@ -330,7 +319,7 @@ class Recorder {
           : `Gercek bitrate: ~${actualBitrateKbps} kbps`;
 
         log.recorder(`Kayit tamamlandi: ${bytesToKB(blob.size).toFixed(1)} KB (${bitrateComparison})`);
-        eventBus.emit('recording:completed', {
+        eventBus.emit(EVENTS.RECORDING_COMPLETED, {
           blob,
           mimeType,
           filename,
@@ -351,7 +340,7 @@ class Recorder {
         this.mediaRecorder = null;
       } catch (err) {
         log.error('MediaRecorder onstop hatasi', { error: err.message, stack: err.stack });
-        eventBus.emit('recording:failed', { error: err.message });
+        eventBus.emit(EVENTS.RECORDING_FAILED, { error: err.message });
         this.mediaRecorder = null;
       }
     };
@@ -402,7 +391,7 @@ class Recorder {
     if (!this.isRecording) return;
 
     // PCM/WAV encoder modu
-    if (usesPcmWav(this.encoder) && this.pipelineStrategy?.getEncoderMode?.() === 'pcm-wav') {
+    if (usesPcmWav(this.encoder) && this.pipelineStrategy?.getEncoderMode?.() === ENCODER_TYPES.PCM_WAV) {
       try {
         log.recorder('PCM/WAV encoding tamamlaniyor...');
 
@@ -416,7 +405,7 @@ class Recorder {
         const theoreticalBitrate = sampleRate * 1 * 16; // mono, 16-bit
 
         log.recorder(`Kayit tamamlandi: ${bytesToKB(result.blob.size).toFixed(1)} KB (${result.sampleCount} sample, ${durationSec.toFixed(1)}s)`);
-        eventBus.emit('recording:completed', {
+        eventBus.emit(EVENTS.RECORDING_COMPLETED, {
           blob: result.blob,
           mimeType: 'audio/wav',
           filename: `kayit_raw_${formatTimestampYYMMDDHHMMSS()}.wav`,
@@ -452,7 +441,7 @@ class Recorder {
         const { bps: actualBitrate, kbps: actualBitrateKbps } = calculateActualBitrate(result.blob.size, durationMs);
 
         log.recorder(`Kayit tamamlandi: ${bytesToKB(result.blob.size).toFixed(1)} KB (Gercek: ~${actualBitrateKbps} kbps, ${result.pageCount} page)`);
-        eventBus.emit('recording:completed', {
+        eventBus.emit(EVENTS.RECORDING_COMPLETED, {
           blob: result.blob,
           mimeType: 'audio/ogg; codecs=opus',
           filename: `kayit_wasm_opus_${formatTimestampYYMMDDHHMMSS()}.ogg`,
@@ -475,8 +464,17 @@ class Recorder {
         await this.cleanupWebAudio();
       }
     } else if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      // MediaRecorder modu
+      // MediaRecorder modu - onstop callback'i bekle (TestRecordingFlow pattern)
+      const stopPromise = new Promise(resolve => {
+        const originalOnstop = this.mediaRecorder.onstop;
+        this.mediaRecorder.onstop = async () => {
+          if (originalOnstop) await originalOnstop();
+          resolve();
+        };
+      });
+
       this.mediaRecorder.stop();
+      await stopPromise;
     }
 
     // Stream durdur (DRY: stopStreamTracks kullan)
@@ -485,9 +483,9 @@ class Recorder {
 
     this.isRecording = false;
 
-    eventBus.emit('stream:stopped');
+    eventBus.emit(EVENTS.STREAM_STOPPED);
     log.recorder('KAYIT durduruldu');
-    eventBus.emit('recorder:stopped', { encoder: this.encoder, pipeline: this.pipelineType });
+    eventBus.emit(EVENTS.RECORDER_STOPPED, { encoder: this.encoder, pipeline: this.pipelineType });
   }
 
   getStream() {

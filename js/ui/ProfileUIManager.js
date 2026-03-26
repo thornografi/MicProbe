@@ -4,7 +4,7 @@
  * DIP: Bagimliliklar dependency injection ile alinir
  */
 import eventBus from '../modules/EventBus.js';
-import profileController from '../modules/ProfileController.js';
+import profileController from '../controllers/ProfileController.js';
 import { PROFILES } from '../modules/Config.js';
 import { log } from '../modules/utils.js';
 
@@ -60,19 +60,38 @@ class ProfileUIManager {
 
   /**
    * Event listener'lari bagla
+   * Memory leak fix: Handler referanslari saklanir, destroy()'da kaldirilir
    */
   _bindEvents() {
     const { scenarioCards, navItems } = this.elements;
 
+    // Handler referanslarini sakla (cleanup icin)
+    this._cardHandlers = [];
+    this._navHandlers = [];
+
     // Senaryo kartlarina tiklama
     scenarioCards.forEach(card => {
-      card.addEventListener('click', () => this.handleProfileSelect(card.dataset.profile));
+      const handler = () => this.handleProfileSelect(card.dataset.profile);
+      card.addEventListener('click', handler);
+      this._cardHandlers.push({ el: card, handler });
     });
 
     // Sidebar nav-item tiklama
     navItems.forEach(item => {
-      item.addEventListener('click', () => this.handleProfileSelect(item.dataset.profile));
+      const handler = () => this.handleProfileSelect(item.dataset.profile);
+      item.addEventListener('click', handler);
+      this._navHandlers.push({ el: item, handler });
     });
+  }
+
+  /**
+   * Cleanup - Event listener'larini kaldir (memory leak onleme)
+   */
+  destroy() {
+    this._cardHandlers?.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+    this._navHandlers?.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+    this._cardHandlers = [];
+    this._navHandlers = [];
   }
 
   /**
@@ -106,24 +125,37 @@ class ProfileUIManager {
     }
   }
 
+  /** DRY: Element listesinde dataset.profile ile secim toggle */
+  _updateSelectionState(elements, profileId, className) {
+    let activeElement = null;
+    elements.forEach(el => {
+      const isActive = el.dataset.profile === profileId;
+      el.classList.toggle(className, isActive);
+      if (isActive) activeElement = el;
+    });
+    return activeElement;
+  }
+
+  /** DRY: Tech string + detection tooltip uygula */
+  _applyTechTooltip(element, profileId) {
+    element.textContent = profileController.getTechString(profileId);
+    const tooltip = profileController.getDetectionTooltip(profileId);
+    if (tooltip) {
+      element.title = tooltip;
+      element.style.cursor = 'help';
+    }
+  }
+
   /**
    * Senaryo kart secimini guncelle
-   * @param {string} profileId - Aktif profil ID'si
    */
   updateScenarioCardSelection(profileId) {
-    const { scenarioCards } = this.elements;
-
-    scenarioCards.forEach(card => {
-      const cardProfile = card.dataset.profile;
-      card.classList.toggle('selected', cardProfile === profileId);
-    });
-
+    this._updateSelectionState(this.elements.scenarioCards, profileId, 'selected');
     this.updateScenarioTechInfo(profileId);
   }
 
   /**
    * Senaryo teknik bilgisini guncelle (badge ve tech text)
-   * @param {string} profileId - Profil ID'si
    */
   updateScenarioTechInfo(profileId) {
     const { scenarioTech, scenarioBadge } = this.elements;
@@ -133,34 +165,15 @@ class ProfileUIManager {
     if (!profile) return;
 
     scenarioBadge.textContent = profile.label;
-
-    // DRY: ProfileController'daki buildTechParts kullan
-    scenarioTech.textContent = profileController.getTechString(profileId);
-
-    // Detection tooltip ekle
-    const detectionTooltip = profileController.getDetectionTooltip(profileId);
-    if (detectionTooltip) {
-      scenarioTech.title = detectionTooltip;
-      scenarioTech.style.cursor = 'help';
-    }
+    this._applyTechTooltip(scenarioTech, profileId);
   }
 
   /**
    * Sidebar nav item secimini guncelle
-   * @param {string} profileId - Aktif profil ID'si
    */
   updateNavItemSelection(profileId) {
     const { navItems, pageTitle, pageTitleIcon } = this.elements;
-    let activeItem = null;
-
-    navItems.forEach(item => {
-      const itemProfile = item.dataset.profile;
-      const isActive = itemProfile === profileId;
-      item.classList.toggle('active', isActive);
-      if (isActive) {
-        activeItem = item;
-      }
-    });
+    const activeItem = this._updateSelectionState(navItems, profileId, 'active');
 
     // Page header'i guncelle
     const profile = PROFILES[profileId];
@@ -181,27 +194,16 @@ class ProfileUIManager {
       }
     }
 
-    // Tech info'yu subtitle olarak goster
     this.updatePageSubtitle(profileId);
   }
 
   /**
-   * Page subtitle guncelle - DRY: ProfileController.getTechString() kullanir
-   * Detection bilgisi tooltip olarak eklenir
-   * @param {string} profileId - Profil ID'si
+   * Page subtitle guncelle
    */
   updatePageSubtitle(profileId) {
     const { pageSubtitle } = this.elements;
     if (!pageSubtitle) return;
-
-    pageSubtitle.textContent = profileController.getTechString(profileId);
-
-    // Detection tooltip ekle
-    const detectionTooltip = profileController.getDetectionTooltip(profileId);
-    if (detectionTooltip) {
-      pageSubtitle.title = detectionTooltip;
-      pageSubtitle.style.cursor = 'help';
-    }
+    this._applyTechTooltip(pageSubtitle, profileId);
   }
 
   /**

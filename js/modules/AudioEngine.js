@@ -9,7 +9,7 @@
  */
 import eventBus from './EventBus.js';
 import { AUDIO } from './constants.js';
-import { log } from './utils.js';
+import { log, createAnalyserNode } from './utils.js';
 
 class AudioEngine {
   constructor() {
@@ -47,10 +47,8 @@ class AudioEngine {
         latencyHint: 'interactive'
       });
 
-      // AnalyserNode onceden olustur
-      this.analyserNode = this.audioContext.createAnalyser();
-      this.analyserNode.fftSize = this.fftSize;
-      this.analyserNode.smoothingTimeConstant = AUDIO.SMOOTHING_TIME_CONSTANT;
+      // DRY: AnalyserNode factory kullan
+      this.analyserNode = createAnalyserNode(this.audioContext);
 
       this.isWarmedUp = true;
 

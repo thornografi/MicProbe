@@ -3,6 +3,7 @@
  * OCP: Yeni durumlar eklenebilir
  */
 import eventBus from './EventBus.js';
+import { PIPELINE_TYPES, EVENTS } from './constants.js';
 
 class StatusManager {
   constructor(elementId) {
@@ -28,28 +29,33 @@ class StatusManager {
       '--status-dot-shadow'
     ];
 
-    // Event dinle
-    eventBus.on('recorder:started', () => this.setStatus('recording'));
-    eventBus.on('recorder:stopped', () => this.setStatus('idle'));
-    eventBus.on('monitor:started', (data) => {
-      if (data?.loopback) {
-        this.setStatus('loopback');
-      } else if (data.mode === 'scriptprocessor' || data.mode === 'worklet') {
-        this.setStatus('webaudio');
-      } else {
-        this.setStatus('monitoring');
-      }
-    });
-    eventBus.on('monitor:stopped', () => this.setStatus('idle'));
-    eventBus.on('loopback:started', () => this.setStatus('loopback'));
-    eventBus.on('loopback:stopped', () => this.setStatus('idle'));
+    // Event handler referanslari (destroy icin)
+    this._handlers = {
+      [EVENTS.RECORDER_STARTED]: () => this.setStatus('recording'),
+      [EVENTS.RECORDER_STOPPED]: () => this.setStatus('idle'),
+      [EVENTS.MONITOR_STARTED]: (data) => {
+        if (data?.loopback) {
+          this.setStatus('loopback');
+        } else if (data?.mode === PIPELINE_TYPES.SCRIPTPROCESSOR || data?.mode === PIPELINE_TYPES.WORKLET) {
+          this.setStatus('webaudio');
+        } else {
+          this.setStatus('monitoring');
+        }
+      },
+      [EVENTS.MONITOR_STOPPED]: () => this.setStatus('idle'),
+      [EVENTS.LOOPBACK_STARTED]: () => this.setStatus('loopback'),
+      [EVENTS.LOOPBACK_STOPPED]: () => this.setStatus('idle'),
+      [EVENTS.TEST_RECORDING_STARTED]: () => this.setStatus('testing'),
+      [EVENTS.TEST_PLAYBACK_STARTED]: () => this.setStatus('testing'),
+      [EVENTS.TEST_COMPLETED]: () => this.setStatus('idle'),
+      [EVENTS.TEST_CANCELLED]: () => this.setStatus('idle'),
+      [EVENTS.TEST_PLAYBACK_STOPPED]: () => this.setStatus('idle')
+    };
 
-    // Test event'leri
-    eventBus.on('test:recording-started', () => this.setStatus('testing'));
-    eventBus.on('test:playback-started', () => this.setStatus('testing'));
-    eventBus.on('test:completed', () => this.setStatus('idle'));
-    eventBus.on('test:cancelled', () => this.setStatus('idle'));
-    eventBus.on('test:playback-stopped', () => this.setStatus('idle'));
+    // Event dinle
+    Object.entries(this._handlers).forEach(([event, handler]) => {
+      eventBus.on(event, handler);
+    });
   }
 
   setStatus(status) {
@@ -68,11 +74,21 @@ class StatusManager {
       this.el.innerHTML = `<span class="status-dot"></span>${config.text}`;
     }
 
-    eventBus.emit('status:changed', { status, text: config.text });
+    eventBus.emit(EVENTS.STATUS_CHANGED, { status, text: config.text });
   }
 
   getStatus() {
     return this.currentStatus;
+  }
+
+  /**
+   * Event listener'lari temizle
+   */
+  destroy() {
+    Object.entries(this._handlers).forEach(([event, handler]) => {
+      eventBus.off(event, handler);
+    });
+    this._handlers = {};
   }
 
   // OCP: Yeni durum eklemek icin

@@ -6,7 +6,7 @@
 
 import eventBus from './EventBus.js';
 import { createAudioContext, getAudioContextOptions, stopStreamTracks, createAndPlayActivatorAudio, cleanupActivatorAudio, disconnectNodes, log } from './utils.js';
-import { DELAY, SIGNAL, BUFFER, LOOPBACK } from './constants.js';
+import { DELAY, BUFFER, LOOPBACK, PIPELINE_TYPES, EVENTS } from './constants.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from './WorkletHelper.js';
 
 /**
@@ -233,9 +233,15 @@ class LoopbackManager {
    */
   async _waitForIceConnection() {
     return new Promise((resolve, reject) => {
+      let pollTimer = null;
+
       const cleanupListeners = () => {
         this.pc1.oniceconnectionstatechange = null;
         this.pc2.oniceconnectionstatechange = null;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
       };
 
       const timeout = setTimeout(() => {
@@ -270,7 +276,7 @@ class LoopbackManager {
           cleanupListeners();
           reject(new Error('ICE connection failed'));
         } else {
-          setTimeout(checkConnection, 100);
+          pollTimer = setTimeout(checkConnection, 100);
         }
       };
 
@@ -348,7 +354,7 @@ class LoopbackManager {
           const requestedKbps = (requestedBitrate / 1000).toFixed(0);
 
           // Stats event'i her zaman emit et (UI icin)
-          eventBus.emit('loopback:stats', {
+          eventBus.emit(EVENTS.LOOPBACK_STATS, {
             requestedBitrate,
             actualBitrate,
             requestedKbps,
@@ -400,6 +406,17 @@ class LoopbackManager {
       this.signalCheckTimeout = null;
     }
 
+    // ICE handler'lari temizle - close() sonrasi gec gelen event'lerin referans tutmasini engelle
+    if (this.pc1) {
+      this.pc1.onicecandidate = null;
+      this.pc1.oniceconnectionstatechange = null;
+    }
+    if (this.pc2) {
+      this.pc2.onicecandidate = null;
+      this.pc2.oniceconnectionstatechange = null;
+      this.pc2.ontrack = null;
+    }
+
     this.pc1?.close();
     this.pc2?.close();
     this.pc1 = null;
@@ -409,7 +426,11 @@ class LoopbackManager {
     this.remoteStream = null;
 
     if (this.audioCtx) {
-      await this.audioCtx.close();
+      try {
+        await this.audioCtx.close();
+      } catch (err) {
+        log.error('Loopback: AudioContext kapatma hatasi', { error: err.message });
+      }
       this.audioCtx = null;
     }
 
@@ -477,13 +498,13 @@ class LoopbackManager {
       throw new Error('Loopback Monitor: remote stream yok');
     }
 
-    const { mode: requestedMode = 'standard', bufferSize = BUFFER.DEFAULT_SIZE } = options;
+    const { mode: requestedMode = PIPELINE_TYPES.STANDARD, bufferSize = BUFFER.DEFAULT_SIZE } = options;
 
     const safeMode = (() => {
       // Loopback monitoring icin izin verilen modlar (ScriptProcessor YASAK - sadece record icin)
-      const allowed = new Set(['direct', 'standard', 'worklet']);
-      if (!allowed.has(requestedMode)) return 'standard';
-      if (requestedMode === 'worklet' && !this.workletSupported) return 'standard';
+      const allowed = new Set([PIPELINE_TYPES.DIRECT, PIPELINE_TYPES.STANDARD, PIPELINE_TYPES.WORKLET]);
+      if (!allowed.has(requestedMode)) return PIPELINE_TYPES.STANDARD;
+      if (requestedMode === PIPELINE_TYPES.WORKLET && !this.workletSupported) return PIPELINE_TYPES.STANDARD;
       return requestedMode;
     })();
 
@@ -504,7 +525,7 @@ class LoopbackManager {
 
     const delaySeconds = this.monitorDelay.delayTime.value;
 
-    if (safeMode === 'worklet') {
+    if (safeMode === PIPELINE_TYPES.WORKLET) {
       await ensurePassthroughWorklet(this.monitorCtx);
       this.monitorWorklet = createPassthroughWorkletNode(this.monitorCtx);
       this.monitorSrc.connect(this.monitorWorklet);
@@ -533,7 +554,7 @@ class LoopbackManager {
       graph: graphByMode[safeMode] || graphByMode.standard
     });
 
-    eventBus.emit('monitor:started', { mode: safeMode, delaySeconds, loopback: true });
+    eventBus.emit(EVENTS.MONITOR_STARTED, { mode: safeMode, delaySeconds, loopback: true });
     log.loopback(`Loopback monitor aktif (${safeMode} + ${delaySeconds.toFixed(1)}s Delay -> Speaker)`);
   }
 

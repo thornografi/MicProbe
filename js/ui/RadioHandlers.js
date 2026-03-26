@@ -5,6 +5,7 @@
 
 import { RadioGroupHandler } from './RadioGroupHandler.js';
 import { toggleDisplay, needsBufferSetting } from '../modules/utils.js';
+import { EVENTS } from '../modules/constants.js';
 
 /**
  * Checkbox logger'larini kaydet
@@ -145,8 +146,10 @@ export function registerLoopbackToggle(loopbackToggle, callbacks) {
     onLabel: 'AKTIF',
     offLabel: 'PASIF',
     onChange: (enabled) => {
-      // Bitrate seciciyi goster/gizle
+      // Bitrate seciciyi ve Remote VU container'i goster/gizle
       toggleDisplay(opusBitrateContainer, enabled);
+      const remoteVuContainer = document.getElementById('remoteVuContainer');
+      toggleDisplay(remoteVuContainer, enabled);
       updateAllStates();
 
       // DeviceInfo panelini guncelle
@@ -154,7 +157,7 @@ export function registerLoopbackToggle(loopbackToggle, callbacks) {
       if (profile) {
         const currentBitrate = parseInt(document.querySelector('input[name="bitrate"]:checked')?.value || '0', 10);
         const currentMediaBitrate = parseInt(document.querySelector('input[name="mediaBitrate"]:checked')?.value || '0', 10);
-        eventBus.emit('profile:changed', {
+        eventBus.emit(EVENTS.PROFILE_CHANGED, {
           profile: profileController.getCurrentProfileId(),
           values: { ...profile.values, loopback: enabled, bitrate: currentBitrate, mediaBitrate: currentMediaBitrate },
           category: profile.category

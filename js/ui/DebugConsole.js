@@ -3,6 +3,7 @@
  * window.* global fonksiyonlari bu modülde tanimlanir
  */
 import { log } from '../modules/utils.js';
+import { EVENTS } from '../modules/constants.js';
 
 class DebugConsole {
   constructor() {
@@ -32,7 +33,7 @@ class DebugConsole {
 
     // Log temizle
     window.clearLog = () => {
-      eventBus.emit('log:clear');
+      eventBus.emit(EVENTS.LOG_CLEAR);
     };
 
     // Tum loglari kopyala
@@ -80,19 +81,12 @@ class DebugConsole {
       return stats;
     };
 
-    // Monitor WebAudio state
-    window.getMonitorState = () => {
-      const state = monitor.getWebAudioState();
-      console.log('Monitor WebAudio State:', state);
-      return state;
+    // DRY: State getter pattern (console.log + return)
+    const _registerGetter = (name, getter, label) => {
+      window[name] = () => { const s = getter(); console.log(`${label}:`, s); return s; };
     };
-
-    // AudioEngine state
-    window.getAudioEngineState = () => {
-      const state = audioEngine.getState();
-      console.log('AudioEngine State:', state);
-      return state;
-    };
+    _registerGetter('getMonitorState', () => monitor.getWebAudioState(), 'Monitor WebAudio State');
+    _registerGetter('getAudioEngineState', () => audioEngine.getState(), 'AudioEngine State');
 
     // Sanity checks
     window.runSanityChecks = () => {
