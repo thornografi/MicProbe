@@ -1,0 +1,780 @@
+/* ========== UNIFIED PANEL ========== */
+.panel-unified {
+  max-width: 900px;
+  margin: 0 auto;
+  container-type: inline-size;
+  container-name: unified-panel;
+}
+
+.unified-body {
+  display: flex;
+  flex-direction: column;
+  /* gap kaldırıldı - tüm spacing adjacent sibling pattern ile yönetiliyor */
+}
+
+.unified-row {
+  display: flex;
+  gap: var(--space-xl);
+  align-items: flex-start;
+  padding: var(--space-lg) 0;
+}
+
+/* Adjacent Sibling Pattern: Sadece çizgi - padding her row'da tanımlı */
+.unified-row + .unified-row {
+  border-top: 1px solid var(--glass-border);
+}
+
+.unified-row-main {
+  flex-wrap: wrap;
+  align-items: stretch;
+  /* F1 yuksekligi = F2 yuksekligi */
+  min-height: 170px;
+}
+
+.unified-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* Controls Section - Grid ile esit bolunecek */
+.unified-controls .mic-selector-row {
+  margin-bottom: var(--space-xs);
+}
+
+/* Tips Section - inline text, no boxes */
+.unified-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: var(--space-lg);
+  border-left: 1px solid var(--glass-border);
+  /* Grid ile esit bolunecek - sabit genislik yok */
+}
+
+.unified-tips .utip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: var(--space-xs) 0;
+}
+
+.unified-tips .utip em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  background: var(--gradient-neon-circle);
+  border-radius: 50%;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  font-style: normal;
+  color: white;
+}
+
+.unified-tips .utip strong {
+  color: var(--text-primary);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.unified-tips .utip {
+  transition: color var(--transition-fast);
+}
+
+.unified-tips .utip:hover {
+  color: var(--text-primary);
+}
+
+/* Status Section - 3 column grid: label | colon | value (value starts at 50%) */
+.unified-status {
+  display: grid;
+  grid-template-columns: 140px auto 1fr;
+  gap: var(--space-xs) var(--space-sm);
+  padding-left: var(--space-lg);
+  border-left: 1px solid var(--glass-border);
+  position: relative;
+}
+
+/* Audio Status basligi */
+.unified-status::before {
+  content: 'AUDIO STATUS';
+  grid-column: 1 / -1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.unified-status .stat {
+  display: contents;
+}
+
+.unified-status .stat-l {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.unified-status .stat-c {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.unified-status .stat-v {
+  color: var(--text-muted);
+  text-align: left;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* VU Row */
+.unified-row-vu {
+  flex-direction: column;
+  gap: var(--space-md);
+  align-items: flex-start;
+  /* padding .unified-row'dan kalıtım */
+}
+
+/* VU Row icindeki vu-section - spacing row seviyesinde yönetiliyor */
+.unified-row-vu .vu-section {
+  max-width: 500px;
+  width: 100%;
+  margin-top: 0;    /* orijinal .vu-section margin'ini sıfırla */
+  padding-top: 0;   /* orijinal .vu-section padding'ini sıfırla */
+  border-top: none; /* orijinal .vu-section border'ını kaldır */
+}
+
+/* ========== 768-1023px TABLET FLEX LAYOUT ========== */
+/* Grid 1024px'te basliyor, bu aralik icin ozel flex layout */
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Tablet aralığında sağ boşluğu minimize et */
+  .content-container {
+    --content-right-padding: clamp(16px, 5vw, 48px);
+  }
+
+  .unified-row-main {
+    flex-wrap: wrap;
+  }
+
+  .unified-controls {
+    flex: 1 1 100%;  /* Tam genislik - ilk sirada */
+    margin-bottom: var(--space-md);
+  }
+
+  .unified-tips,
+  .unified-status {
+    flex: 1 1 45%;  /* Yan yana - ikinci sirada */
+    min-width: 200px;
+  }
+
+  /* VU meter tablet'te tam genislik */
+  .unified-row-vu .vu-section {
+    max-width: 100%;
+  }
+}
+
+/* ========== 1024px+ DESKTOP GRID LAYOUT ========== */
+@media (min-width: 1024px) {
+  /* Parent grid - row'lar bu column'ları paylaşır */
+  /* minmax ile içerik minimum genişliğini garanti eder */
+  .unified-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 5fr) minmax(170px, 3fr) minmax(150px, 3fr);
+    column-gap: var(--space-xl);
+    /* padding-right kaldırıldı - content-container'dan geliyor */
+  }
+
+  /* TÜM row'lar tam genişlik kaplamalı (auto-flow sorununu önler) */
+  .unified-row {
+    grid-column: 1 / -1;
+  }
+
+  /* Main row - subgrid ile column genişliklerini paylaşır */
+  .unified-row-main {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  /* VU row - tam genislik (tum sutunlari kapla) */
+  .unified-row-vu {
+    display: flex;
+    flex-direction: column;
+    row-gap: var(--space-md);
+  }
+
+  /* VU section'lar tam panel genisliginde */
+  .unified-row-vu .vu-section {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Player Row subgrid - progress bar tips ile hizalı */
+  .unified-row-player {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .unified-row-player .recording-player {
+    grid-column: 1 / 3;
+  }
+
+  .unified-row-player .recording-player.visible {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  /* Player child elements - tüm subgrid sütunlarını kapla */
+  .unified-row-player .player-controls,
+  .unified-row-player .player-progress-row {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ========== CONTAINER QUERY OVERRIDE (Modern tarayıcılar) ========== */
+/* Container queries ile bileşen kendi genişliğine göre layout değiştirir */
+@container unified-panel (min-width: 700px) {
+  .unified-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 5fr) minmax(170px, 3fr) minmax(150px, 3fr);
+    column-gap: var(--space-xl);
+  }
+
+  .unified-row {
+    grid-column: 1 / -1;
+  }
+
+  .unified-row-main {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .unified-row-player {
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .unified-row-player .recording-player {
+    grid-column: 1 / 3;
+  }
+}
+
+.unified-row-player .recording-player {
+  width: 100%;
+}
+
+/* Settings Row - border/padding adjacent sibling pattern ile yönetiliyor */
+.unified-row-settings {
+  flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .unified-row-main {
+    flex-direction: column;
+  }
+
+  .unified-tips,
+  .unified-status {
+    padding-left: 0;
+    padding-top: var(--space-sm);
+    border-left: none;
+    border-top: 1px solid var(--glass-border);
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-lg);
+  }
+
+  .unified-tips {
+    flex: 1 1 auto;
+    max-width: none;
+    gap: var(--space-sm);
+  }
+
+  .unified-tips .utip {
+    padding: var(--space-2xs) 0;
+  }
+
+  .unified-status {
+    gap: var(--space-sm) var(--space-xl);
+  }
+
+  .unified-status::before {
+    width: 100%;
+    margin-bottom: var(--space-xs);
+  }
+
+  /* VU meter mobilde tam genislik */
+  .unified-row-vu {
+    padding-right: 0;
+  }
+
+  .unified-row-vu .vu-section {
+    max-width: 100%;
+  }
+}
+
+/* ========== PANEL ========== */
+/* Panel ortak degiskenleri kullanir (variables.css) */
+.panel {
+  background: var(--panel-gradient);
+  backdrop-filter: blur(var(--panel-blur));
+  -webkit-backdrop-filter: blur(var(--panel-blur));
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(var(--color-white-rgb), 0.1);
+  overflow: hidden;
+  transition: all var(--transition-normal);
+  position: relative;
+  box-shadow:
+    var(--panel-shadow),
+    0 0 24px rgba(var(--color-purple-rgb), 0.06),
+    0 0 0 1px rgba(var(--color-purple-rgb), 0.04);
+}
+
+/* Panel hover efekti kaldirildi - statik gorunum */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--gradient-accent-faint);
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.panel-header svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-orange);
+  filter: var(--glow-accent-md);
+}
+
+.panel-body {
+  padding: var(--space-lg);
+  background: var(--panel-body-bg);
+}
+
+.panel-footer {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--glass-bg);
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* ========== DEVICE INFO ========== */
+/* .device-info-panel artik her zaman gorunur - sag kolonda */
+
+/* ========== PROFILE INFO PANEL ========== */
+.panel-profile-info .panel-body {
+  padding: var(--space-md);
+}
+
+.profile-info-content {
+  text-align: center;
+}
+
+.profile-info-name {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.profile-info-category {
+  font-size: var(--fs-base);
+  color: var(--text-muted);
+  margin-bottom: var(--space-md);
+}
+
+.profile-info-badges {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  background: var(--gradient-accent-mid);
+  border: 1px solid rgba(var(--color-orange-rgb), 0.25);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--color-orange);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all var(--transition-fast);
+}
+
+.profile-badge:first-child {
+  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.12) 0%, rgba(var(--color-orange-rgb), 0.08) 100%);
+  border-color: rgba(var(--color-purple-rgb), 0.25);
+  color: var(--color-purple-light);
+}
+
+/* TIPS PANEL stilleri kaldirildi - unified-tips kullaniliyor */
+
+/* Ses Durumu Panel - 3 Bolumlu Yapi */
+.audio-status-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.audio-status-section {
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.audio-status-title {
+  font-size: var(--fs-base);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-bottom: var(--space-xs);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.audio-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.audio-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+}
+
+.audio-status-label {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+}
+
+.audio-status-value {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  text-align: right;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* .good class kaldirildi - varsayilan text-primary kullaniliyor */
+
+.audio-status-value.warning {
+  color: var(--accent-warning);
+}
+
+.audio-status-value.danger {
+  color: var(--accent-danger);
+}
+
+.audio-status-value.muted {
+  color: var(--text-muted);
+}
+
+/* ========== UNIFIED PANEL (Tek Bütünleşik Panel) ========== */
+.panel-unified {
+  /* .panel stillerini inherit eder */
+  width: calc(100% + var(--panel-right-bleed));
+  max-width: none;
+  align-self: stretch;
+  margin-left: 0;
+  margin-right: calc(-1 * var(--panel-right-bleed));
+}
+
+.panel-unified .panel-body {
+  padding: var(--space-xl) var(--space-2xl);
+}
+
+.unified-content {
+  display: flex;
+  gap: var(--space-2xl);
+}
+
+/* Sol taraf - Ana kontroller */
+.unified-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-width: 0;
+}
+
+/* Sağ taraf - Bilgiler */
+.unified-right {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding-top: var(--space-xs);
+}
+
+/* Unified içindeki kontroller */
+.unified-left .mic-selector-row {
+  flex: 1;
+  max-width: 500px;
+}
+
+.unified-left .button-row {
+  width: 100%;
+  max-width: 500px;
+}
+
+/* Spacer: refresh button ile hizalama için */
+.unified-left .button-row::after {
+  content: '';
+  width: 40px;
+  margin-left: var(--space-sm);
+  flex-shrink: 0;
+}
+
+
+
+@media (max-width: 900px) {
+  .unified-content {
+    flex-direction: column;
+  }
+
+  .unified-right {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-xl) var(--space-2xl);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .unified-right .info-section {
+    min-width: 150px;
+    flex: 1;
+  }
+}
+
+/* ========== INFO SECTIONS (Sağ Panel - Minimal) ========== */
+.info-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.info-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: var(--space-xs);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.info-label {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+
+.info-value {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-value.muted {
+  color: var(--text-muted);
+}
+
+.info-value.accent {
+  color: var(--color-orange);
+}
+
+/* Tips - minimal bullet style */
+.tip-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.tip-bullet {
+  width: 4px;
+  height: 4px;
+  background: var(--color-orange);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 7px;
+}
+
+.tip-line strong {
+  color: var(--color-orange);
+  font-weight: 600;
+}
+
+/* Unified panel içindeki section'lar - eski uyumluluk */
+.unified-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.unified-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+/* Unified içinde player - inline görünüm */
+.unified-left .panel-player {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-secondary);
+}
+
+.unified-left .panel-player::before {
+  display: none;
+}
+
+.unified-left .panel-player .panel-header {
+  display: none;
+}
+
+.unified-left .panel-player .panel-body {
+  padding: 0;
+  background: transparent;
+}
+
+/* Unified içinde custom settings */
+.unified-left .panel-custom-settings {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-secondary);
+  margin-top: 0;
+}
+
+.unified-left .panel-custom-settings::before {
+  display: none;
+}
+
+.unified-left .panel-custom-settings .panel-header {
+  padding: var(--space-sm) 0;
+  background: transparent;
+  border-bottom: none;
+}
+
+.unified-left .panel-custom-settings .panel-body {
+  padding: var(--space-md) 0 0 0;
+  background: transparent;
+}
+
+/* Sağ taraftaki info item'lar */
+.unified-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+}
+
+.unified-info-label {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+
+.unified-info-value {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--color-orange);
+  font-family: var(--font-mono);
+}
+
+.unified-info-value.muted {
+  color: var(--text-muted);
+}
+
+/* Tip items - unified versiyonu */
+.unified-tip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.unified-tip-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--gradient-neon-circle);
+  border-radius: 50%;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.unified-tip-text {
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.unified-tip-text strong {
+  color: var(--color-orange);
+}

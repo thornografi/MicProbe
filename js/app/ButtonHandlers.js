@@ -18,20 +18,20 @@ export function setupButtonHandlers(elements, controllers) {
   // Recording toggle
   recordToggleBtn.onclick = wrapAsyncHandler(
     () => recordingController.toggle(),
-    'Kayit toggle hatasi'
+    'Recording toggle error'
   );
 
   // Monitoring toggle
   monitorToggleBtn.onclick = wrapAsyncHandler(
     () => monitoringController.toggle(),
-    'Monitor toggle hatasi'
+    'Monitor toggle error'
   );
 
   // Test toggle (sadece varsa)
   if (testBtn) {
     testBtn.onclick = wrapAsyncHandler(
       () => monitoringController.toggleTest(),
-      'Test toggle hatasi'
+      'Test toggle error'
     );
   }
 }
@@ -119,19 +119,26 @@ export function setupKeyboardHandlers(drawerControllers) {
  * Test countdown event handler'larini kaydet
  * @param {HTMLElement} testCountdownEl - Countdown elementi
  * @param {Object} eventBus - EventBus referansi
+ * @returns {Function} - Cleanup fonksiyonu (unsubscribe icin)
  */
 export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
+  const unsubscribers = [];
+
   // Test countdown event listener
-  eventBus.on(EVENTS.TEST_COUNTDOWN, ({ remainingSec }) => {
+  const onCountdown = ({ remainingSec }) => {
     if (testCountdownEl) {
       testCountdownEl.textContent = remainingSec > 0 ? `${remainingSec}s` : '';
     }
-  });
+  };
+  unsubscribers.push(eventBus.on(EVENTS.TEST_COUNTDOWN, onCountdown));
 
   // Test tamamlandiginda/iptal edildiginde countdown temizle
   const clearCountdown = () => { if (testCountdownEl) testCountdownEl.textContent = ''; };
   [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_PLAYBACK_STOPPED]
-    .forEach(event => eventBus.on(event, clearCountdown));
+    .forEach(event => unsubscribers.push(eventBus.on(event, clearCountdown)));
+
+  // Cleanup fonksiyonu dondur
+  return () => unsubscribers.forEach(unsub => typeof unsub === 'function' && unsub());
 }
 
 /**
@@ -146,7 +153,7 @@ export function setupProfileSelectorHandler(profileSelector, profileController, 
     try {
       await profileController.applyProfile(e.target.value);
     } catch (err) {
-      log.error('Profil degisikligi hatasi', { profileId: e.target.value, error: err.message });
+      log.error('Profile change error', { profileId: e.target.value, error: err.message });
     }
   }
 

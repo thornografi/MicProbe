@@ -20,7 +20,7 @@ export function isAudioWorkletSupported() {
 
 export async function ensurePassthroughWorklet(audioContext) {
   if (!audioContext?.audioWorklet?.addModule) {
-    throw new Error('AudioWorklet desteklenmiyor (audioContext.audioWorklet yok)');
+    throw new Error('AudioWorklet not supported (audioContext.audioWorklet missing)');
   }
 
   if (loadedContexts.has(audioContext)) return;

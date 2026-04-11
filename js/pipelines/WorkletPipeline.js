@@ -4,10 +4,12 @@
  * DRY: Opus worker islemleri BasePipeline'dan miras alinir
  *
  * Graph (encoder'a gore degisir):
- *   WASM Opus: Source -> AudioWorklet -> MuteGain -> destination (feedback onleme)
- *   PCM/WAV:   Source -> AudioWorklet -> AnalyserNode (VU) (destination baglantisi yok)
+ *   MediaRecorder: Source -> AudioWorklet -> AnalyserNode (VU) + Worklet -> Destination
+ *   WASM Opus:     Source -> AudioWorklet -> AnalyserNode (VU) + MuteGain -> destination (feedback onleme)
+ *   PCM/WAV:       Source -> AudioWorklet -> AnalyserNode (VU) (destination baglantisi yok)
  *
  * Desteklenen encoder'lar:
+ * - mediarecorder: Tarayici MediaRecorder API (standard WebM/Opus)
  * - wasm-opus: WASM Opus encoder (WhatsApp/Telegram pattern)
  * - pcm-wav: Raw PCM 16-bit WAV (sifir compression)
  *
@@ -20,7 +22,7 @@ import BasePipeline from './BasePipeline.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from '../modules/WorkletHelper.js';
 import eventBus from '../modules/EventBus.js';
 import { ENCODER_TYPES, OPUS } from '../modules/constants.js';
-import { createWavBlob, log } from '../modules/utils.js';
+import { createWavBlob, log, usesMediaRecorder } from '../modules/utils.js';
 
 export default class WorkletPipeline extends BasePipeline {
   constructor(audioContext, sourceNode, destinationNode) {
@@ -57,6 +59,9 @@ export default class WorkletPipeline extends BasePipeline {
     // Encoder moduna gore kurulum
     if (encoder === ENCODER_TYPES.PCM_WAV) {
       await this._setupPcmWav();
+    } else if (usesMediaRecorder(encoder)) {
+      // MediaRecorder encoder kurulumu
+      this._setupMediaRecorderGraph();
     } else {
       // WASM Opus encoder kurulumu (varsayilan)
       await this._setupWasmOpus(mediaBitrate);
@@ -71,14 +76,40 @@ export default class WorkletPipeline extends BasePipeline {
     this.nodes.worklet.port.postMessage({ command: 'enablePcm' });
     this.nodes.worklet.port.onmessage = (e) => {
       if (e.data.error) {
-        log.error('AudioWorklet hatasi', { error: e.data.error });
+        log.error('AudioWorklet error', { error: e.data.error });
         return;
       }
       if (e.data.pcm) onPcmData(e.data.pcm);
     };
     this.createAnalyser();
+    this.createAnalysisAnalyser(this.nodes.worklet);
     this.sourceNode.connect(this.nodes.worklet);
     this.nodes.worklet.connect(this.analyserNode);
+  }
+
+  /**
+   * MediaRecorder encoder kurulumu
+   * Graph: Source -> Worklet -> AnalyserNode (VU) + Worklet -> Destination
+   * destinationNode, Recorder.js tarafindan olusturulup constructor'da aktarilir
+   */
+  _setupMediaRecorderGraph() {
+    this.createAnalyser();
+    this.createAnalysisAnalyser(this.nodes.worklet);
+    this.sourceNode.connect(this.nodes.worklet);
+    this.nodes.worklet.connect(this.analyserNode);
+
+    // Worklet'ten destinationNode'a bagla (MediaRecorder bu stream'i kaydeder)
+    if (this.destinationNode) {
+      this.nodes.worklet.connect(this.destinationNode);
+    } else {
+      log.error('WorkletPipeline: destinationNode required for MediaRecorder mode but not available');
+    }
+
+    this.log('AudioWorklet + MediaRecorder graph connected', {
+      graph: 'Source -> Worklet -> [AnalyserNode (VU) + Destination]',
+      encoder: ENCODER_TYPES.MEDIARECORDER,
+      hasDestination: !!this.destinationNode
+    });
   }
 
   /**
@@ -88,7 +119,7 @@ export default class WorkletPipeline extends BasePipeline {
     this._pcmChunks = [];
     this._setupWorkletGraph(pcm => this._pcmChunks.push(new Float32Array(pcm)));
 
-    this.log('AudioWorklet + PCM/WAV grafigi baglandi', {
+    this.log('AudioWorklet + PCM/WAV graph connected', {
       graph: 'Source -> Worklet -> AnalyserNode (VU)',
       encoder: 'pcm-wav',
       sampleRate: this.audioContext.sampleRate,
@@ -108,7 +139,7 @@ export default class WorkletPipeline extends BasePipeline {
     this._setupWorkletGraph(pcm => this._accumulateAndEncode(pcm));
     this._createMuteGain(this.nodes.worklet);
 
-    this.log('AudioWorklet + WASM Opus grafigi baglandi (fan-out)', {
+    this.log('AudioWorklet + WASM Opus graph connected (fan-out)', {
       graph: 'Source -> Worklet -> [AnalyserNode (VU) + MuteGain -> Destination]',
       frameSize: OPUS.FRAME_SIZE,
       bitrate: opusBitrate,
@@ -136,7 +167,7 @@ export default class WorkletPipeline extends BasePipeline {
         }
       }
     } catch (err) {
-      log.error('WASM Opus encode hatasi', { error: err.message, stack: err.stack });
+      log.error('WASM Opus encode error', { error: err.message, stack: err.stack });
     }
   }
 
@@ -163,7 +194,7 @@ export default class WorkletPipeline extends BasePipeline {
     this._encoderMode = null;
 
     await super.cleanup();
-    this.log('AudioWorklet pipeline cleanup tamamlandi');
+    this.log('AudioWorklet pipeline cleanup complete');
   }
 
   /**
@@ -172,7 +203,7 @@ export default class WorkletPipeline extends BasePipeline {
    */
   async finishOpusEncoding() {
     if (!this.opusWorker) {
-      throw new Error('Opus worker mevcut degil');
+      throw new Error('Opus worker not available');
     }
 
     // Null guard: cleanup sonrası çağrılmış olabilir
@@ -198,13 +229,13 @@ export default class WorkletPipeline extends BasePipeline {
    */
   finishPcmWavEncoding() {
     if (this._encoderMode !== 'pcm-wav') {
-      throw new Error('PCM/WAV modu aktif degil');
+      throw new Error('PCM/WAV mode not active');
     }
 
     const totalSamples = this._pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
     const blob = createWavBlob(this._pcmChunks, this.audioContext.sampleRate, this._channels);
 
-    this.log('PCM/WAV encoding tamamlandi', {
+    this.log('PCM/WAV encoding complete', {
       sampleCount: totalSamples,
       chunkCount: this._pcmChunks.length,
       blobSize: blob.size,

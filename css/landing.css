@@ -61,11 +61,30 @@
   text-decoration: none;
   font-size: var(--fs-base);
   font-weight: 500;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-normal);
+  position: relative;
+  padding-bottom: 2px;
+}
+
+.navbar-link::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--color-pink), var(--color-purple));
+  transition: width 0.3s ease, left 0.3s ease;
+  border-radius: 1px;
 }
 
 .navbar-link:hover {
   color: var(--text-primary);
+}
+
+.navbar-link:hover::after {
+  width: 100%;
+  left: 0;
 }
 
 /* Navbar CTA - .btn--primary'den miras, sadece boyut farkı */
@@ -109,13 +128,14 @@
 }
 
 .hero-title {
-  font-size: clamp(2rem, 5vw, 3.2rem);
-  font-weight: 700;
+  font-size: clamp(2.2rem, 5.5vw, 3.5rem);
+  font-weight: 800;
   font-family: var(--font-ui-accent);
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
   margin-bottom: var(--space-lg);
-  max-width: 700px;
+  max-width: 780px;
+  text-wrap: balance;
 }
 
 .hero-title-line {
@@ -124,6 +144,10 @@
 
 .hero-title .gradient-text {
   color: var(--color-accent-text); /* DRY: tek kaynaktan miras */
+  text-shadow:
+    0 0 20px rgba(var(--color-purple-rgb), 0.5),
+    0 0 40px rgba(var(--color-pink-rgb), 0.3),
+    0 0 80px rgba(var(--color-purple-rgb), 0.15);
 }
 
 .hero-subtitle {
@@ -132,6 +156,7 @@
   max-width: 640px;
   margin-bottom: var(--space-2xl);
   line-height: 1.7;
+  text-wrap: pretty;
 }
 
 .hero-buttons {
@@ -147,11 +172,15 @@
 }
 
 .hero-buttons .btn--primary {
-  padding: 14px 32px;
-  box-shadow: 0 12px 32px rgba(var(--color-black-rgb), 0.35), var(--shadow-glow-orange);
+  padding: 16px 38px;
+  box-shadow:
+    0 12px 32px rgba(var(--color-black-rgb), 0.35),
+    0 0 30px rgba(var(--color-pink-rgb), 0.4),
+    0 0 60px rgba(var(--color-purple-rgb), 0.2);
   white-space: nowrap;
-  min-width: 160px;
+  min-width: 170px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  font-size: var(--fs-lg);
 }
 
 /* Mikrofon hover olunca buton da hover gibi görünsün */
@@ -166,11 +195,14 @@
 }
 
 .hero-buttons .btn--secondary {
-  border: none;
-  background: transparent;
-  padding: 10px 6px;
+  border: 1px solid rgba(var(--color-white-rgb), 0.18);
+  background: rgba(var(--color-white-rgb), 0.04);
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
   color: var(--text-primary);
   opacity: 0.85;
+  min-width: 160px;
+  justify-content: center;
 }
 
 .hero-buttons .btn--secondary:hover {
@@ -326,23 +358,25 @@
 .section-badge {
   display: inline-block;
   padding: var(--space-xs) var(--space-md);
-  background: var(--label-bg);
-  /* border kaldırıldı - daha temiz görünüm */
+  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.1), rgba(var(--color-pink-rgb), 0.06));
+  border: 1px solid rgba(var(--color-purple-rgb), 0.2);
   border-radius: var(--label-radius);
   font-size: var(--fs-xs);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-purple-light);
   text-transform: uppercase;
-  letter-spacing: 1.2px;
+  letter-spacing: 1.5px;
   margin-bottom: var(--space-lg);
+  font-family: var(--font-mono);
 }
 
 .section-title {
-  font-size: clamp(2rem, 4vw, 2.5rem);
-  font-weight: 700;
+  font-size: clamp(2.1rem, 4.2vw, 2.8rem);
+  font-weight: 800;
   margin-bottom: var(--space-lg);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
+  text-wrap: balance;
 }
 
 .section-subtitle {
@@ -352,6 +386,7 @@
   margin: 0 auto;
   line-height: 1.65;
   opacity: 0.85;
+  text-wrap: pretty;
 }
 
 .features-grid {
@@ -373,8 +408,10 @@
 
 .landing-card:hover {
   background: var(--glass-bg-hover);
-  border-color: var(--glass-border);
-  transform: translateY(-2px);
+  border-color: rgba(var(--color-purple-rgb), 0.25);
+  box-shadow:
+    0 8px 32px rgba(var(--color-black-rgb), 0.3),
+    0 0 24px rgba(var(--color-purple-rgb), 0.12);
 }
 
 .feature-card {
@@ -382,21 +419,23 @@
 }
 
 .feature-icon {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
-  background: transparent;
+  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.12), rgba(var(--color-pink-rgb), 0.08));
+  border: 1px solid rgba(var(--color-purple-rgb), 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-xl);
+  transition: all var(--transition-slow);
 }
 
 .feature-icon svg {
-  width: 28px;
-  height: 28px;
-  color: var(--text-primary);
-  opacity: 0.9;
+  width: 24px;
+  height: 24px;
+  color: var(--color-purple-light);
+  transition: all var(--transition-slow);
 }
 
 .feature-title {
@@ -405,6 +444,7 @@
   margin-bottom: var(--space-md);
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 .feature-description {
@@ -458,6 +498,7 @@
   margin-bottom: var(--space-md);
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 
 .step-description {
@@ -469,21 +510,109 @@
 
 /* Step connector line - removed for cleaner look */
 
+/* ========== SCROLL REVEAL ANIMATIONS ========== */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Staggered children - CSS variable ile delay kontrolu */
+.reveal-stagger > .reveal {
+  transition-delay: calc(var(--reveal-index, 0) * 0.12s);
+}
+
+/* ========== FEATURE CARD HOVER EFFECTS ========== */
+.feature-card {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Gradient border on hover */
+.feature-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(var(--color-purple-rgb), 0.4),
+    rgba(var(--color-pink-rgb), 0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--transition-slow);
+  pointer-events: none;
+}
+
+.feature-card:hover::before {
+  opacity: 1;
+}
+
+/* Icon glow on hover - sadece renk/glow, pozisyon değişikliği yok */
+.feature-card:hover .feature-icon {
+  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.22), rgba(var(--color-pink-rgb), 0.15));
+  border-color: rgba(var(--color-purple-rgb), 0.35);
+  box-shadow: 0 0 20px rgba(var(--color-purple-rgb), 0.2);
+}
+
+.feature-card:hover .feature-icon svg {
+  filter: var(--glow-accent-md);
+  color: white;
+}
+
+/* Hero mic hover - floating animasyon kaldırıldı, sadece hover scale */
+
+/* ========== SECTION SEPARATOR GRADIENTS ========== */
+.features::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+  pointer-events: none;
+}
+
+.how-it-works {
+  position: relative;
+}
+
+.how-it-works::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+  pointer-events: none;
+}
+
 /* ========== VIEW TRANSITIONS ========== */
-#landing-view {
-  transition: opacity var(--transition-slow), transform var(--transition-slow);
-}
-
-#app-view {
-  transition: opacity var(--transition-slow), transform var(--transition-slow);
-}
-
 body.app-mode #landing-view {
   display: none;
 }
 
 body:not(.app-mode) #app-view {
   display: none;
+}
+
+/* View entry animation (triggered by JS on view switch) */
+.view-enter {
+  animation: viewFadeIn var(--transition-slow) ease;
+}
+
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ========== APP MODE NAVBAR ========== */

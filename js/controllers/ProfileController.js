@@ -104,6 +104,9 @@ class ProfileController {
     const profile = PROFILES[profileId];
     if (!profile) return;
 
+    // BUG-2 fix: Preparing asamasinda profil degisikligini engelle (race condition onleme)
+    if (this.getState.isPreparing?.()) return;
+
     // Profil degistiginde Player'i temizle (memory leak ve UX tutarliligi)
     this.callbacks.resetPlayer?.();
 
@@ -124,7 +127,7 @@ class ProfileController {
 
     // Aktif stream varsa once durdur
     if (wasActive) {
-      log.ui(`Profil degisiyor, ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatilacak...`, {});
+      log.ui(`Profile changing, ${previousMode === 'monitoring' ? 'monitor' : 'recording'} will restart...`, {});
 
       if (previousMode === 'monitoring') {
         await this.callbacks.stopMonitoring();
@@ -195,7 +198,7 @@ class ProfileController {
     if (wasActive) {
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      log.ui(`Yeni profil ile ${previousMode === 'monitoring' ? 'monitor' : 'kayit'} yeniden baslatiliyor...`, {});
+      log.ui(`Restarting ${previousMode === 'monitoring' ? 'monitor' : 'recording'} with new profile...`, {});
 
       if (previousMode === 'monitoring') {
         await this.callbacks.startMonitoring();

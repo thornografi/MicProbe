@@ -6,7 +6,8 @@
 // === AUDIO CONTEXT ===
 export const AUDIO = {
   DEFAULT_SAMPLE_RATE: 48000,     // Varsayilan sample rate (Hz)
-  FFT_SIZE: 256,                   // AnalyserNode FFT boyutu
+  FFT_SIZE: 256,                   // AnalyserNode FFT boyutu (VU meter icin)
+  ANALYSIS_FFT_SIZE: 2048,         // Frekans analizi icin ayri analyser (11.7 Hz/bin @ 48kHz)
   SMOOTHING_TIME_CONSTANT: 0.3,    // AnalyserNode smoothing (fast responsive VU meter)
   CENTER_VALUE: 128                // 8-bit audio center point
 };
@@ -31,12 +32,14 @@ export const OPUS = {
 // === VU METER ===
 export const VU_METER = {
   RMS_THRESHOLD: 0.0001,          // dB hesaplama icin minimum RMS
-  MIN_DB: -60,                    // Minimum dB seviyesi (sessizlik)
+  MIN_DB: -96,                    // Minimum dB seviyesi — 16-bit dinamik aralik (Float32 ile olculebilir)
   CLIPPING_THRESHOLD_DB: -0.5,    // Bu dB ustu = clipping riski
-  PEAK_HOLD_TIME_MS: 4500,        // Peak gostergesini tutma suresi (4.5 saniye)
-  PEAK_DECAY_RATE: 2,             // Peak dusme hizi (dB/frame)
+  PEAK_HOLD_TIME_MS: 1000,        // Peak gostergesini tutma suresi (ANSI/IEC standart)
+  PEAK_DECAY_DB_PER_SEC: 20,     // Peak dusme hizi (dB/s, frame-rate bagimsiz)
+  VU_INTEGRATION_MS: 300,        // VU standard integration suresi (EMA)
   DOT_ACTIVE_THRESHOLD: 5,        // Sinyal noktasi aktif esigi (%)
-  DEFAULT_METER_WIDTH: 200        // Varsayilan meter genisligi (px)
+  DEFAULT_METER_WIDTH: 200,       // Varsayilan meter genisligi (px)
+  PEAK_WIDTH: 4                   // Peak cizgisi genisligi (px) - clamp icin
 };
 
 // === BYTES ===
@@ -45,10 +48,8 @@ export const BYTES = {
   PER_MB: 1024 * 1024
 };
 
-// === THROTTLING ===
-export const THROTTLE = {
-  ERROR_LOG_MS: 5000              // Error log throttle suresi (ms)
-};
+// === ENVIRONMENT ===
+export const IS_DEV = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 
 // === LOG ===
 export const LOG = {
@@ -105,7 +106,6 @@ export const EVENTS = {
   // Recorder
   RECORDER_STARTED: 'recorder:started',
   RECORDER_STOPPED: 'recorder:stopped',
-  RECORDER_ERROR: 'recorder:error',
   RECORDING_STARTED: 'recording:started',
   RECORDING_COMPLETED: 'recording:completed',
   RECORDING_FAILED: 'recording:failed',
@@ -128,6 +128,7 @@ export const EVENTS = {
   TEST_COUNTDOWN: 'test:countdown',
   // Pipeline
   PIPELINE_ANALYSER_READY: 'pipeline:analyserReady',
+  PIPELINE_ANALYSIS_ANALYSER_READY: 'pipeline:analysisAnalyserReady',
   // Opus
   OPUS_PROGRESS: 'opus:progress',
   // Player
@@ -167,7 +168,42 @@ export const EVENTS = {
   LOG_DEVICE: 'log:device',
   LOG_CONSTRAINT: 'log:constraint',
   LOG_PROFILE: 'log:profile',
-  LOG_VUMETER: 'log:vumeter'
+  LOG_VUMETER: 'log:vumeter',
+  // Diagnostik Rapor
+  METRICS_STARTED: 'metrics:started',
+  METRICS_STOPPED: 'metrics:stopped',
+  DIAGNOSTIC_REPORT_READY: 'diagnostic:reportReady'
+};
+
+// === QUALITY (Diagnostik Analiz) ===
+export const QUALITY = {
+  UPDATE_INTERVAL_MS: 250,          // Frekans snapshot araligi (ms)
+  WEAK_SIGNAL_DB: -45,              // Zayif sinyal esigi (dB)
+  SILENCE_DB: -55,                  // Sessizlik/dropout esigi (dB)
+  DROPOUT_CONSECUTIVE_FRAMES: 5,    // Art arda sessiz frame = dropout
+  CLIPPING_THRESHOLD: 0.98,         // Normalized peak > bu = clipping
+  NOISE_FLOOR_PERCENTILE: 10,       // En dusuk %N frame = noise floor
+  DROPOUT_LEVEL_THRESHOLD: 2,       // Level < %N = dropout adayi
+  FREQUENCY_BANDS: {
+    SUB_BASS: [0, 250],
+    LOW_MID: [250, 2000],
+    HIGH_MID: [2000, 6000],
+    PRESENCE: [6000, 20000]
+  },
+  // Evaluator esikleri
+  SNR_GOOD_DB: 20,
+  SNR_WARNING_DB: 10,
+  NOISE_FLOOR_GOOD_DB: -45,
+  NOISE_FLOOR_WARNING_DB: -30,
+  NOISE_FLOOR_CRITICAL_DB: -20,
+  CLIPPING_RATE_WARNING: 0.01,
+  CLIPPING_RATE_CRITICAL: 0.05,
+  DROPOUT_COUNT_WARNING: 2,
+  DROPOUT_COUNT_CRITICAL: 5,
+  STABILITY_GOOD_STDDEV: 6,
+  STABILITY_WARNING_STDDEV: 12,
+  BITRATE_DEVIATION_WARNING: 0.3,
+  DYNAMIC_RANGE_WARNING_DB: 6
 };
 
 // === LOOPBACK (WebRTC) ===

@@ -28,11 +28,9 @@ export {
   isValidDuration,
   calculateActualBitrate,
   createAnalyserNode,
+  createAnalysisAnalyserNode,
   bytesToKB,
-  calculateLatencyMs,
-  rmsToDb,
-  dbToPercent,
-  bitrateToKbps
+  calculateLatencyMs
 } from './audio.js';
 
 // WAV helpers

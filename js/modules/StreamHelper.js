@@ -20,11 +20,11 @@ const DEFAULT_CONSTRAINTS = {
 export async function requestStream(constraints = {}) {
   const merged = { ...DEFAULT_CONSTRAINTS, ...constraints };
 
-  const deviceLabel = merged.deviceId ? `[${typeof merged.deviceId === 'object' ? merged.deviceId.exact || merged.deviceId : merged.deviceId}]` : '[varsayilan]';
-  log.stream(`Mikrofon isteniyor... ${deviceLabel} EC:${merged.echoCancellation} NS:${merged.noiseSuppression} AGC:${merged.autoGainControl}`);
+  const deviceLabel = merged.deviceId ? `[${typeof merged.deviceId === 'object' ? merged.deviceId.exact || merged.deviceId : merged.deviceId}]` : '[default]';
+  log.stream(`Requesting microphone... ${deviceLabel} EC:${merged.echoCancellation} NS:${merged.noiseSuppression} AGC:${merged.autoGainControl}`);
 
   // Detayli log
-  log.stream('getUserMedia cagriliyor', { constraints: merged });
+  log.stream('Calling getUserMedia', { constraints: merged });
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -35,12 +35,12 @@ export async function requestStream(constraints = {}) {
     const track = stream.getAudioTracks()[0];
     // GUARD: Audio track yoksa hata
     if (!track) {
-      throw new Error('Stream\'de audio track bulunamadi');
+      throw new Error('No audio track found in stream');
     }
     const settings = track.getSettings();
 
     // Gercek ayarlari logla - tarayici farkli deger uygulayabilir
-    log.stream(`Gercek Track Ayarlari: device=${track.label || settings.deviceId || 'N/A'}, EC=${settings.echoCancellation}, NS=${settings.noiseSuppression}, AGC=${settings.autoGainControl}, sampleRate=${settings.sampleRate || 'N/A'}Hz, channelCount=${settings.channelCount || 'N/A'}`);
+    log.stream(`Actual Track Settings: device=${track.label || settings.deviceId || 'N/A'}, EC=${settings.echoCancellation}, NS=${settings.noiseSuppression}, AGC=${settings.autoGainControl}, sampleRate=${settings.sampleRate || 'N/A'}Hz, channelCount=${settings.channelCount || 'N/A'}`);
 
     // Constraint mismatch kontrolu - istenen vs gercek
     // NOT: Bazi tarayicilar (Safari, mobile) constraint degerlerini raporlamiyor (undefined doner)
@@ -66,12 +66,12 @@ export async function requestStream(constraints = {}) {
 
     if (mismatches.length > 0) {
       const mismatchNames = mismatches.map(m => m.name).join(', ');
-      log.warning(`Constraint uyumsuzlugu: ${mismatchNames}`, { mismatches, requested: merged, actual: settings });
+      log.warning(`Constraint mismatch: ${mismatchNames}`, { mismatches, requested: merged, actual: settings });
       eventBus.emit(EVENTS.CONSTRAINT_MISMATCH, { mismatches, requested: merged, actual: settings });
     }
 
     // Detayli log
-    log.stream('MediaStream olusturuldu', {
+    log.stream('MediaStream created', {
       streamId: stream.id,
       trackId: track.id,
       trackLabel: track.label,
@@ -82,8 +82,8 @@ export async function requestStream(constraints = {}) {
 
     return stream;
   } catch (err) {
-    log.error('Mikrofon erisimi basarisiz - ' + err.message);
-    log.error('getUserMedia hatasi', { error: err.message, name: err.name });
+    log.error('Microphone access failed - ' + err.message);
+    log.error('getUserMedia error', { error: err.message, name: err.name });
     throw err;
   }
 }

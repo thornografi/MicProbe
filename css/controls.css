@@ -1,0 +1,322 @@
+/* ========== BUTTONS ========== */
+/* Layout only - sadece yerleşim */
+.button-row {
+  display: flex;
+  gap: var(--space-xl);
+  align-items: center;
+}
+
+/*
+ * App-specific button defaults
+ * :where() ile specificity düşürüldü (0,0,1,0)
+ * Böylece .btn-monitor, .btn-record gibi variant'lar override edebilir
+ */
+:where(.button-row) .btn {
+  flex: 1;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-btn);
+  font-family: var(--font-ui-accent);
+  font-weight: 700;
+  letter-spacing: 0.012em;
+}
+
+:where(.button-row) .btn svg {
+  width: var(--fs-lg);
+  height: var(--fs-lg);
+  flex-shrink: 0;
+}
+
+:where(.button-row) .btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+:where(.button-row) .btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ========== ACTION BUTTONS (Base Class) ========== */
+/* Record ve Monitor butonları için ortak base class - DRY prensibi */
+/* .btn'den miras: display, align-items, justify-content, gap */
+.btn-action {
+  flex: 1;
+  /* Sabit yükseklik - ikon boyutundan bağımsız tutarlılık */
+  min-height: var(--btn-action-height);
+  background: var(--gradient-neon-circle);
+  color: white;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 0 15px rgba(var(--color-pink-rgb), 0.25),
+    0 4px 12px rgba(var(--color-black-rgb), 0.2);
+  user-select: none;
+}
+
+/* Action butonları için ikon boyutu - 1.5x */
+.btn-action svg {
+  width: calc(var(--fs-lg) * 1.5);
+  height: calc(var(--fs-lg) * 1.5);
+}
+
+/* Record butonu indicator ikonları - küçük kalmalı */
+.btn-action .icon-circle,
+.btn-action .icon-square {
+  width: var(--fs-lg);
+  height: var(--fs-lg);
+}
+
+.btn-action::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gradient-shine);
+  pointer-events: none;
+}
+
+.btn-action:hover:not(:disabled):not(.active) {
+  box-shadow:
+    0 0 28px rgba(var(--color-pink-rgb), 0.45),
+    0 8px 24px rgba(var(--color-black-rgb), 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transform: translateY(-3px);
+}
+
+/* Ripple efekti - tiklama pozisyonunda radial glow */
+.btn-action::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%),
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.btn-action:active:not(:disabled)::after {
+  opacity: 1;
+  transition: opacity 0.05s ease;
+}
+
+.btn-action.active {
+  background: var(--gradient-neon-circle);
+  color: white;
+  box-shadow:
+    0 0 35px rgba(var(--color-pink-rgb), 0.6),
+    0 0 60px rgba(var(--color-purple-rgb), 0.4),
+    inset 0 1px 8px rgba(255, 255, 255, 0.06);
+  filter: brightness(1.08);
+}
+
+/* Preparing state - ortak (DRY) */
+.btn-action.preparing {
+  background: var(--gradient-neon-circle);
+  color: white;
+  cursor: wait;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Preparing state spinner */
+.btn-action.preparing::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: btn-spin 0.8s linear infinite;
+  background: none;
+  opacity: 1;
+  inset: auto;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========== RECORD BUTTON (Variant) ========== */
+
+/* Record ikonu toggle */
+.btn-record .icon-square { display: none; }
+.btn-record.active .icon-circle { display: none; }
+.btn-record.active .icon-square { display: block; }
+.btn-record.preparing .icon-circle,
+.btn-record.preparing .icon-square { display: none; }
+
+/* ========== MONITOR BUTTON (Variant) ========== */
+/* Monitor ikonu toggle */
+.btn-monitor .icon-stop { display: none; }
+.btn-monitor.active .icon-play { display: none; }
+.btn-monitor.active .icon-stop { display: block; }
+
+/* ========== TEST BUTTON (Variant) ========== */
+/* Test butonu - 7sn loopback test */
+.btn-test {
+  position: relative;
+}
+
+/* Test ikonu toggle */
+.btn-test .icon-stop { display: none; }
+.btn-test.recording .icon-play { display: none; }
+.btn-test.recording .icon-stop { display: block; }
+.btn-test.playback .icon-play { display: none; }
+.btn-test.playback .icon-stop { display: block; }
+
+/* Test recording state - .btn-action.active ile ayni box-shadow */
+.btn-test.recording {
+  box-shadow: 0 0 25px rgba(var(--color-pink-rgb), 0.5),
+              0 0 45px rgba(var(--color-purple-rgb), 0.35);
+}
+
+/* Test playback state - pulse animasyonu */
+.btn-test.playback {
+  animation: test-playback-pulse 1s ease-in-out infinite;
+}
+
+@keyframes test-playback-pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(var(--color-pink-rgb), 0.4),
+                0 0 30px rgba(var(--color-purple-rgb), 0.25);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(var(--color-pink-rgb), 0.6),
+                0 0 50px rgba(var(--color-purple-rgb), 0.4);
+  }
+}
+
+/* Test preparing - ikon gizle (base .btn-action.preparing'den miras) */
+.btn-test.preparing .icon-play,
+.btn-test.preparing .icon-stop { display: none; }
+
+/* Test countdown badge - sağ üst köşe */
+.test-countdown {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--accent-danger);
+  color: white;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  border-radius: 10px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.5);
+  z-index: 1;
+}
+
+.btn-test.recording .test-countdown {
+  display: flex;
+}
+
+/* ========== TOGGLE SWITCH ========== */
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--glass-bg-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  transition: all var(--transition-normal);
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all var(--transition-normal);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--gradient-accent);
+  border-color: transparent;
+  box-shadow: var(--shadow-accent-lg);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ========== SEGMENT CONTROL ========== */
+.segment-control {
+  display: inline-flex;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: var(--space-2xs);
+  width: 100%;
+}
+
+.segment-control input[type="radio"] {
+  display: none;
+}
+
+.segment-btn {
+  flex: 1;
+  padding: 6px var(--space-sm);
+  text-align: center;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.segment-btn:hover {
+  color: var(--text-primary);
+  background: var(--glass-bg-hover);
+}
+
+.segment-control input[type="radio"]:checked + .segment-btn {
+  background: var(--gradient-accent);
+  color: white;
+  box-shadow: var(--shadow-accent-md);
+}
+
+.segment-control input[type="radio"]:disabled + .segment-btn {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}

@@ -13,9 +13,13 @@ import Monitor from './modules/Monitor.js';
 import StatusManager from './modules/StatusManager.js';
 import DeviceInfo from './modules/DeviceInfo.js';
 import { toggleDisplay, log } from './modules/utils.js';
+import { IS_DEV } from './modules/constants.js';
 import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
 import loopbackManager from './modules/LoopbackManager.js';
+import audioMetricsCollector from './modules/AudioMetricsCollector.js';
+import diagnosticReportBuilder from './modules/DiagnosticReportBuilder.js';
+import reportPanelUI from './ui/ReportPanelUI.js';
 import profileController from './controllers/ProfileController.js';
 import uiStateManager from './modules/UIStateManager.js';
 import recordingController from './controllers/RecordingController.js';
@@ -57,6 +61,11 @@ import {
   syncInitialUI
 } from './app/ModuleInit.js';
 import { createControllerDeps } from './app/Dependencies.js';
+
+// ============================================
+// ENVIRONMENT
+// ============================================
+if (!IS_DEV) document.body.classList.add('production');
 
 // ============================================
 // ERKEN TANIMLANAN SABITLER
@@ -155,7 +164,7 @@ const { settingsDrawerCtrl, devConsoleCtrl } = setupDrawerHandlers({
   closeConsoleBtn: UIElements.closeConsoleBtn
 });
 
-setupKeyboardHandlers({ settingsDrawerCtrl, devConsoleCtrl });
+const escKeyHandler = setupKeyboardHandlers({ settingsDrawerCtrl, devConsoleCtrl });
 
 const initialProfile = UIElements.profileSelector?.value || 'discord';
 
@@ -247,15 +256,9 @@ initDeviceInfo(deviceInfo, {
 });
 
 uiStateManager.updateButtonStates();
-profileController.applyProfile(initialProfile);
-profileUIManager.updateAll(initialProfile);
-customSettingsPanelHandler.updatePanel(initialProfile);
 
-syncInitialUI(UIElements, profileController.isWebAudioEnabled?.() ?? true, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
-
-loopbackManager.workletSupported = WORKLET_SUPPORTED;
-
-// Controller bagimliliklari
+// BUG-3 fix: Controller dependency'leri applyProfile'dan ONCE set et
+// (applyProfile event emit eder → listener'lar controller'lara erisir)
 const controllerDeps = createControllerDeps(
   { recorder, monitor, player, uiStateManager },
   UIElements,
@@ -265,12 +268,28 @@ const controllerDeps = createControllerDeps(
 recordingController.setDependencies(controllerDeps);
 monitoringController.setDependencies(controllerDeps);
 
+profileController.applyProfile(initialProfile);
+profileUIManager.updateAll(initialProfile);
+customSettingsPanelHandler.updatePanel(initialProfile);
+
+syncInitialUI(UIElements, profileController.isWebAudioEnabled?.() ?? true, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
+
+loopbackManager.workletSupported = WORKLET_SUPPORTED;
+
 initDebugConsole(debugConsole, {
   eventBus,
   logger,
   logManager,
   monitor,
-  audioEngine
+  audioEngine,
+  diagnosticReportBuilder
+});
+
+// Diagnostik rapor sistemi
+diagnosticReportBuilder.init({
+  metricsCollector: audioMetricsCollector,
+  profileController,
+  logManager
 });
 
 initProfileUIManager(
@@ -301,7 +320,7 @@ setupButtonHandlers(
   { recordingController, monitoringController }
 );
 
-setupTestCountdownHandlers(UIElements.testCountdownEl, eventBus);
+const cleanupCountdownHandlers = setupTestCountdownHandlers(UIElements.testCountdownEl, eventBus);
 
 // ============================================
 // BASLANGIC - PRE-INITIALIZATION
@@ -310,15 +329,15 @@ async function initializeAudio() {
   try {
     await recorder.warmup();
   } catch (err) {
-    log.error('Recorder warmup hatasi (kritik degil)', { error: err.message, step: 'recorder.warmup' });
+    log.error('Recorder warmup error (non-critical)', { error: err.message, step: 'recorder.warmup' });
   }
-  log.system('Audio pre-initialization tamamlandi (AudioEngine lazy)', { recorderWarmedUp: recorder.isWarmedUp });
+  log.system('Audio pre-initialization complete (AudioEngine lazy)', { recorderWarmedUp: recorder.isWarmedUp });
 }
 
 initializeAudio();
 
-log.system('Mic Probe hazir. Bir test modu secin.');
-log.system('Uygulama baslatildi', {
+log.system('Mic Probe ready. Select a test mode.');
+log.system('Application started', {
   userAgent: navigator.userAgent,
   platform: navigator.platform,
   audioContextSupported: !!(window.AudioContext || window.webkitAudioContext),
@@ -333,4 +352,22 @@ window.addEventListener('beforeunload', () => {
   vuMeter.destroy();
   deviceInfo.destroy();
   player.destroy();
+  audioMetricsCollector.destroy();
+  diagnosticReportBuilder.destroy();
+  reportPanelUI.destroy();
+  profileUIManager.destroy();
+  debugConsole.destroy();
+  document.removeEventListener('keydown', escKeyHandler);
+  cleanupCountdownHandlers();
+});
+
+// ============================================
+// MICRO-INTERACTIONS - BUTTON RIPPLE
+// ============================================
+document.querySelectorAll('.btn-action').forEach(btn => {
+  btn.addEventListener('pointerdown', (e) => {
+    const rect = btn.getBoundingClientRect();
+    btn.style.setProperty('--ripple-x', `${((e.clientX - rect.left) / rect.width) * 100}%`);
+    btn.style.setProperty('--ripple-y', `${((e.clientY - rect.top) / rect.height) * 100}%`);
+  });
 });

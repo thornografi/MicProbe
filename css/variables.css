@@ -4,8 +4,9 @@
    Landing ve App ayni design token'lari kullanir.
 */
 
-/* Google Fonts - Merkezi Import (DRY) */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Bricolage+Grotesque:wght@400;500;600;700&family=Rubik:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* Google Fonts - Kritik font önce, ikincil fontlar ayrı (performans) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Bricolage+Grotesque:wght@400;500;600;700&family=Rubik:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
   /* ========== CORE COLORS ========== */
@@ -300,6 +301,19 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Analog noise texture - audio equipment feel */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  pointer-events: none;
+  z-index: var(--z-drawer-overlay); /* 900 - drawer'ların altında */
+  mix-blend-mode: overlay;
 }
 
 /* ========== FOCUS STATES ========== */
@@ -638,4 +652,16 @@ body {
   -webkit-backdrop-filter: blur(var(--blur-md));
   border: 1px solid rgba(var(--color-white-rgb), 0.1);
   border-radius: var(--radius-xl);
+}
+
+/* ========== ACCESSIBILITY: REDUCED MOTION ========== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

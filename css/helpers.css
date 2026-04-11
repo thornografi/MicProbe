@@ -1,0 +1,98 @@
+/* ========== UI HELPERS ========== */
+.ui-disabled {
+  opacity: var(--opacity-disabled);
+  pointer-events: none;
+}
+
+/* .hidden utility class is in variables.css - DRY */
+
+/* Settings containers - profil bazli gosterilir */
+#bufferSizeContainer,
+#opusBitrateContainer,
+#mediaBitrateContainer {
+  display: none;
+}
+
+/* Kilitli ayarlar icin stil - profil tarafindan zorunlu tutulan ayarlar */
+/* Container bazli kilitli ayar gosterimi (drawer icinde) */
+.mode-container.setting-locked,
+.loopback-toggle-container.setting-locked {
+  position: relative;
+  opacity: 0.7;
+}
+
+/* Kilit emojisi kaldirildi - sadece opacity ile gosterim */
+
+.mode-container.setting-locked .segment-btn,
+.mode-container.setting-locked .toggle-slider,
+.mode-container.setting-locked input,
+.loopback-toggle-container.setting-locked .toggle-slider,
+.loopback-toggle-container.setting-locked input {
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Label bazli kilitli ayar gosterimi - sadece opacity */
+.setting-locked {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+/* Belirli bir secenek (radio/option) icin disabled gosterimi */
+label.option-disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+label.option-disabled::after {
+  content: ' (N/A)';
+  font-size: 0.75em;
+  color: var(--text-secondary);
+}
+
+/* ========== GLOBAL UI DISABLE (WHITELIST APPROACH) ========== */
+/* Recording/Monitoring sirasinda TUM interactive elementler disabled
+   Sadece .always-active class'i olanlar aktif kalir (Stop butonu vb.)
+   Yeni element eklendiginde OTOMATIK disabled olur - kod degisikligi GEREKMEZ */
+
+body[data-app-state="recording"],
+body[data-app-state="monitoring"],
+body[data-app-state="testing"],
+body[data-app-state="preparing"] {
+  /* Tum interactive elementler disabled (whitelist haric) */
+  button:not(.always-active),
+  a:not(.always-active),
+  input:not(.always-active),
+  select:not(.always-active),
+  [role="button"]:not(.always-active),
+  .clickable:not(.always-active),
+  .nav-item:not(.always-active),
+  .scenario-card:not(.always-active),
+  .custom-settings-toggle:not(.always-active) {
+    pointer-events: none !important;
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
+
+  /* Label'lar da disable gorunumunde */
+  label:not(.always-active) {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
+}
+
+/* Whitelist: Aktif kalacak elementler - full opacity ve interaction */
+.always-active {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+}
+
+/* Disabled butonlar - always-active olsa bile disabled görünümü almalı */
+.always-active:disabled,
+.always-active[disabled] {
+  pointer-events: none !important;
+  opacity: var(--opacity-disabled) !important;
+  cursor: not-allowed !important;
+}

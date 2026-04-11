@@ -62,6 +62,12 @@ class Logger {
     line.className = `log-line log-${category}`;
     line.textContent = message;
     this.el.appendChild(line);
+
+    // PERF-2 fix: DOM node sayisini MAX_HISTORY ile sinirla (sinirsiz buyume onleme)
+    while (this.el.childElementCount > MAX_HISTORY) {
+      this.el.firstElementChild.remove();
+    }
+
     this.el.scrollTop = this.el.scrollHeight;
   }
 
@@ -119,7 +125,7 @@ class Logger {
     if (this.el) {
       this.el.innerHTML = '';
     }
-    this.log('Log temizlendi', 'system');
+    this.log('Log cleared', 'system');
   }
 
   getHistory() {

@@ -10,7 +10,7 @@
  * 4. Console'a kisa versiyon yazar
  */
 import eventBus from './EventBus.js';
-import { DELAY, ENCODER_TYPES, LOG, PIPELINE_TYPES, EVENTS } from './constants.js';
+import { DELAY, ENCODER_TYPES, IS_DEV, LOG, PIPELINE_TYPES, EVENTS } from './constants.js';
 
 const LOG_CATEGORIES = {
   ERROR: 'error',
@@ -45,7 +45,7 @@ class LogManager {
     this.bindEvents();
     this._processEarlyErrors(); // index.html'de yakalanan erken hatalari isle
 
-    this.log('system', 'LogManager baslatildi', { sessionId: this.sessionId });
+    this.log('system', 'LogManager initialized', { sessionId: this.sessionId });
   }
 
   /**
@@ -96,7 +96,7 @@ class LogManager {
           });
         }
       });
-      console.warn(`[LogManager] ${window.__earlyErrors.length} erken hata islendi`);
+      if (IS_DEV) console.warn(`[LogManager] ${window.__earlyErrors.length} early errors processed`);
       window.__earlyErrors = []; // Temizle
     }
   }
@@ -106,7 +106,7 @@ class LogManager {
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
       request.onerror = () => {
-        console.warn('[LogManager] IndexedDB acilamadi, sadece bellek kullanilacak');
+        if (IS_DEV) console.warn('[LogManager] IndexedDB could not be opened, using memory only');
       };
 
       request.onupgradeneeded = (e) => {
@@ -121,10 +121,10 @@ class LogManager {
 
       request.onsuccess = (e) => {
         this.db = e.target.result;
-        this.log('system', 'IndexedDB baglantisi basarili');
+        this.log('system', 'IndexedDB connection successful');
       };
     } catch (err) {
-      console.warn('[LogManager] IndexedDB hatasi:', err);
+      if (IS_DEV) console.warn('[LogManager] IndexedDB error:', err);
     }
   }
 
@@ -148,7 +148,7 @@ class LogManager {
     // Stream event'leri
     eventBus.on(EVENTS.STREAM_STARTED, (stream) => {
       const track = stream?.getAudioTracks()[0];
-      this.log('stream', 'Stream baslatildi', {
+      this.log('stream', 'Stream started', {
         trackId: track?.id,
         trackLabel: track?.label,
         trackSettings: track?.getSettings()
@@ -156,32 +156,32 @@ class LogManager {
     });
 
     eventBus.on(EVENTS.STREAM_STOPPED, () => {
-      this.log('stream', 'Stream durduruldu');
+      this.log('stream', 'Stream stopped');
     });
 
     // Recorder event'leri (encoder-agnostic)
     eventBus.on(EVENTS.RECORDER_STARTED, (details) => {
       const encoder = details?.encoder || 'unknown';
       const msg = encoder === ENCODER_TYPES.WASM_OPUS
-        ? 'WASM Opus encoder baslatildi'
+        ? 'WASM Opus encoder started'
         : encoder === ENCODER_TYPES.PCM_WAV
-          ? 'PCM/WAV encoder baslatildi'
-          : 'MediaRecorder baslatildi';
+          ? 'PCM/WAV encoder started'
+          : 'MediaRecorder started';
       this.log('recorder', msg, details || null);
     });
 
     eventBus.on(EVENTS.RECORDER_STOPPED, (details) => {
       const encoder = details?.encoder || 'unknown';
       const msg = encoder === ENCODER_TYPES.WASM_OPUS
-        ? 'WASM Opus encoder durduruldu'
+        ? 'WASM Opus encoder stopped'
         : encoder === ENCODER_TYPES.PCM_WAV
-          ? 'PCM/WAV encoder durduruldu'
-          : 'MediaRecorder durduruldu';
+          ? 'PCM/WAV encoder stopped'
+          : 'MediaRecorder stopped';
       this.log('recorder', msg, details || null);
     });
 
     eventBus.on(EVENTS.RECORDING_COMPLETED, (data) => {
-      this.log('recorder', 'Kayit tamamlandi', {
+      this.log('recorder', 'Recording complete', {
         filename: data.filename,
         size: data.blob?.size,
         mimeType: data.mimeType
@@ -192,7 +192,7 @@ class LogManager {
     eventBus.on(EVENTS.MONITOR_STARTED, (data) => {
       const mode = data?.mode;
       const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
-      this.log(category, 'Monitor baslatildi', {
+      this.log(category, 'Monitor started', {
         mode,
         delaySeconds: data?.delaySeconds,
         loopback: !!data?.loopback
@@ -202,16 +202,16 @@ class LogManager {
     eventBus.on(EVENTS.MONITOR_STOPPED, (data) => {
       const mode = data?.mode;
       const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
-      this.log(category, 'Monitor durduruldu', { mode, loopback: !!data?.loopback });
+      this.log(category, 'Monitor stopped', { mode, loopback: !!data?.loopback });
     });
 
     // VU Meter event'leri (sadece onemli olanlar)
     eventBus.on(EVENTS.VUMETER_STARTED, () => {
-      this.log('audio', 'VU Meter baslatildi');
+      this.log('audio', 'VU Meter started');
     });
 
     eventBus.on(EVENTS.VUMETER_STOPPED, () => {
-      this.log('audio', 'VU Meter durduruldu');
+      this.log('audio', 'VU Meter stopped');
     });
 
     // Global error handler - Named handlers (cleanup icin)
@@ -268,7 +268,7 @@ class LogManager {
     if (this.rejectionHandler) {
       window.removeEventListener('unhandledrejection', this.rejectionHandler);
     }
-    this.log('system', 'LogManager cleanup tamamlandi');
+    this.log('system', 'LogManager cleanup complete');
   }
 
   log(category, message, details = null) {
@@ -294,21 +294,22 @@ class LogManager {
     // IndexedDB'ye kaydet
     this.saveToDB(entry);
 
-    // Console'a yaz (kisa versiyon)
+    // Console'a yaz (dev only — prod'da sadece error/warning)
     const consolePrefix = `[${category.toUpperCase()}]`;
     if (category === 'error') {
       console.error(consolePrefix, message, details || '');
     } else if (category === 'warning') {
-      // Warning'lar turuncu gorunsun
       if (details) {
         console.warn(consolePrefix, message, details);
       } else {
         console.warn(consolePrefix, message);
       }
-    } else if (details) {
-      console.log(consolePrefix, message, details);
-    } else {
-      console.log(consolePrefix, message);
+    } else if (IS_DEV) {
+      if (details) {
+        console.log(consolePrefix, message, details);
+      } else {
+        console.log(consolePrefix, message);
+      }
     }
 
     // UI log event'i gonder (sadece onemli kategoriler)
@@ -325,7 +326,7 @@ class LogManager {
       const store = tx.objectStore('logs');
       store.add(entry);
     } catch (err) {
-      console.warn('[LogManager] DB kayit hatasi:', err);
+      if (IS_DEV) console.warn('[LogManager] DB write error:', err);
     }
   }
 
@@ -374,13 +375,13 @@ class LogManager {
         lastWebAudioEnabled = !!details.value;
       }
 
-      if (category === 'stream' && message === 'Stream baslatildi') {
+      if (category === 'stream' && message === 'Stream started') {
         streamBalance += 1;
       }
-      if (category === 'stream' && message === 'Stream durduruldu') {
+      if (category === 'stream' && message === 'Stream stopped') {
         streamBalance -= 1;
         if (streamBalance < 0) {
-          addIssue('warn', 'STREAM_BALANCE_NEGATIVE', 'Stream durduruldu sayisi, baslatildi sayisindan fazla gorunuyor', {
+          addIssue('warn', 'STREAM_BALANCE_NEGATIVE', 'Stream stopped count exceeds started count', {
             streamBalance
           });
           streamBalance = 0;
@@ -389,11 +390,11 @@ class LogManager {
 
       // UI aksiyon loglari - detayi kontrol et
       // NOT: MonitoringController log format: { webAudioEnabled, loopbackEnabled, pipeline, pipelineDesc }
-      if (category === 'stream' && message === 'Monitor Baslat butonuna basildi') {
+      if (category === 'stream' && message === 'Monitor Start button pressed') {
         const { webAudioEnabled, loopbackEnabled, pipeline, pipelineDesc } = details;
         // WebAudio kapaliyken pipeline 'direct' olmali
         if (webAudioEnabled === false && pipeline && pipeline !== PIPELINE_TYPES.DIRECT) {
-          addIssue('error', 'MONITOR_MODE_MISMATCH', 'WebAudio Pipeline PASIF iken pipeline direct degil', {
+          addIssue('error', 'MONITOR_MODE_MISMATCH', 'WebAudio Pipeline is INACTIVE but pipeline is not direct', {
             webAudioEnabled,
             pipeline,
             loopbackEnabled
@@ -401,7 +402,7 @@ class LogManager {
         }
         // Loopback aktifken pipelineDesc 'WebRTC Loopback' icermeli
         if (loopbackEnabled === true && typeof pipelineDesc === 'string' && !pipelineDesc.includes('WebRTC Loopback')) {
-          addIssue('warn', 'PIPELINE_LABEL_MISMATCH', 'Loopback aktif ama pipelineDesc WebRTC Loopback icermiyor', {
+          addIssue('warn', 'PIPELINE_LABEL_MISMATCH', 'Loopback is active but pipelineDesc does not contain WebRTC Loopback', {
             pipeline,
             pipelineDesc
           });
@@ -409,16 +410,16 @@ class LogManager {
       }
 
       // Monitor eventleri (LogManager tarafindan olusturulan)
-      if (message === 'Monitor baslatildi') {
+      if (message === 'Monitor started') {
         const delaySeconds = details?.delaySeconds;
         if (!(Number.isFinite(delaySeconds) && delaySeconds > 0)) {
-          addIssue('warn', 'MONITOR_DELAY_MISSING', 'Monitor basladi ama delaySeconds log detayi yok/hatali', {
+          addIssue('warn', 'MONITOR_DELAY_MISSING', 'Monitor started but delaySeconds log detail is missing/invalid', {
             delaySeconds,
             mode: details?.mode,
             loopback: !!details?.loopback
           });
         } else if (Math.abs(delaySeconds - DELAY.DEFAULT_SECONDS) > 0.01) {
-          addIssue('warn', 'MONITOR_DELAY_UNEXPECTED', `Monitor delay beklenen degerde degil (beklenen: ${DELAY.DEFAULT_SECONDS}s)`, {
+          addIssue('warn', 'MONITOR_DELAY_UNEXPECTED', `Monitor delay is not at expected value (expected: ${DELAY.DEFAULT_SECONDS}s)`, {
             delaySeconds,
             expected: DELAY.DEFAULT_SECONDS,
             mode: details?.mode,
@@ -427,7 +428,7 @@ class LogManager {
         }
 
         if (recordingActive) {
-          addIssue('error', 'CONCURRENT_RECORD_AND_MONITOR', 'Monitor basladi ama kayit hali hazirda aktif gorunuyor', {
+          addIssue('error', 'CONCURRENT_RECORD_AND_MONITOR', 'Monitor started but recording appears already active', {
             mode: details?.mode,
             loopback: !!details?.loopback
           });
@@ -435,15 +436,15 @@ class LogManager {
         monitoringActive = true;
       }
 
-      if (message === 'Monitor durduruldu') {
+      if (message === 'Monitor stopped') {
         monitoringActive = false;
       }
 
       // Tum encoder tiplerine gore kayit baslangici tespit et
-      const recorderStartMessages = ['MediaRecorder baslatildi', 'WASM Opus encoder baslatildi', 'PCM/WAV encoder baslatildi'];
+      const recorderStartMessages = ['MediaRecorder started', 'WASM Opus encoder started', 'PCM/WAV encoder started'];
       if (category === 'recorder' && recorderStartMessages.includes(message)) {
         if (monitoringActive) {
-          addIssue('error', 'CONCURRENT_MONITOR_AND_RECORD', 'Kayit basladi ama monitoring hali hazirda aktif gorunuyor', {
+          addIssue('error', 'CONCURRENT_MONITOR_AND_RECORD', 'Recording started but monitoring appears already active', {
             lastWebAudioEnabled
           });
         }
@@ -451,7 +452,7 @@ class LogManager {
       }
 
       // Tum encoder tiplerine gore kayit bitisi tespit et
-      const recorderStopMessages = ['MediaRecorder durduruldu', 'WASM Opus encoder durduruldu', 'PCM/WAV encoder durduruldu'];
+      const recorderStopMessages = ['MediaRecorder stopped', 'WASM Opus encoder stopped', 'PCM/WAV encoder stopped'];
       if (category === 'recorder' && recorderStopMessages.includes(message)) {
         recordingActive = false;
       }
@@ -460,13 +461,13 @@ class LogManager {
     // NOT: runSanityChecks() aktif session sirasinda cagrilabilir
     // Bu durumda aktif kayit/monitor normal bir durumdur, hata degil
     if (recordingActive) {
-      addIssue('info', 'RECORDING_ACTIVE', 'Kayit aktif (check sirasinda devam ediyor)', {});
+      addIssue('info', 'RECORDING_ACTIVE', 'Recording is active (still running during check)', {});
     }
     if (monitoringActive) {
-      addIssue('info', 'MONITORING_ACTIVE', 'Monitoring aktif (check sirasinda devam ediyor)', {});
+      addIssue('info', 'MONITORING_ACTIVE', 'Monitoring is active (still running during check)', {});
     }
     if (streamBalance !== 0) {
-      addIssue('warn', 'STREAM_BALANCE_NONZERO', 'Session sonunda stream baslat/durdur dengesi sifir degil', { streamBalance });
+      addIssue('warn', 'STREAM_BALANCE_NONZERO', 'Stream start/stop balance is not zero at session end', { streamBalance });
     }
 
     return {
@@ -507,7 +508,7 @@ class LogManager {
       exportedAt: new Date().toISOString(),
       logs: this.logs
     }, filename);
-    this.log('system', 'Loglar export edildi', { filename });
+    this.log('system', 'Logs exported', { filename });
   }
 
   // Kategoriye gore export
@@ -529,7 +530,7 @@ class LogManager {
         this.logs[cat] = [];
       });
     }
-    this.log('system', category ? `${category} loglari temizlendi` : 'Tum loglar temizlendi');
+    this.log('system', category ? `${category} logs cleared` : 'All logs cleared');
   }
 
   // Istatistikler

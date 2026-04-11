@@ -7,7 +7,7 @@
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
 import { AUDIO, VU_METER, EVENTS } from './constants.js';
-import { log, disconnectNodes } from './utils.js';
+import { log, disconnectNodes, createAudioContext, createAnalyserNode } from './utils.js';
 
 class VuMeter {
   constructor(config) {
@@ -32,9 +32,14 @@ class VuMeter {
     this.remotePeakHoldTime = 0;
     this.dotState = 'idle'; // classList optimizasyonu icin state tracking
 
+    // VU balistik state (per-meter: local ve remote ayri)
+    this._localMeterState = { smoothedRms: 0, lastRenderTime: 0 };
+    this._remoteMeterState = { smoothedRms: 0, lastRenderTime: 0 };
+
     // Performans: VU meter container genisligini cache'le (reflow onleme)
-    this.meterWidth = this.peakEl?.parentElement?.offsetWidth || VU_METER.DEFAULT_METER_WIDTH;
-    this.remoteMeterWidth = this.remotePeakEl?.parentElement?.offsetWidth || VU_METER.DEFAULT_METER_WIDTH;
+    // clientWidth kullan (border haric) - bar'in width:% hesabiyla ayni referans alani
+    this.meterWidth = this.peakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
+    this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
 
     // Event listener referansları (memory leak önleme - stop()'da kaldırılır)
     this._onStreamStarted = (stream) => this.start(stream);
@@ -51,8 +56,11 @@ class VuMeter {
     // Resize event'inde meter width'i guncelle
     // Memory leak fix: Named handler, stop()'ta removeEventListener icin
     this.resizeHandler = () => {
-      this.meterWidth = this.peakEl?.parentElement?.offsetWidth || VU_METER.DEFAULT_METER_WIDTH;
-      this.remoteMeterWidth = this.remotePeakEl?.parentElement?.offsetWidth || VU_METER.DEFAULT_METER_WIDTH;
+      this.meterWidth = this.peakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
+      this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
+      // Gradient boyutunu container genisligiyle esitle
+      this.peakEl?.parentElement?.style.setProperty('--meter-width', `${this.meterWidth}px`);
+      this.remotePeakEl?.parentElement?.style.setProperty('--meter-width', `${this.remoteMeterWidth}px`);
     };
     window.addEventListener('resize', this.resizeHandler);
   }
@@ -66,6 +74,9 @@ class VuMeter {
       window.removeEventListener('resize', this.resizeHandler);
       window.addEventListener('resize', this.resizeHandler);
     }
+    // meterWidth'i guncelle ve CSS variable'i set et (display:none sonrasi dogru olcum)
+    this.meterWidth = this.peakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
+    this.peakEl?.parentElement?.style.setProperty('--meter-width', `${this.meterWidth}px`);
   }
 
   /**
@@ -95,11 +106,11 @@ class VuMeter {
 
     // DataArray olustur (pipeline'in audioContext'inden)
     const bufferLength = this.analyser.frequencyBinCount;
-    this._pipelineDataArray = new Uint8Array(bufferLength);
+    this._pipelineDataArray = new Float32Array(bufferLength);
 
     this.update();
 
-    log.audio('VU Meter: Pipeline analyser baglandi', { fftSize: analyserNode.fftSize, source: 'pipeline' });
+    log.audio('VU Meter: Pipeline analyser connected', { fftSize: analyserNode.fftSize, source: 'pipeline' });
 
     eventBus.emit(EVENTS.VUMETER_STARTED);
   }
@@ -129,7 +140,7 @@ class VuMeter {
     // AudioContext bilgisini gonder (null kontrol ile)
     const ac = audioEngine.getContext();
     if (!ac) {
-      log.error('VuMeter: AudioEngine context hazir degil', { isWarmedUp: audioEngine.isWarmedUp });
+      log.error('VuMeter: AudioEngine context not ready', { isWarmedUp: audioEngine.isWarmedUp });
       return;
     }
     eventBus.emit(EVENTS.VUMETER_AUDIOCONTEXT, {
@@ -157,24 +168,20 @@ class VuMeter {
 
     // DOM render sonrasi width hesapla (container artik gorunur)
     requestAnimationFrame(() => {
-      this.remoteMeterWidth = this.remotePeakEl?.parentElement?.offsetWidth || VU_METER.DEFAULT_METER_WIDTH;
+      this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
+      this.remotePeakEl?.parentElement?.style.setProperty('--meter-width', `${this.remoteMeterWidth}px`);
     });
 
     try {
-      // Remote stream icin ayri AudioContext (cakisma onleme)
-      this.remoteAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (this.remoteAudioCtx.state === 'suspended') {
-        await this.remoteAudioCtx.resume();
-      }
-
+      // Remote stream icin ayri AudioContext (cakisma onleme) - DRY: utility kullan
+      this.remoteAudioCtx = await createAudioContext();
       this.remoteSourceNode = this.remoteAudioCtx.createMediaStreamSource(stream);
-      this.remoteAnalyser = this.remoteAudioCtx.createAnalyser();
-      this.remoteAnalyser.fftSize = AUDIO.FFT_SIZE;
+      this.remoteAnalyser = createAnalyserNode(this.remoteAudioCtx);
       this.remoteSourceNode.connect(this.remoteAnalyser);
 
-      log.stream('VU Meter: Remote stream baglandi', { streamId: stream.id });
+      log.stream('VU Meter: Remote stream connected', { streamId: stream.id });
     } catch (err) {
-      log.error('VU Meter: Remote stream baglanti hatasi', { error: err.message });
+      log.error('VU Meter: Remote stream connection error', { error: err.message });
     }
   }
 
@@ -195,21 +202,20 @@ class VuMeter {
     this.remotePeakLevel = 0;
   }
 
-  // DRY: RMS hesaplama (clipping tespiti icin hala kullanilabilir)
+  // DRY: RMS hesaplama — Float32 [-1,1] araliginda direkt hesap
   calculateRMS(dataArray) {
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
-      const val = (dataArray[i] - AUDIO.CENTER_VALUE) / AUDIO.CENTER_VALUE;
-      sum += val * val;
+      sum += dataArray[i] * dataArray[i];
     }
     return Math.sqrt(sum / dataArray.length);
   }
 
-  // DRY: Peak hesaplama (update ve updateRemote icin ortak)
+  // DRY: Peak hesaplama — Float32 [-1,1] araliginda direkt abs
   calculatePeak(dataArray) {
     let maxSample = 0;
     for (let i = 0; i < dataArray.length; i++) {
-      const val = Math.abs((dataArray[i] - AUDIO.CENTER_VALUE) / AUDIO.CENTER_VALUE);
+      const val = Math.abs(dataArray[i]);
       if (val > maxSample) maxSample = val;
     }
     return maxSample;
@@ -217,29 +223,48 @@ class VuMeter {
 
   /**
    * DRY: Ortak meter hesaplama ve render (local + remote icin)
-   * @returns {{ level: number, dB: number, peakLevel: number, peakHoldTime: number }}
+   * VU integration: 300ms EMA ile yumusatilmis RMS
+   * Peak decay: frame-rate bagimsiz (dB/s)
+   * @returns {{ level: number, dB: number, rawDb: number, peakLevel: number, peakHoldTime: number }}
    */
-  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth) {
-    analyser.getByteTimeDomainData(dataArray);
-    const rms = this.calculateRMS(dataArray);
-    const dB = rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
+  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth, meterState) {
+    analyser.getFloatTimeDomainData(dataArray);
+    const instantRms = this.calculateRMS(dataArray);
+
+    // Frame-rate bagimsiz zamanlama
+    const now = performance.now();
+    const dtMs = meterState.lastRenderTime > 0 ? (now - meterState.lastRenderTime) : 16.7;
+    meterState.lastRenderTime = now;
+
+    // Raw dB (smoothing oncesi — olcum icin)
+    const rawDb = instantRms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(instantRms) : VU_METER.MIN_DB;
+
+    // VU integration: 300ms EMA
+    const alpha = 1 - Math.exp(-dtMs / VU_METER.VU_INTEGRATION_MS);
+    meterState.smoothedRms += alpha * (instantRms - meterState.smoothedRms);
+
+    const dB = meterState.smoothedRms > VU_METER.RMS_THRESHOLD
+      ? 20 * Math.log10(meterState.smoothedRms) : VU_METER.MIN_DB;
     const level = Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
 
     if (barEl) barEl.style.width = `${level}%`;
 
-    // Peak hold + decay
+    // Peak hold + frame-rate bagimsiz decay
     if (level > peakLevel) {
       peakLevel = level;
-      peakHoldTime = Date.now();
-    } else if (Date.now() - peakHoldTime > VU_METER.PEAK_HOLD_TIME_MS) {
-      peakLevel = Math.max(level, peakLevel - VU_METER.PEAK_DECAY_RATE);
+      peakHoldTime = now;
+    } else if (now - peakHoldTime > VU_METER.PEAK_HOLD_TIME_MS) {
+      const decayDb = VU_METER.PEAK_DECAY_DB_PER_SEC * (dtMs / 1000);
+      const decayLevel = (decayDb / (-VU_METER.MIN_DB)) * 100;
+      peakLevel = Math.max(level, peakLevel - decayLevel);
     }
 
     if (peakEl) {
-      peakEl.style.transform = `translateX(${(peakLevel / 100) * meterWidth}px)`;
+      const translate = Math.min((peakLevel / 100) * meterWidth, meterWidth - VU_METER.PEAK_WIDTH);
+      peakEl.style.transform = `translateX(${translate}px)`;
     }
 
-    return { level, dB, peakLevel, peakHoldTime };
+    return { level, dB, rawDb, peakLevel, peakHoldTime };
   }
 
   update() {
@@ -248,7 +273,7 @@ class VuMeter {
     const dataArray = this._pipelineDataArray || audioEngine.getDataArray();
     const result = this._renderMeter(
       this.analyser, dataArray, this.barEl, this.peakEl,
-      this.peakLevel, this.peakHoldTime, this.meterWidth
+      this.peakLevel, this.peakHoldTime, this.meterWidth, this._localMeterState
     );
     this.peakLevel = result.peakLevel;
     this.peakHoldTime = result.peakHoldTime;
@@ -266,7 +291,7 @@ class VuMeter {
     }
 
     eventBus.emit(EVENTS.VUMETER_LEVEL, {
-      level: result.level, peak: this.peakLevel, dB: result.dB.toFixed(1), isClipping
+      level: result.level, peak: this.peakLevel, dB: result.dB.toFixed(1), rawDb: result.rawDb.toFixed(1), isClipping
     });
 
     this.updateRemote();
@@ -276,12 +301,12 @@ class VuMeter {
   updateRemote() {
     if (!this.remoteAnalyser) return;
     if (!this.remoteDataArray) {
-      this.remoteDataArray = new Uint8Array(this.remoteAnalyser.frequencyBinCount);
+      this.remoteDataArray = new Float32Array(this.remoteAnalyser.frequencyBinCount);
     }
 
     const result = this._renderMeter(
       this.remoteAnalyser, this.remoteDataArray, this.remoteBarEl, this.remotePeakEl,
-      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth
+      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth, this._remoteMeterState
     );
     this.remotePeakLevel = result.peakLevel;
     this.remotePeakHoldTime = result.peakHoldTime;
@@ -307,6 +332,8 @@ class VuMeter {
     }
 
     this.peakLevel = 0;
+    this._localMeterState = { smoothedRms: 0, lastRenderTime: 0 };
+    this._remoteMeterState = { smoothedRms: 0, lastRenderTime: 0 };
 
     // AudioEngine'den disconnect (context acik kalir - tekrar hizli baslatma icin)
     audioEngine.disconnect();

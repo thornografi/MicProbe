@@ -6,6 +6,9 @@
   <title>Mic Probe - Diagnose Microphone Issues</title>
   <meta name="description" content="Test your microphone with real-world simulations. WebRTC, codec testing, and voice app profiles for Discord, Zoom, WhatsApp, and more.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+  <!-- Font preconnect (performans) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- CSS (fonts are imported in variables.css) -->
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/landing.css">
@@ -154,7 +157,7 @@
       <div class="navbar-nav">
         <a href="#features" class="navbar-link">Features</a>
         <a href="#how-it-works" class="navbar-link">How It Works</a>
-        <button class="btn btn--primary navbar-cta" onclick="showAppView()">
+        <button class="btn btn--primary navbar-cta" id="navbarCta">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             Get Started
           </button>
@@ -171,8 +174,7 @@
       <div class="hero-content">
         <h1 class="hero-title">
           <span class="hero-title-line">Diagnose Microphone Issues</span>
-          <span class="hero-title-line">With</span>
-          <span class="hero-title-line gradient-text">Real-World Simulations</span>
+          <span class="hero-title-line">With <span class="gradient-text">Real-World Simulations</span></span>
         </h1>
 
         <p class="hero-subtitle">
@@ -181,7 +183,7 @@
         </p>
 
         <div class="hero-buttons">
-          <button class="btn btn--primary" onclick="showAppView()">
+          <button class="btn btn--primary" id="heroLaunchBtn">
             <svg viewBox="0 0 24 24" fill="currentColor"><use href="#icon-mic"/></svg>
             Launch Mic Probe
           </button>
@@ -199,15 +201,17 @@
         <!-- Sound Wave Bars SVG - Statik dikey cubuklar (JS-driven) -->
         <svg class="hero-soundwave" viewBox="0 0 1600 260" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
           <defs>
-            <!-- Bar gradient - yatay rainbow -->
+            <!-- Bar gradient - merkezden ayna simetrisi -->
             <linearGradient id="hero-bar-gradient" gradientUnits="userSpaceOnUse" x1="0" x2="1600">
-              <stop offset="0%" stop-color="#f59e0b"/>
-              <stop offset="15%" stop-color="#fb7185"/>
-              <stop offset="35%" stop-color="#ec4899"/>
-              <stop offset="50%" stop-color="#c026d3"/>
-              <stop offset="65%" stop-color="#8b5cf6"/>
-              <stop offset="80%" stop-color="#6366f1"/>
-              <stop offset="100%" stop-color="#3b82f6"/>
+              <stop offset="0%" stop-color="#6366f1"/>
+              <stop offset="15%" stop-color="#8b5cf6"/>
+              <stop offset="30%" stop-color="#c026d3"/>
+              <stop offset="45%" stop-color="#ec4899"/>
+              <stop offset="50%" stop-color="#fb7185"/>
+              <stop offset="55%" stop-color="#ec4899"/>
+              <stop offset="70%" stop-color="#c026d3"/>
+              <stop offset="85%" stop-color="#8b5cf6"/>
+              <stop offset="100%" stop-color="#6366f1"/>
             </linearGradient>
           </defs>
           <!-- Bars will be added by WaveAnimator.js -->
@@ -218,9 +222,7 @@
           <div class="hero-wave"></div>
           <div class="hero-wave"></div>
         </div>
-        <div class="hero-mic-icon" onclick="showAppView()" title="Get Started"
-             onmouseenter="document.querySelector('.hero-buttons .btn--primary').classList.add('mic-hover-active')"
-             onmouseleave="document.querySelector('.hero-buttons .btn--primary').classList.remove('mic-hover-active')">
+        <div class="hero-mic-icon" id="heroMicIcon" title="Get Started">
           <div class="hero-mic-circle">
             <svg viewBox="0 0 24 24" fill="currentColor"><use href="#icon-mic"/></svg>
           </div>
@@ -229,17 +231,17 @@
     </section>
 
     <!-- Features Section -->
-    <section class="features" id="features">
-      <div class="section-header">
+    <section class="features" id="features" aria-labelledby="features-title">
+      <div class="section-header reveal">
         <span class="section-badge">Features</span>
-        <h2 class="section-title">Everything You Need to Test Your Mic</h2>
+        <h2 class="section-title" id="features-title">Everything You Need to Test Your Mic</h2>
         <p class="section-subtitle">Professional-grade tools to diagnose and analyze microphone issues across different platforms.</p>
       </div>
 
-      <div class="features-grid">
+      <div class="features-grid reveal-stagger">
         <!-- Feature 1: Voice Call Simulation -->
-        <div class="landing-card feature-card">
-          <div class="feature-icon">
+        <div class="landing-card feature-card reveal" style="--reveal-index: 0">
+          <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1.02 1.02 0 00-1.02.24l-2.2 2.2a15.074 15.074 0 01-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01A11.36 11.36 0 018.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/>
             </svg>
@@ -251,8 +253,8 @@
         </div>
 
         <!-- Feature 2: Voice Message Testing -->
-        <div class="landing-card feature-card">
-          <div class="feature-icon">
+        <div class="landing-card feature-card reveal" style="--reveal-index: 1">
+          <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93h2c0 3.31 2.69 6 6 6s6-2.69 6-6h2c0 4.08-3.06 7.44-7 7.93V20h4v2H8v-2h4v-4.07z"/>
             </svg>
@@ -264,8 +266,8 @@
         </div>
 
         <!-- Feature 3: Real-Time Monitoring -->
-        <div class="landing-card feature-card">
-          <div class="feature-icon">
+        <div class="landing-card feature-card reveal" style="--reveal-index: 2">
+          <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
             </svg>
@@ -277,8 +279,8 @@
         </div>
 
         <!-- Feature 4: Profile-Based Testing -->
-        <div class="landing-card feature-card">
-          <div class="feature-icon">
+        <div class="landing-card feature-card reveal" style="--reveal-index: 3">
+          <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
             </svg>
@@ -292,32 +294,32 @@
     </section>
 
     <!-- How It Works Section -->
-    <section class="how-it-works" id="how-it-works">
-      <div class="section-header">
+    <section class="how-it-works" id="how-it-works" aria-labelledby="how-it-works-title">
+      <div class="section-header reveal">
         <span class="section-badge">How It Works</span>
-        <h2 class="section-title">Three Simple Steps</h2>
+        <h2 class="section-title" id="how-it-works-title">Three Simple Steps</h2>
         <p class="section-subtitle">Get started in seconds with our intuitive testing workflow.</p>
       </div>
 
-      <div class="steps-container">
-        <div class="landing-card step-card">
-          <div class="step-number">1</div>
+      <div class="steps-container reveal-stagger">
+        <div class="landing-card step-card reveal" style="--reveal-index: 0">
+          <div class="step-number" aria-hidden="true">1</div>
           <h3 class="step-title">Select a Profile</h3>
           <p class="step-description">
             Choose from Voice Calls (Discord, Zoom) or Voice Messages (WhatsApp, Telegram). Each profile mimics real app settings.
           </p>
         </div>
 
-        <div class="landing-card step-card">
-          <div class="step-number">2</div>
+        <div class="landing-card step-card reveal" style="--reveal-index: 1">
+          <div class="step-number" aria-hidden="true">2</div>
           <h3 class="step-title">Test Your Mic</h3>
           <p class="step-description">
             Use Monitor mode to hear yourself through the codec, or Record mode to capture and analyze your audio quality.
           </p>
         </div>
 
-        <div class="landing-card step-card">
-          <div class="step-number">3</div>
+        <div class="landing-card step-card reveal" style="--reveal-index: 2">
+          <div class="step-number" aria-hidden="true">3</div>
           <h3 class="step-title">Analyze Results</h3>
           <p class="step-description">
             Review VU meters, playback recordings, and check the console for detailed codec and audio processing information.
@@ -330,7 +332,7 @@
     <footer class="site-footer" id="sharedFooter">
       <div class="site-footer-content">
         <!-- Logo -->
-        <a href="#" class="site-footer-brand" onclick="showLandingView(); return false;">
+        <a href="#" class="site-footer-brand" id="footerBrand">
           <svg viewBox="0 0 24 24"><use href="#icon-mic-brand"/></svg>
           <span class="brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
         </a>
@@ -358,7 +360,7 @@
     <div class="app-shell">
       <header class="app-header header-base">
         <div class="app-header-content">
-          <a href="#" class="navbar-brand" onclick="showLandingView(); return false;" title="Back to Home">
+          <a href="#" class="navbar-brand" id="appHeaderBrand" title="Back to Home">
             <svg class="navbar-logo" viewBox="0 0 24 24"><use href="#icon-mic-brand"/></svg>
             <span class="navbar-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
           </a>
@@ -367,7 +369,7 @@
 
       <div class="app-layout">
       <!-- Sidebar -->
-      <aside class="sidebar">
+      <aside class="sidebar" aria-label="Profile navigation">
         <nav class="sidebar-nav">
           <!-- Voice Calls Category -->
           <div class="nav-section">
@@ -421,7 +423,7 @@
                   <use href="#icon-discord"/>
                 </svg>
                 <h1 id="pageTitle">Discord Voice Test</h1>
-                <span id="statusBadge" class="status status-idle"><span class="status-dot"></span>Ready</span>
+                <span id="statusBadge" class="status status-idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Ready</span>
               </div>
               <p id="pageSubtitle">WebRTC Loopback + Opus 64kbps</p>
             </div>
@@ -436,7 +438,7 @@
                 <!-- Controls Section -->
                 <div class="unified-section unified-controls">
                   <div class="mic-selector-row">
-                    <select id="micSelector" class="mic-dropdown">
+                    <select id="micSelector" class="mic-dropdown" aria-label="Select microphone">
                       <option value="">Default microphone</option>
                     </select>
                     <button id="refreshMics" class="btn-icon" title="Refresh microphone list">
@@ -445,17 +447,17 @@
                   </div>
 
                   <div class="button-row">
-                    <button id="recordToggle" class="btn btn-action btn-record always-active">
+                    <button id="recordToggle" class="btn btn-action btn-record always-active" aria-label="Start recording" aria-pressed="false">
                       <svg class="icon-circle" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
                       <svg class="icon-square" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                       <span class="btn-text">Record</span>
                     </button>
-                    <button id="monitorToggle" class="btn btn-action btn-monitor always-active">
+                    <button id="monitorToggle" class="btn btn-action btn-monitor always-active" aria-label="Start monitoring" aria-pressed="false">
                       <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
                       <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                       <span class="btn-text">Monitor</span>
                     </button>
-                    <button id="testBtn" class="btn btn-action btn-test always-active" title="7 second loopback test">
+                    <button id="testBtn" class="btn btn-action btn-test always-active" title="7 second loopback test" aria-label="Start 7-second loopback test">
                       <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                       <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                       <span class="btn-text">Test</span>
@@ -463,7 +465,7 @@
                     </button>
                   </div>
 
-                  <div id="recordingTimer" class="recording-timer">0:00</div>
+                  <div id="recordingTimer" class="recording-timer" aria-live="polite" aria-atomic="true">0:00</div>
                 </div>
 
                 <!-- Tips (inline text, no boxes) -->
@@ -486,20 +488,20 @@
               <div class="unified-row unified-row-vu">
                 <div class="vu-section">
                   <div class="vu-label">
-                    <span id="signalDot" class="signal-dot"></span>
+                    <span id="signalDot" class="signal-dot" aria-hidden="true"></span>
                     <span>Local (Microphone)</span>
                   </div>
-                  <div class="vu-meter">
+                  <div class="vu-meter" role="meter" aria-label="Local microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div id="vuMeterBar" class="vu-meter-bar"></div>
                     <div id="vuMeterPeak" class="vu-meter-peak"></div>
                   </div>
                 </div>
                 <div id="remoteVuContainer" class="vu-section">
                   <div class="vu-label">
-                    <span class="signal-dot remote-dot"></span>
+                    <span class="signal-dot remote-dot" aria-hidden="true"></span>
                     <span>Remote (After Codec)</span>
                   </div>
-                  <div class="vu-meter">
+                  <div class="vu-meter" role="meter" aria-label="Remote codec level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div id="remoteVuBar" class="vu-meter-bar remote-bar"></div>
                     <div id="remoteVuPeak" class="vu-meter-peak"></div>
                   </div>
@@ -530,6 +532,10 @@
                   </div>
                 </div>
                 <p id="noRecording" class="empty-state" style="display: none;">No recording yet</p>
+                <button id="showReportBtn" class="btn-show-report" style="display:none">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                  View Analysis Results
+                </button>
               </div>
 
               <!-- Row 4: Custom Settings (Collapsible) -->
@@ -545,6 +551,10 @@
                   </div>
                 </div>
               </div>
+
+
+
+
             </div>
           </div>
 
@@ -563,7 +573,7 @@
             <span class="log-count" id="logCount">0</span>
           </div>
           <div class="header-actions">
-            <button class="btn-copy" id="copyLogsBtn" onclick="copyAllLogs()" title="Copy all logs">
+            <button class="btn-copy" id="copyLogsBtn" title="Copy all logs">
               <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -572,8 +582,8 @@
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </button>
-            <button class="btn-clear" onclick="clearLog()">Clear</button>
-            <button class="btn-close-console" onclick="toggleDevConsole()" title="Close Console">
+            <button class="btn-clear" id="clearLogBtn">Clear</button>
+            <button class="btn-close-console" id="closeConsole" title="Close Console">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
             </button>
           </div>
@@ -583,20 +593,20 @@
         </div>
         <div class="dev-console-drawer-footer">
           <div class="filter-buttons">
-            <button class="btn-filter active" data-category="all" onclick="filterLogs('all')">All</button>
-            <button class="btn-filter btn-filter-error" data-category="error" onclick="filterLogs('error')">Errors</button>
-            <button class="btn-filter" data-category="technical" onclick="filterLogs('technical')">Technical</button>
+            <button class="btn-filter active" data-category="all">All</button>
+            <button class="btn-filter btn-filter-error" data-category="error">Errors</button>
+            <button class="btn-filter" data-category="technical">Technical</button>
           </div>
           <div class="export-buttons">
-            <button class="btn-export-small" onclick="exportLogs()" title="Export logs as JSON">Export</button>
-            <button class="btn-export-small" onclick="getLogStats()" title="Log statistics">Stats</button>
-            <button class="btn-export-small" onclick="runSanityChecks()" title="Log sanity check">Sanity</button>
+            <button class="btn-export-small" id="exportLogsBtn" title="Export logs as JSON">Export</button>
+            <button class="btn-export-small" id="logStatsBtn" title="Log statistics">Stats</button>
+            <button class="btn-export-small" id="sanityCheckBtn" title="Log sanity check">Sanity</button>
           </div>
         </div>
       </div>
 
       <!-- Console Toggle Button (Fixed at right edge) -->
-      <button class="dev-console-toggle-btn" id="devConsoleToggle" onclick="toggleDevConsole()" title="Toggle Developer Console">
+      <button class="dev-console-toggle-btn" id="devConsoleToggle" title="Toggle Developer Console">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
       </button>
 
@@ -812,7 +822,7 @@
       <div id="drawerOverlay" class="drawer-overlay"></div>
 
       <!-- Hidden profile selector for compatibility -->
-      <select id="profileSelector" class="profile-dropdown" style="display: none;">
+      <select id="profileSelector" class="profile-dropdown hidden">
         <option value="discord" selected>Discord Voice</option>
         <option value="zoom">Zoom / Meet</option>
         <option value="whatsapp-call">WhatsApp Call</option>
@@ -822,10 +832,49 @@
         <option value="raw">Raw Recording</option>
       </select>
 
-      <div id="scenarioCards" style="display: none;"></div>
-      <div id="activeScenarioInfo" style="display: none;">
+      <div id="scenarioCards" class="hidden"></div>
+      <div id="activeScenarioInfo" class="hidden">
         <span id="scenarioBadge">Discord Voice</span>
         <span id="scenarioTech">WebRTC Loopback + Opus 64kbps</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Popup -->
+  <div class="report-popup-backdrop" id="reportPopupBackdrop" role="dialog" aria-modal="true" aria-label="Analysis Results">
+    <div class="report-popup" id="reportPanel">
+      <div class="report-popup-header">
+        <div class="report-popup-title">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+          <span>Analysis Results</span>
+          <span class="report-score-badge" id="reportScoreBadge"></span>
+        </div>
+        <button class="report-popup-close" id="reportPopupClose">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </div>
+      <div class="report-popup-body">
+        <!-- Free: Ozet -->
+        <div class="report-summary" id="reportSummary">
+          <div class="report-overall" id="reportOverall"></div>
+          <div class="report-findings" id="reportFindings"></div>
+        </div>
+        <!-- Premium: Detay (blur/kilit) -->
+        <div class="report-detailed-wrapper" id="reportDetailedWrapper">
+          <div class="report-detailed" id="reportDetailed">
+            <div class="report-section-title">Detailed Metrics</div>
+            <div class="report-metrics-grid" id="reportMetricsGrid"></div>
+            <div class="report-section-title">Recommendations</div>
+            <div class="report-recommendations" id="reportRecommendations"></div>
+          </div>
+          <div class="premium-overlay" id="premiumOverlay">
+            <div class="premium-lock-icon">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
+            </div>
+            <p class="premium-text">Detailed analysis and personalized recommendations</p>
+            <button class="btn-premium" id="premiumCta">Unlock with Premium</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

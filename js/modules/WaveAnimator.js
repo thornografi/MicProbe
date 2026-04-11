@@ -221,7 +221,7 @@ class WaveAnimator {
     return minBarHeight + (normalizedHeight * heightRange * heightMult);
   }
 
-  // Animasyon metodlari (artik kullanilmiyor ama API uyumlulugu icin)
+  // No-op: initWaveAnimator() yeni instance oncesi stop() cagirir, bos metod yeterli
   start() {}
   stop() {}
   updateConfig(newConfig) {

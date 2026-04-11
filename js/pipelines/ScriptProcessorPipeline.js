@@ -33,7 +33,7 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     this._channels = channels;
 
     // ScriptProcessor olustur
-    this.nodes.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+    this.nodes.processor = this.audioContext.createScriptProcessor(bufferSize, this._channels, this._channels);
 
     // WASM Opus encoder kurulumu (tek mod)
     await this._setupWasmOpus(bufferSize, mediaBitrate);
@@ -64,6 +64,9 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     // VU Meter icin AnalyserNode olustur
     this.createAnalyser();
 
+    // Frekans analizi icin yuksek cozunurluklu analyser
+    this.createAnalysisAnalyser(this.nodes.processor);
+
     this.sourceNode.connect(this.nodes.processor);
 
     // Fan-out: Processor cikisindan VU Meter'a
@@ -72,8 +75,8 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     // DRY: Ortak MuteGain pattern
     this._createMuteGain(this.nodes.processor);
 
-    this.log('ScriptProcessor + WASM Opus grafigi baglandi (fan-out)', {
-      graph: 'Source -> Processor -> [AnalyserNode (VU) + MuteGain -> Destination]',
+    this.log('ScriptProcessor + WASM Opus graph connected (fan-out)', {
+      graph: 'Source -> Processor -> [AnalyserNode (VU) + AnalyserNode (Analysis) + MuteGain -> Destination]',
       bufferSize,
       bitrate: opusBitrate,
       encoderType: this.opusWorker.encoderType
@@ -94,6 +97,6 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     this._cleanupOpusWorker();
 
     await super.cleanup();
-    this.log('ScriptProcessor pipeline cleanup tamamlandi');
+    this.log('ScriptProcessor pipeline cleanup complete');
   }
 }

@@ -86,11 +86,18 @@ class LoopbackManager {
    * @param {boolean} options.useWebAudio - WebAudio pipeline kullanılsın mı
    * @param {number} options.opusBitrate - Opus bitrate (bps)
    * @returns {Promise<MediaStream>} Remote stream (WebRTC'den gelen ses)
+   * @throws {Error} ICE baglantisi basarisiz olursa veya remote stream olusturulamazsa
    */
   async setup(localStream, options = {}) {
     const { useWebAudio = false, opusBitrate = 32000 } = options;
 
-    log.stream('WebRTC Loopback kuruluyor', { useWebAudio, opusBitrate });
+    // BUG-4 fix: Onceki baglanti aciksa once temizle (double-setup leak onleme)
+    if (this.pc1) {
+      log.stream('LoopbackManager: Previous connection still open, cleaning up first');
+      await this.cleanup();
+    }
+
+    log.stream('WebRTC Loopback setting up', { useWebAudio, opusBitrate });
 
     this.localStream = localStream;
 
@@ -121,31 +128,13 @@ class LoopbackManager {
     this.pc1 = new RTCPeerConnection({ iceServers: [] });
     this.pc2 = new RTCPeerConnection({ iceServers: [] });
 
-    // ICE candidate handler'lari - cleanup sirasinda gec gelen candidate'ler icin guard
-    this.pc1.onicecandidate = (e) => {
-      if (e.candidate && this.pc2 && !this._isCleaningUp) {
-        this.pc2.addIceCandidate(e.candidate).catch(err => {
-          // Cleanup sirasinda hata normal - sessizce atla
-          if (!this._isCleaningUp) {
-            log.warning('ICE candidate hatasi (pc2)', { error: err.message });
-          }
-        });
-      }
-    };
-    this.pc2.onicecandidate = (e) => {
-      if (e.candidate && this.pc1 && !this._isCleaningUp) {
-        this.pc1.addIceCandidate(e.candidate).catch(err => {
-          // Cleanup sirasinda hata normal - sessizce atla
-          if (!this._isCleaningUp) {
-            log.warning('ICE candidate hatasi (pc1)', { error: err.message });
-          }
-        });
-      }
-    };
+    // ICE candidate handler'lari - cleanup sirasinda gec gelen candidate'ler icin guard (DRY)
+    this.pc1.onicecandidate = this._createIceCandidateHandler('pc2');
+    this.pc2.onicecandidate = this._createIceCandidateHandler('pc1');
 
     // Track handler - WebRTC'nin sagladigi stream'i kullan
     this.pc2.ontrack = (e) => {
-      log.stream('Loopback: Remote track alindi', {
+      log.stream('Loopback: Remote track received', {
         trackKind: e.track.kind,
         trackId: e.track.id,
         trackEnabled: e.track.enabled,
@@ -158,14 +147,14 @@ class LoopbackManager {
       // KRITIK: WebRTC'nin sagladigi stream'i kullan, manuel olusturma!
       if (e.streams && e.streams.length > 0) {
         this.remoteStream = e.streams[0];
-        log.stream('Loopback: WebRTC stream kullaniliyor', { streamId: this.remoteStream.id, active: this.remoteStream.active });
+        log.stream('Loopback: Using WebRTC stream', { streamId: this.remoteStream.id, active: this.remoteStream.active });
       } else {
         // Fallback: Manuel stream olustur (eski yontem)
         if (!this.remoteStream) {
           this.remoteStream = new MediaStream();
         }
         this.remoteStream.addTrack(e.track);
-        log.stream('Loopback: Manuel stream olusturuldu (fallback)', {});
+        log.stream('Loopback: Manual stream created (fallback)', {});
       }
     };
 
@@ -225,6 +214,24 @@ class LoopbackManager {
     this.startStatsPolling(opusBitrate);
 
     return this.remoteStream;
+  }
+
+  /**
+   * ICE candidate handler olustur (DRY: pc1/pc2 icin ayni logic)
+   * @param {string} receiverPcKey - Candidate'i alacak peer ('pc1' veya 'pc2')
+   * @returns {Function} onicecandidate handler
+   * @private
+   */
+  _createIceCandidateHandler(receiverPcKey) {
+    return (e) => {
+      if (e.candidate && this[receiverPcKey] && !this._isCleaningUp) {
+        this[receiverPcKey].addIceCandidate(e.candidate).catch(err => {
+          if (!this._isCleaningUp) {
+            log.warning('ICE candidate error (' + receiverPcKey + ')', { error: err.message });
+          }
+        });
+      }
+    };
   }
 
   /**
@@ -291,7 +298,7 @@ class LoopbackManager {
    * @private
    */
   async _waitForTrackUnmute(track) {
-    log.stream('Loopback: Track muted, unmute bekleniyor...', { muted: track.muted });
+    log.stream('Loopback: Track muted, waiting for unmute...', { muted: track.muted });
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -324,7 +331,7 @@ class LoopbackManager {
     this.lastStatsTimestamp = Date.now();
     let statsErrorCount = 0;
     let measurementCount = 0;
-    const GRACE_MEASUREMENTS = 3; // Ilk 3 olcum (6 saniye) - ramp-up periyodu
+    const GRACE_MEASUREMENTS = 12; // Ilk 12 olcum (6 saniye @ 500ms) - ramp-up periyodu
 
     this.statsInterval = setInterval(async () => {
       // Race condition guard: cleanup sırasında veya pc1 yoksa çık
@@ -337,10 +344,22 @@ class LoopbackManager {
       try {
         const stats = await this.pc1.getStats();
         let currentBytesSent = 0;
+        let rtt = null;
+        let jitter = null;
+        let packetsLost = 0;
+        let packetsReceived = 0;
 
         stats.forEach(report => {
           if (report.type === 'outbound-rtp' && report.kind === 'audio') {
             currentBytesSent = report.bytesSent || 0;
+          }
+          if (report.type === 'remote-inbound-rtp') {
+            rtt = report.roundTripTime ?? null;
+            jitter = report.jitter ?? null;
+          }
+          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+            packetsLost = report.packetsLost || 0;
+            packetsReceived = report.packetsReceived || 0;
           }
         });
 
@@ -353,21 +372,28 @@ class LoopbackManager {
           const actualKbps = (actualBitrate / 1000).toFixed(1);
           const requestedKbps = (requestedBitrate / 1000).toFixed(0);
 
+          const isDtxActive = actualBitrate < 2000;
+          const totalPackets = packetsReceived + packetsLost;
+          const lossRate = totalPackets > 0 ? packetsLost / totalPackets : null;
+
           // Stats event'i her zaman emit et (UI icin)
           eventBus.emit(EVENTS.LOOPBACK_STATS, {
             requestedBitrate,
             actualBitrate,
             requestedKbps,
-            actualKbps
+            actualKbps,
+            rttMs: rtt !== null ? +(rtt * 1000).toFixed(1) : null,
+            jitterMs: jitter !== null ? +(jitter * 1000).toFixed(2) : null,
+            packetLossRate: lossRate !== null ? +lossRate.toFixed(4) : null,
+            isDtxActive
           });
 
-          // Sapma uyarisi: Ramp-up periyodundan sonra kontrol et
-          // NOT: Baslangicta ve DTX/sessizlik sirasinda sapma normal
+          // Sapma uyarisi: Ramp-up ve DTX periyodunda bastir
           measurementCount++;
           if (measurementCount > GRACE_MEASUREMENTS) {
             const deviation = Math.abs(actualBitrate - requestedBitrate) / requestedBitrate;
-            if (deviation > 0.5) {
-              log.warning(`WebRTC bitrate sapmasi: Istenen ${requestedKbps}kbps, Gercek ~${actualKbps}kbps`, { requestedBitrate, actualBitrate, deviation: (deviation * 100).toFixed(0) + '%' });
+            if (deviation > 0.5 && !isDtxActive) {
+              log.warning(`WebRTC bitrate deviation: Requested ${requestedKbps}kbps, Actual ~${actualKbps}kbps`, { requestedBitrate, actualBitrate, deviation: (deviation * 100).toFixed(0) + '%' });
             }
           }
         }
@@ -381,10 +407,10 @@ class LoopbackManager {
         if (statsErrorCount > 10) {
           clearInterval(this.statsInterval);
           this.statsInterval = null;
-          log.error('Loopback stats: Cok fazla hata, polling durduruluyor', { errorCount: statsErrorCount, lastError: err.message });
+          log.error('Loopback stats: Too many errors, stopping polling', { errorCount: statsErrorCount, lastError: err.message });
         }
       }
-    }, 2000);
+    }, 500);
   }
 
   /**
@@ -429,12 +455,12 @@ class LoopbackManager {
       try {
         await this.audioCtx.close();
       } catch (err) {
-        log.error('Loopback: AudioContext kapatma hatasi', { error: err.message });
+        log.error('Loopback: AudioContext close error', { error: err.message });
       }
       this.audioCtx = null;
     }
 
-    log.stream('Loopback: Kaynaklar temizlendi', {});
+    log.stream('Loopback: Resources cleaned up', {});
 
     // Cleanup tamamlandı, flag'i sıfırla
     this._isCleaningUp = false;
@@ -469,9 +495,9 @@ class LoopbackManager {
       try {
         const prevState = this.monitorCtx.state;
         await this.monitorCtx.close();
-        log.webaudio('Loopback Monitor: AudioContext kapatildi', { previousState: prevState, newState: 'closed' });
+        log.webaudio('Loopback Monitor: AudioContext closed', { previousState: prevState, newState: 'closed' });
       } catch (err) {
-        log.error('Loopback Monitor: AudioContext kapatma hatasi', { error: err.message });
+        log.error('Loopback Monitor: AudioContext close error', { error: err.message });
       } finally {
         this.monitorCtx = null;
       }
@@ -490,6 +516,7 @@ class LoopbackManager {
    * @param {Object} options - Seçenekler
    * @param {string} options.mode - Processing mode (direct, standard, scriptprocessor, worklet)
    * @param {number} options.bufferSize - Buffer size (for scriptprocessor)
+   * @throws {Error} Remote stream yoksa
    */
   async startMonitorPlayback(remoteStream, options = {}) {
     await this.cleanupMonitorPlayback();
@@ -546,7 +573,7 @@ class LoopbackManager {
       worklet: `WebRTC RemoteStream -> Source -> AudioWorklet(passthrough) -> DelayNode(${delaySeconds}s) -> Destination`
     };
 
-    log.webaudio('Loopback Monitor: Playback grafigi tamamlandi', {
+    log.webaudio('Loopback Monitor: Playback graph complete', {
       mode: safeMode,
       contextSampleRate: this.monitorCtx.sampleRate,
       remoteSampleRate: remoteSampleRate || 'N/A',

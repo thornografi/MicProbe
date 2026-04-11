@@ -1,5 +1,9 @@
 /**
- * Controller State Helper Functions
+ * Controller State Helpers
+ *
+ * Kapsam: Controller'larin preparing/idle gecisleri icin ortak helper'lar.
+ * Global mod state icin: js/app/AppState.js (setCurrentMode, getCurrentMode)
+ * Modul-internal state icin: Her modulun kendi instance degiskenleri
  */
 
 /**

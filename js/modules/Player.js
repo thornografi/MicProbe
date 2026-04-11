@@ -5,6 +5,7 @@
 import eventBus from './EventBus.js';
 import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log } from './utils.js';
 import { BYTES, EVENTS } from './constants.js';
+import { convertToMp3 } from './Mp3Converter.js';
 
 // Clean Code: Tekrarlayan SVG iconlari constant olarak
 const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -104,8 +105,7 @@ class Player {
     this.syncPlayButtonIcon();
 
     if (this.downloadBtnEl) {
-      this.downloadBtnEl.href = this.currentUrl;
-      this.downloadBtnEl.download = filename || `kayit_${formatTimestampYYMMDDHHMMSS()}.webm`;
+      this._setupMp3Download(blob, filename);
     }
 
     if (this.containerEl) {
@@ -118,7 +118,7 @@ class Player {
 
     // Duration bazen metadata ile gec gelir (webm/opus). Play'e basmadan sureyi gostermek icin probe et.
     this.probeDuration(blob, mimeType).catch((err) => {
-      log.error('Player: duration probe hatasi (kritik degil)', { error: err.message });
+      log.error('Player: duration probe error (non-critical)', { error: err.message });
     });
 
     eventBus.emit(EVENTS.PLAYER_LOADED, { filename, size: blob.size });
@@ -439,6 +439,55 @@ class Player {
   }
 
   /**
+   * Download butonunu MP3 donusumu ile ayarla
+   * Tiklandiginda blob -> MP3 donusumu yapilir
+   */
+  _setupMp3Download(blob, filename) {
+    // Onceki mp3 URL'i temizle
+    if (this._mp3Url) {
+      URL.revokeObjectURL(this._mp3Url);
+      this._mp3Url = null;
+    }
+
+    // Dosya adini .mp3 uzantisiyla olustur
+    const baseName = (filename || `kayit_${formatTimestampYYMMDDHHMMSS()}`)
+      .replace(/\.(webm|ogg|wav|opus)$/i, '');
+    const mp3Filename = `${baseName}.mp3`;
+
+    // href'i temizle (tiklaninca JS handle edecek)
+    this.downloadBtnEl.removeAttribute('href');
+    this.downloadBtnEl.download = mp3Filename;
+
+    this.downloadBtnEl.onclick = async (e) => {
+      e.preventDefault();
+      if (this._isConverting) return;
+
+      this._isConverting = true;
+      // Text node'u bul (SVG'yi koruyarak)
+      const textNode = [...this.downloadBtnEl.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
+      const originalText = textNode?.textContent;
+      if (textNode) textNode.textContent = ' Converting...';
+
+      try {
+        const mp3Blob = await convertToMp3(blob);
+        this._mp3Url = URL.createObjectURL(mp3Blob);
+
+        const a = document.createElement('a');
+        a.href = this._mp3Url;
+        a.download = mp3Filename;
+        a.click();
+
+        log.player(`MP3 indirildi: ${mp3Filename} (${(mp3Blob.size / BYTES.PER_KB).toFixed(1)} KB)`);
+      } catch (err) {
+        log.error('MP3 conversion error', { error: err.message });
+      } finally {
+        this._isConverting = false;
+        if (textNode) textNode.textContent = originalText;
+      }
+    };
+  }
+
+  /**
    * Cleanup - EventBus listener'larini kaldir (memory leak onleme)
    */
   destroy() {
@@ -449,6 +498,10 @@ class Player {
     if (this.currentUrl) {
       URL.revokeObjectURL(this.currentUrl);
       this.currentUrl = null;
+    }
+    if (this._mp3Url) {
+      URL.revokeObjectURL(this._mp3Url);
+      this._mp3Url = null;
     }
 
     eventBus.off(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);

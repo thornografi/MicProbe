@@ -15,6 +15,7 @@ class MonitoringController {
   constructor() {
     // Monitoring state
     this.loopbackLocalStream = null;
+    this._startedWithLoopback = false; // BUG-1 fix: start-time loopback durumunu kaydet
 
     // Dependency injection ile gelen fonksiyonlar
     this.deps = {
@@ -73,7 +74,7 @@ class MonitoringController {
     // Pipeline aciklamasi
     const pipelineDesc = this._buildPipelineDescription(useLoopback, pipeline);
 
-    log.stream('Monitor Baslat butonuna basildi', { constraints, webAudioEnabled: useWebAudio, loopbackEnabled: useLoopback, pipeline, pipelineDesc });
+    log.stream('Monitor Start button pressed', { constraints, webAudioEnabled: useWebAudio, loopbackEnabled: useLoopback, pipeline, pipelineDesc });
 
     try {
       // Player'i durdur
@@ -82,6 +83,9 @@ class MonitoringController {
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
       beginPreparing(this.deps, 'monitoring');
 
+      // BUG-1 fix: start-time'da loopback durumunu kaydet (stop'da kullanilacak)
+      this._startedWithLoopback = useLoopback;
+
       if (useLoopback) {
         await this._startLoopbackMonitoring(constraints, pipeline);
       } else {
@@ -89,7 +93,7 @@ class MonitoringController {
       }
 
     } catch (err) {
-      log.error('Monitor baslatilamadi', { error: err.message });
+      log.error('Monitor failed to start', { error: err.message });
 
       // Temizlik
       resetState(this.deps);
@@ -104,7 +108,7 @@ class MonitoringController {
    * Loopback monitoring
    */
   async _startLoopbackMonitoring(constraints, pipeline) {
-    log.loopback('Loopback modunda monitor baslatiliyor...');
+    log.loopback('Starting monitor in loopback mode...');
 
     // Mikrofon al (requestStream ile constraint mismatch kontrolu dahil)
     this.loopbackLocalStream = await requestStream(constraints);
@@ -129,7 +133,7 @@ class MonitoringController {
     eventBus.emit(EVENTS.STREAM_STARTED, this.loopbackLocalStream);  // Local VU Meter
     eventBus.emit(EVENTS.LOOPBACK_REMOTE_STREAM, remoteStream);       // Remote VU Meter
 
-    log.loopback('Loopback monitor hazir');
+    log.loopback('Loopback monitor ready');
   }
 
   /**
@@ -151,9 +155,10 @@ class MonitoringController {
    * Monitor durdur
    */
   async stop() {
-    const useLoopback = this.deps.isLoopbackEnabled();
+    // BUG-1 fix: start-time'daki loopback durumunu oku (checkbox'in o anki hali degil)
+    const useLoopback = this._startedWithLoopback;
 
-    log.stream('Monitor durduruluyor', { loopbackEnabled: useLoopback });
+    log.stream('Monitor stopping', { loopbackEnabled: useLoopback });
 
     try {
       if (useLoopback) {
@@ -162,7 +167,7 @@ class MonitoringController {
         await this.deps.monitor?.stop();
       }
     } catch (err) {
-      log.error('Monitor durdurma hatasi', { error: err.message, stack: err.stack, loopback: useLoopback });
+      log.error('Monitor stop error', { error: err.message, stack: err.stack, loopback: useLoopback });
     } finally {
       // Her durumda state reset - hata olsa bile UI tutarli kalsin
       resetState(this.deps);
@@ -187,7 +192,7 @@ class MonitoringController {
     await loopbackManager.cleanup();
 
     eventBus.emit(EVENTS.STREAM_STOPPED);
-    log.loopback('Loopback monitor durduruldu');
+    log.loopback('Loopback monitor stopped');
     eventBus.emit(EVENTS.MONITOR_STOPPED, { mode: stoppedMode, loopback: true });
   }
 

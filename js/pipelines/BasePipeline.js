@@ -10,7 +10,7 @@
  */
 import eventBus from '../modules/EventBus.js';
 import { createOpusWorker, isWasmOpusSupported } from '../modules/OpusWorkerHelper.js';
-import { disconnectNodes, log, createAnalyserNode } from '../modules/utils.js';
+import { disconnectNodes, log, createAnalyserNode, createAnalysisAnalyserNode } from '../modules/utils.js';
 import { EVENTS } from '../modules/constants.js';
 
 export default class BasePipeline {
@@ -28,6 +28,8 @@ export default class BasePipeline {
 
     // VU Meter icin AnalyserNode (fan-out pattern)
     this.analyserNode = null;
+    // Frekans analizi icin yuksek cozunurluklu AnalyserNode
+    this.analysisAnalyserNode = null;
 
     // WASM Opus encoder (ScriptProcessor ve Worklet icin)
     this.opusWorker = null;
@@ -40,6 +42,17 @@ export default class BasePipeline {
   createAnalyser() {
     this.analyserNode = createAnalyserNode(this.audioContext);
     return this.analyserNode;
+  }
+
+  /**
+   * Frekans analizi icin yuksek cozunurluklu AnalyserNode olustur ve bagla
+   * @param {AudioNode} sourceNode - Analyser'a baglanacak node (VU ile ayni kaynak)
+   * @returns {AnalyserNode}
+   */
+  createAnalysisAnalyser(sourceNode) {
+    this.analysisAnalyserNode = createAnalysisAnalyserNode(this.audioContext);
+    sourceNode.connect(this.analysisAnalyserNode);
+    return this.analysisAnalyserNode;
   }
 
   /**
@@ -64,10 +77,12 @@ export default class BasePipeline {
     // DRY: disconnectNodes helper ile tum node'lari temizle
     disconnectNodes([
       ...Object.values(this.nodes),
-      this.analyserNode
+      this.analyserNode,
+      this.analysisAnalyserNode
     ]);
 
     this.analyserNode = null;
+    this.analysisAnalyserNode = null;
     this.nodes = { processor: null, mute: null, worklet: null };
   }
 
@@ -105,9 +120,9 @@ export default class BasePipeline {
    * @param {number} channels - Kanal sayisi (1=Mono, 2=Stereo, default: 1)
    * @returns {Promise<number>} - Kullanilan bitrate
    */
-  async _initOpusWorker(mediaBitrate = 0, channels = 1) {
+  async _initOpusWorker(mediaBitrate = 0, channels = 1, application = 2048) {
     if (!isWasmOpusSupported()) {
-      throw new Error('WASM Opus desteklenmiyor');
+      throw new Error('WASM Opus not supported');
     }
 
     // VBR destegi: mediaBitrate === 0 ise VBR (opus-recorder varsayilani kullanir)
@@ -116,7 +131,8 @@ export default class BasePipeline {
     this.opusWorker = await createOpusWorker({
       sampleRate: this.audioContext.sampleRate,
       channels: channels,
-      bitrate: opusBitrate
+      bitrate: opusBitrate,
+      encoderApplication: application
     });
 
     this.opusWorker.onProgress = (progress) => {
@@ -124,7 +140,7 @@ export default class BasePipeline {
     };
 
     this.opusWorker.onError = (error) => {
-      log.error(`Opus encoder hatasi (${this.type})`, { error: error.message });
+      log.error(`Opus encoder error (${this.type})`, { error: error.message });
     };
 
     return opusBitrate;
@@ -145,7 +161,7 @@ export default class BasePipeline {
    */
   async finishOpusEncoding() {
     if (!this.opusWorker) {
-      throw new Error('Opus worker mevcut degil');
+      throw new Error('Opus worker not available');
     }
     return await this.opusWorker.finish();
   }

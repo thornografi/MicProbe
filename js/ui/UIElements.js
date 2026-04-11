@@ -5,26 +5,26 @@
  * Null Guard: Her querySelector/getElementById sonrasi null check yapilir.
  * Eksik element bulunursa console.warn ile bildirilir (silent failure onleme).
  */
-import { SETTING_NAMES } from '../modules/constants.js';
+import { SETTING_NAMES, IS_DEV } from '../modules/constants.js';
 
 // ============================================
 // NULL GUARD HELPER
 // ============================================
 function getEl(id) {
   const el = document.getElementById(id);
-  if (!el) console.warn(`[UIElements] Element bulunamadi: #${id}`);
+  if (!el && IS_DEV) console.warn(`[UIElements] Element not found: #${id}`);
   return el;
 }
 
 function queryEl(selector) {
   const el = document.querySelector(selector);
-  if (!el) console.warn(`[UIElements] Element bulunamadi: ${selector}`);
+  if (!el && IS_DEV) console.warn(`[UIElements] Element not found: ${selector}`);
   return el;
 }
 
 function queryAll(selector) {
   const els = document.querySelectorAll(selector);
-  if (els.length === 0) console.warn(`[UIElements] Koleksiyon bos: ${selector}`);
+  if (els.length === 0 && IS_DEV) console.warn(`[UIElements] Collection empty: ${selector}`);
   return els;
 }
 
@@ -79,7 +79,7 @@ export const progressBarEl = getEl('progressBar');
 // ============================================
 export const settingsDrawer = getEl('settingsDrawer');
 export const drawerOverlay = getEl('drawerOverlay');
-export const devConsoleDrawer = getEl('devConsoleDrawer');
+export const devConsoleDrawer = getEl('devConsole');
 
 // ============================================
 // SECTION ELEMENTLERI

@@ -1,0 +1,173 @@
+/* VU Section icinde */
+.vu-section {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-secondary);
+}
+
+.vu-section + .vu-section {
+  border-top: none;
+}
+
+.vu-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+/* VU label yazıları - ortak stil */
+.vu-label span:last-child {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* Local VU label - turuncu */
+.vu-section:not(#remoteVuContainer) .vu-label span:last-child {
+  color: var(--color-orange);
+}
+
+/* Local signal-dot - turuncu (varsayılan) */
+.vu-section:not(#remoteVuContainer) .signal-dot {
+  background: var(--color-orange);
+  opacity: 0.6;
+}
+
+.vu-section:not(#remoteVuContainer) .signal-dot.active {
+  opacity: 1;
+}
+
+
+/* ========== VU METER - Modern Design ========== */
+.signal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.signal-dot.active {
+  background: var(--color-orange);
+  box-shadow: var(--shadow-accent-glow);
+  animation: pulse-glow 1.2s ease-in-out infinite;
+}
+
+.signal-dot.clipping {
+  background: var(--accent-danger);
+  box-shadow: 0 0 12px rgba(229, 57, 53, 0.8);
+  animation: pulse-danger 0.4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: var(--shadow-accent-glow); }
+  50% { box-shadow: 0 0 16px rgba(var(--color-orange-rgb), 1), 0 0 28px rgba(var(--color-orange-rgb), 0.6); }
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.vu-meter {
+  height: 34px;
+  background: rgba(var(--color-white-rgb), 0.03);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    inset 0 1px 3px rgba(var(--color-black-rgb), 0.25),
+    inset 0 -1px 0 rgba(var(--color-white-rgb), 0.03);
+  border: 1px solid rgba(var(--color-white-rgb), 0.04);
+}
+
+/* VU Meter segmented background lines - kaldirildi (cizgiler kapatildi) */
+.vu-meter::before {
+  display: none;
+}
+
+/* VU Meter dB tick marks - kaldirildi */
+.vu-meter::after {
+  display: none;
+}
+
+.vu-meter-bar {
+  /* Parametrik gradient renkleri - DRY */
+  --vu-color-start: var(--vu-green);
+  --vu-color-mid: var(--vu-yellow);
+  --vu-color-high: #f97316;
+  --vu-color-max: var(--accent-danger);
+
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg,
+    var(--vu-color-start) 0% 45%,
+    var(--vu-color-mid) 70%,
+    var(--vu-color-high) 88%,
+    var(--vu-color-max) 100%);
+  background-size: var(--meter-width, 500px) 100%;
+  background-position: left;
+  background-repeat: no-repeat;
+  border-radius: 8px;
+  transition: width 0.1s ease-out;
+  will-change: width;
+  box-shadow:
+    0 0 8px rgba(34, 197, 94, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.vu-meter-peak {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 4px;
+  background: white;
+  border-radius: 2px;
+  will-change: transform;
+  box-shadow:
+    0 0 8px rgba(var(--color-white-rgb), 0.9),
+    0 0 16px rgba(var(--color-white-rgb), 0.5),
+    0 0 2px rgba(var(--color-white-rgb), 1);
+  z-index: 3;
+}
+
+/* Remote VU Meter - sadece renk override */
+.remote-bar {
+  --vu-color-start: var(--vu-purple);
+  --vu-color-mid: var(--color-purple-light);
+  --vu-color-high: var(--accent-warning);
+}
+
+/* Remote dot - #remoteVuContainer context ile specificity artırıldı */
+#remoteVuContainer .remote-dot {
+  background: var(--color-purple-light);
+  opacity: 0.6;
+}
+
+#remoteVuContainer .remote-dot.active {
+  background: var(--color-purple-light);
+  box-shadow: var(--shadow-purple-glow);
+  animation: pulse-glow-purple 1.2s ease-in-out infinite;
+  opacity: 1;
+}
+
+@keyframes pulse-glow-purple {
+  0%, 100% { box-shadow: var(--shadow-purple-glow); }
+  50% { box-shadow: 0 0 16px rgba(var(--color-purple-rgb), 1), 0 0 28px rgba(var(--color-purple-rgb), 0.6); }
+}
+
+#remoteVuContainer {
+  display: none;
+  margin-top: var(--space-sm);
+}
+
+/* Remote VU label - mor */
+#remoteVuContainer .vu-label span:last-child {
+  color: var(--color-purple-light);
+}

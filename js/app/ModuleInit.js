@@ -149,11 +149,11 @@ export function syncInitialUI(elements, isWebAudioEnabled, workletSupported, was
   toggleDisplay(elements.encoderContainer, true);
 
   if (!workletSupported) {
-    log.system('AudioWorklet desteklenmiyor - Worklet secenekleri devre disi', {});
+    log.system('AudioWorklet not supported - Worklet options disabled', {});
   }
 
   if (!wasmOpusSupported) {
-    log.system('WASM Opus desteklenmiyor - WASM Opus secenegi devre disi', {});
+    log.system('WASM Opus not supported - WASM Opus option disabled', {});
     const wasmOpusOption = document.querySelector('[data-requires-wasm="true"]');
     if (wasmOpusOption) {
       wasmOpusOption.disabled = true;

@@ -125,6 +125,14 @@ export class OpusRecorderWrapper {
     return new Promise((resolve, reject) => {
       this._initResolver = { resolve, reject };
 
+      // Init timeout: WASM yuklenemezse 5 saniye sonra reject
+      this._initTimeout = setTimeout(() => {
+        if (this._initResolver) {
+          this._initResolver.reject(new Error('Opus Worker init timeout (5s)'));
+          this._initResolver = null;
+        }
+      }, 5000);
+
       try {
         this.worker = new Worker(OPUS_ENCODER_WORKER_URL);
         this.config = config;
@@ -133,6 +141,7 @@ export class OpusRecorderWrapper {
 
         this.worker.onmessage = this._handleMessage.bind(this);
         this.worker.onerror = (e) => {
+          clearTimeout(this._initTimeout);
           const error = new Error(`Opus Worker error: ${e.message}`);
           if (this._initResolver) {
             this._initResolver.reject(error);
@@ -148,6 +157,7 @@ export class OpusRecorderWrapper {
         });
 
       } catch (error) {
+        clearTimeout(this._initTimeout);
         reject(error);
       }
     });
@@ -194,6 +204,17 @@ export class OpusRecorderWrapper {
    * Worker'i sonlandir
    */
   terminate() {
+    clearTimeout(this._initTimeout);
+    // BUG-8 fix: Pending promise'leri reject et (askida kalma onleme)
+    if (this._initResolver) {
+      this._initResolver.reject?.(new Error('Worker terminated'));
+      this._initResolver = null;
+    }
+    if (this._finishResolver) {
+      this._finishResolver.reject?.(new Error('Worker terminated'));
+      this._finishResolver = null;
+    }
+
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
@@ -201,8 +222,6 @@ export class OpusRecorderWrapper {
     this.config = null;
     this.pages = [];
     this.totalSamples = 0;
-    this._initResolver = null;
-    this._finishResolver = null;
   }
 
   /**
@@ -390,6 +409,9 @@ export class OpusRecorderWrapper {
 
   /**
    * opus-recorder page'lerini duzelt: header ekle, serial/pageseq tutarli yap
+   * RFC 7845: Ogg Opus stream = OpusHead(pageSeq=0) + OpusTags(pageSeq=1) + audio(pageSeq=2+)
+   * Ogg page yapisi: capture_pattern[0-3], version[4], flags[5], granule[6-13],
+   * serial[14-17], pageSeq[18-21], CRC32[22-25], segments[26], segTable[27+]
    * @private
    */
   _fixOggStream(audioPages) {
@@ -492,6 +514,7 @@ export class OpusRecorderWrapper {
 
       switch (data.message) {
         case 'ready':
+          clearTimeout(this._initTimeout);
           if (this._initResolver) {
             this._initResolver.resolve();
             this._initResolver = null;

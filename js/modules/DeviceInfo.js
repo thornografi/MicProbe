@@ -104,7 +104,7 @@ class DeviceInfo {
     // Cihaz degisikligi dinle - named handler (memory leak onleme icin destroy()'da kaldirilir)
     this._onDeviceChange = async () => {
       if (this.hasMicPermission) {
-        log.stream('Cihaz degisikligi algilandi, liste guncelleniyor...', {});
+        log.stream('Device change detected, updating list...', {});
         try {
           await this.enumerateMicrophones(true);
         } catch (err) {
@@ -156,7 +156,7 @@ class DeviceInfo {
     const selectedStillExists = realMics.some(m => m.deviceId === this.selectedDeviceId);
     if (this.selectedDeviceId && !selectedStillExists) {
       if (logWarnings) {
-        log.warning('Onceden secili mikrofon artik mevcut degil', { lostDeviceId: this.selectedDeviceId.slice(0, 8) });
+        log.warning('Previously selected microphone is no longer available', { lostDeviceId: this.selectedDeviceId.slice(0, 8) });
       }
       this.selectedDeviceId = '';
       localStorage.removeItem(MIC_STORAGE_KEY);
@@ -203,11 +203,11 @@ class DeviceInfo {
       const realMics = this.buildMicrophoneDropdown(allMics, { logWarnings: true });
 
       if (!silent) {
-        log.stream(`${realMics.length} mikrofon bulundu`, { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) });
+        log.stream(`${realMics.length} microphone(s) found`, { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) });
       }
     } catch (err) {
       this.hasMicPermission = false;
-      log.error('Mikrofon listesi alinamadi', { category: 'stream', error: err.message });
+      log.error('Failed to enumerate microphones', { category: 'stream', error: err.message });
     }
   }
 
@@ -300,7 +300,7 @@ class DeviceInfo {
     // Mikrofon adi (Cihaz bolumu)
     if (this.micNameEl) {
       // Track label mikrofon adini icerir
-      const label = track.label || 'Bilinmiyor';
+      const label = track.label || 'Unknown';
       // Uzun isimleri kisalt
       this.micNameEl.textContent = label.length > 25 ? label.substring(0, 22) + '...' : label;
       this.micNameEl.title = label; // Tam isim tooltip olarak
@@ -311,6 +311,20 @@ class DeviceInfo {
       const count = settings.channelCount || 1;
       this.channelsEl.textContent = count === 1 ? 'Mono' : 'Stereo';
     }
+
+    // Device capabilities (EC/NS/AGC donanim destegi, sampleRate aralik)
+    const caps = track.getCapabilities?.() ?? {};
+    this._capabilities = {
+      sampleRateRange: caps.sampleRate ?? null,
+      channelCountRange: caps.channelCount ?? null,
+      ecSupported: caps.echoCancellation ?? null,
+      nsSupported: caps.noiseSuppression ?? null,
+      agcSupported: caps.autoGainControl ?? null
+    };
+  }
+
+  getCapabilities() {
+    return this._capabilities ?? null;
   }
 
   /**

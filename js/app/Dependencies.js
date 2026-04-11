@@ -21,7 +21,7 @@ export function createControllerDeps(modules, elements, deviceInfo) {
   return {
     getConstraints: () => createConstraints(elements, deviceInfo),
     getPipeline: () => getRadioValue(SETTING_NAMES.PIPELINE, 'standard'),
-    getEncoder: () => getEncoderValue(),
+    getEncoder: () => getRadioValue(SETTING_NAMES.ENCODER, ENCODER_TYPES.DEFAULT),
     isLoopbackEnabled: () => elements.loopbackToggle?.checked ?? false,
     isWebAudioEnabled: () => usesWebAudio(getRadioValue(SETTING_NAMES.PIPELINE, 'standard')),
     getOpusBitrate: () => getRadioValue(SETTING_NAMES.BITRATE, SETTINGS.bitrate.default, true),
@@ -54,11 +54,4 @@ function createConstraints(elements, deviceInfo) {
   }
 
   return constraints;
-}
-
-/**
- * Encoder degerini al
- */
-function getEncoderValue() {
-  return getRadioValue(SETTING_NAMES.ENCODER, ENCODER_TYPES.DEFAULT);
 }

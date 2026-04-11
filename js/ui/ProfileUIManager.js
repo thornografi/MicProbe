@@ -119,9 +119,9 @@ class ProfileUIManager {
       this.updateNavItemSelection(profileId);
       this.callbacks.updateCustomSettingsPanel(profileId);
 
-      log.ui(`Senaryo degistirildi: ${PROFILES[profileId]?.label || profileId}`, {});
+      log.ui(`Scenario changed: ${PROFILES[profileId]?.label || profileId}`, {});
     } catch (err) {
-      log.error('Profil secimi hatasi', { profileId, error: err.message });
+      log.error('Profile selection error', { profileId, error: err.message });
     }
   }
 

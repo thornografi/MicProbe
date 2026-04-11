@@ -6,7 +6,7 @@
 import eventBus from './EventBus.js';
 import { requestStream } from './StreamHelper.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from './WorkletHelper.js';
-import { createAudioContext, stopStreamTracks, disconnectNodes, log, createAnalyserNode } from './utils.js';
+import { createAudioContext, getAudioContextOptions, stopStreamTracks, disconnectNodes, log, createAnalyserNode, createAnalysisAnalyserNode } from './utils.js';
 import { DELAY, BUFFER, PIPELINE_TYPES, EVENTS } from './constants.js';
 
 // OCP: Yeni monitor modu eklemek icin sadece buraya satir ekle
@@ -26,6 +26,7 @@ class Monitor {
     this.workletNode = null;
     this.delayNode = null;
     this.analyserNode = null; // VU Meter icin (fan-out pattern)
+    this.analysisAnalyserNode = null; // Frekans analizi icin (yuksek FFT)
     this.isMonitoring = false;
     this.mode = null; // 'standard', 'scriptprocessor', 'worklet', 'direct'
   }
@@ -50,9 +51,15 @@ class Monitor {
     // VU Meter'a bildir
     eventBus.emit(EVENTS.PIPELINE_ANALYSER_READY, this.analyserNode);
 
-    log.webaudio(`AnalyserNode olusturuldu${mode ? ` (${mode})` : ''}`, {
-      fftSize: this.analyserNode.fftSize,
-      purpose: 'VU Meter (encode oncesi sinyal)'
+    // Frekans analizi icin yuksek cozunurluklu analyser (ayni source, fan-out)
+    this.analysisAnalyserNode = createAnalysisAnalyserNode(this.audioContext);
+    sourceNode.connect(this.analysisAnalyserNode);
+    eventBus.emit(EVENTS.PIPELINE_ANALYSIS_ANALYSER_READY, this.analysisAnalyserNode);
+
+    log.webaudio(`AnalyserNodes created${mode ? ` (${mode})` : ''}`, {
+      vuFftSize: this.analyserNode.fftSize,
+      analysisFftSize: this.analysisAnalyserNode.fftSize,
+      purpose: 'VU Meter + Frekans Analizi'
     });
 
     return this.analyserNode;
@@ -67,7 +74,7 @@ class Monitor {
     this.delayNode = this.audioContext.createDelay(DELAY.MAX_SECONDS);
     this.delayNode.delayTime.value = DELAY.DEFAULT_SECONDS;
 
-    log.webaudio(`DelayNode olusturuldu${mode ? ` (${mode})` : ''}`, {
+    log.webaudio(`DelayNode created${mode ? ` (${mode})` : ''}`, {
       delayTime: this.delayNode.delayTime.value + ' saniye',
       maxDelayTime: DELAY.MAX_SECONDS + ' saniye',
       purpose: 'Echo/feedback onleme'
@@ -93,11 +100,12 @@ class Monitor {
     this.stream = await requestStream(constraints);
 
     // AudioContext olustur
-    log.webaudio(`AudioContext olusturuluyor (${modeName})`, { api: 'createAudioContext()' });
+    log.webaudio(`Creating AudioContext (${modeName})`, { api: 'createAudioContext()' });
 
-    this.audioContext = await createAudioContext();
+    const acOptions = getAudioContextOptions(this.stream);
+    this.audioContext = await createAudioContext(acOptions);
 
-    log.webaudio('AudioContext olusturuldu', {
+    log.webaudio('AudioContext created', {
       state: this.audioContext.state,
       sampleRate: this.audioContext.sampleRate,
       baseLatency: this.audioContext.baseLatency
@@ -106,7 +114,7 @@ class Monitor {
     // Source node olustur
     this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
 
-    log.webaudio('MediaStreamAudioSourceNode olusturuldu', { channelCount: this.sourceNode.channelCount });
+    log.webaudio('MediaStreamAudioSourceNode created', { channelCount: this.sourceNode.channelCount });
   }
 
   /**
@@ -129,7 +137,7 @@ class Monitor {
    * @param {string} modeName - Mod adi
    */
   _handleMonitorError(err, modeName) {
-    log.error(`${modeName} Monitor hatasi`, { error: err.message, stack: err.stack });
+    log.error(`${modeName} Monitor error`, { error: err.message, stack: err.stack });
     eventBus.emit(EVENTS.MONITOR_ERROR, err);
     throw err;
   }
@@ -138,6 +146,9 @@ class Monitor {
   // Monitor Modlari
   // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * @throws {Error} Stream alinamazsa veya AudioContext olusturulamazsa
+   */
   async startWebAudio(constraints) {
     if (this.isMonitoring) return;
 
@@ -154,19 +165,22 @@ class Monitor {
       // VU Meter icin AnalyserNode (fan-out: Source -> Analyser)
       this._createAnalyser(this.sourceNode, 'Standard');
 
-      log.webaudio('WebAudio grafigi tamamlandi', {
+      log.webaudio('WebAudio graph complete', {
         graph: `MediaStream -> Source -> [AnalyserNode (VU) + DelayNode(${this.delayNode.delayTime.value}s)] -> Destination`,
         finalState: this.audioContext.state
       });
 
       this._emitMonitorStarted(PIPELINE_TYPES.STANDARD,
-        `MONITOR basladi (WebAudio -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
+        `MONITOR started (WebAudio -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
 
     } catch (err) {
       this._handleMonitorError(err, 'WebAudio');
     }
   }
 
+  /**
+   * @throws {Error} Stream alinamazsa veya ScriptProcessorNode olusturulamazsa
+   */
   async startScriptProcessor(constraints, bufferSize = BUFFER.DEFAULT_SIZE) {
     if (this.isMonitoring) return;
 
@@ -175,7 +189,7 @@ class Monitor {
 
       const channelCount = Math.min(2, this.sourceNode.channelCount || 1);
 
-      log.webaudio('ScriptProcessorNode olusturuluyor (DEPRECATED API - legacy profil simulasyonu icin korunuyor)', {
+      log.webaudio('Creating ScriptProcessorNode (DEPRECATED API - kept for legacy profile simulation)', {
         api: `ac.createScriptProcessor(${bufferSize}, ${channelCount}, ${channelCount})`,
         warning: 'Bu API deprecated. Eski web kayit sitelerini simule etmek icin korunuyor.',
         bufferSize,
@@ -196,7 +210,7 @@ class Monitor {
         }
       };
 
-      log.webaudio('ScriptProcessorNode olusturuldu', {
+      log.webaudio('ScriptProcessorNode created', {
         bufferSize: this.processorNode.bufferSize,
         numberOfInputs: this.processorNode.numberOfInputs,
         numberOfOutputs: this.processorNode.numberOfOutputs
@@ -214,13 +228,13 @@ class Monitor {
       // VU Meter icin AnalyserNode (fan-out: Processor -> Analyser)
       this._createAnalyser(this.processorNode, 'ScriptProcessor');
 
-      log.webaudio('WebAudio grafigi tamamlandi (ScriptProcessor)', {
+      log.webaudio('WebAudio graph complete (ScriptProcessor)', {
         graph: `MediaStream -> Source -> ScriptProcessor -> [AnalyserNode (VU) + DelayNode(${this.delayNode.delayTime.value}s)] -> Destination`,
         finalState: this.audioContext.state
       });
 
       this._emitMonitorStarted(PIPELINE_TYPES.SCRIPTPROCESSOR,
-        `WEBAUDIO monitor basladi (ScriptProcessor ${bufferSize} -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
+        `WEBAUDIO monitor started (ScriptProcessor ${bufferSize} -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
       log.webaudio(`SampleRate: ${this.audioContext.sampleRate}Hz, State: ${this.audioContext.state}`);
 
     } catch (err) {
@@ -228,6 +242,9 @@ class Monitor {
     }
   }
 
+  /**
+   * @throws {Error} Stream alinamazsa veya AudioWorklet yuklenemezse
+   */
   async startAudioWorklet(constraints) {
     if (this.isMonitoring) return;
 
@@ -247,13 +264,13 @@ class Monitor {
       // VU Meter icin AnalyserNode (fan-out: Worklet -> Analyser)
       this._createAnalyser(this.workletNode, 'AudioWorklet');
 
-      log.webaudio('WebAudio grafigi tamamlandi (AudioWorklet)', {
+      log.webaudio('WebAudio graph complete (AudioWorklet)', {
         graph: `MediaStream -> Source -> AudioWorklet -> [AnalyserNode (VU) + DelayNode(${this.delayNode.delayTime.value}s)] -> Destination`,
         finalState: this.audioContext.state
       });
 
       this._emitMonitorStarted(PIPELINE_TYPES.WORKLET,
-        `WEBAUDIO monitor basladi (AudioWorklet -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
+        `WEBAUDIO monitor started (AudioWorklet -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
       log.webaudio(`SampleRate: ${this.audioContext.sampleRate}Hz, State: ${this.audioContext.state}`);
 
     } catch (err) {
@@ -264,12 +281,13 @@ class Monitor {
   /**
    * Direct Mode - Basit WebAudio pipeline ile monitor (DelayNode ile)
    * WebAudio toggle kapaliyken kullanilir, sadece delay uygulanir
+   * @throws {Error} Stream alinamazsa veya AudioContext olusturulamazsa
    */
   async startDirect(constraints) {
     if (this.isMonitoring) return;
 
     try {
-      log.stream('Direct monitor baslatiliyor (Delay ile)', {
+      log.stream('Direct monitor starting (with Delay)', {
         mode: PIPELINE_TYPES.DIRECT,
         pipeline: 'MediaStream -> DelayNode -> Speaker'
       });
@@ -287,7 +305,7 @@ class Monitor {
       this._createAnalyser(this.sourceNode, 'Direct');
 
       this._emitMonitorStarted(PIPELINE_TYPES.DIRECT,
-        `MONITOR basladi (Direct -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
+        `MONITOR started (Direct -> ${this.delayNode.delayTime.value.toFixed(1)}s Delay -> Speaker)`);
 
     } catch (err) {
       this._handleMonitorError(err, 'Direct');
@@ -301,7 +319,7 @@ class Monitor {
   async stop() {
     if (!this.isMonitoring) return;
 
-    log.webaudio('Monitor durduruluyor', { mode: this.mode });
+    log.webaudio('Monitor stopping', { mode: this.mode });
 
     // ScriptProcessor onaudioprocess temizle (disconnect oncesi)
     if (this.processorNode) {
@@ -312,7 +330,8 @@ class Monitor {
     disconnectNodes([
       { node: this.processorNode, name: 'ScriptProcessorNode' },
       { node: this.workletNode, name: 'AudioWorkletNode' },
-      { node: this.analyserNode, name: 'AnalyserNode' },
+      { node: this.analyserNode, name: 'AnalyserNode (VU)' },
+      { node: this.analysisAnalyserNode, name: 'AnalyserNode (Analysis)' },
       { node: this.delayNode, name: 'DelayNode' },
       { node: this.sourceNode, name: 'MediaStreamAudioSourceNode' }
     ], true);
@@ -321,6 +340,7 @@ class Monitor {
     this.processorNode = null;
     this.workletNode = null;
     this.analyserNode = null;
+    this.analysisAnalyserNode = null;
     this.delayNode = null;
     this.sourceNode = null;
 
@@ -328,14 +348,14 @@ class Monitor {
     if (this.audioContext) {
       const prevState = this.audioContext.state;
       await this.audioContext.close();
-      log.webaudio('AudioContext kapatildi', { previousState: prevState, newState: 'closed' });
+      log.webaudio('AudioContext closed', { previousState: prevState, newState: 'closed' });
       this.audioContext = null;
     }
 
     // Stream durdur
     if (this.stream) {
       stopStreamTracks(this.stream);
-      log.stream('MediaStream track\'leri durduruldu', {});
+      log.stream('MediaStream tracks stopped', {});
       this.stream = null;
     }
 
@@ -344,7 +364,7 @@ class Monitor {
     this.mode = null;
 
     eventBus.emit(EVENTS.STREAM_STOPPED);
-    log.stream(`${stoppedMode === PIPELINE_TYPES.SCRIPTPROCESSOR || stoppedMode === PIPELINE_TYPES.WORKLET ? 'WEBAUDIO' : 'MONITOR'} durduruldu`);
+    log.stream(`${stoppedMode === PIPELINE_TYPES.SCRIPTPROCESSOR || stoppedMode === PIPELINE_TYPES.WORKLET ? 'WEBAUDIO' : 'MONITOR'} stopped`);
     eventBus.emit(EVENTS.MONITOR_STOPPED, { mode: stoppedMode });
   }
 
@@ -358,6 +378,7 @@ class Monitor {
    * @param {string} type - PIPELINE_TYPES sabiti
    * @param {Object} constraints - getUserMedia constraints
    * @param {Object} [options] - Ek secenekler (bufferSize vb.)
+   * @throws {Error} Stream alinamazsa veya AudioContext/pipeline olusturulamazsa
    */
   async start(type, constraints, options = {}) {
     const method = MONITOR_DISPATCH[type];

@@ -8,16 +8,18 @@
  * - Navbar scroll effect
  * - Smooth scroll for anchor links
  * - Wave animator initialization
- * - Dev console toggle
+ * - Navigation event binding
  */
 
 import { initWaveAnimator } from './modules/WaveAnimator.js';
+import { getCurrentMode, getIsPreparing } from './app/AppState.js';
 
 // ============================================
 // STATE
 // ============================================
 let appModule = null;
 let appLoading = false;
+let initialRouteHandled = false;
 
 // ============================================
 // VIEW SWITCHING
@@ -30,10 +32,14 @@ export async function showAppView() {
   // Prevent double loading
   if (appLoading) return;
 
-  // Update UI immediately
+  // Update UI — body.app-mode controls visibility, .hidden only for initial load
   document.body.classList.add('app-mode');
-  document.getElementById('landing-view').classList.add('hidden');
-  document.getElementById('app-view').classList.remove('hidden');
+  const appView = document.getElementById('app-view');
+  appView.classList.remove('hidden');
+  if (initialRouteHandled) {
+    appView.classList.add('view-enter');
+    appView.addEventListener('animationend', () => appView.classList.remove('view-enter'), { once: true });
+  }
   window.scrollTo(0, 0);
 
   // Footer'ı app-shell'e taşı
@@ -53,7 +59,6 @@ export async function showAppView() {
     appLoading = true;
     try {
       appModule = await import('./app.js');
-      console.log('[Landing] App module loaded');
     } catch (err) {
       console.error('[Landing] Failed to load app module:', err);
     } finally {
@@ -63,12 +68,20 @@ export async function showAppView() {
 }
 
 /**
- * Show Landing View
+ * Show Landing View — aktif operation varsa engelle
  */
 export function showLandingView() {
+  // State guard: aktif islem varsa navigasyonu engelle
+  if (getCurrentMode() || getIsPreparing()) {
+    return;
+  }
+
   document.body.classList.remove('app-mode');
-  document.getElementById('app-view').classList.add('hidden');
-  document.getElementById('landing-view').classList.remove('hidden');
+  if (initialRouteHandled) {
+    const landingView = document.getElementById('landing-view');
+    landingView.classList.add('view-enter');
+    landingView.addEventListener('animationend', () => landingView.classList.remove('view-enter'), { once: true });
+  }
   window.scrollTo(0, 0);
 
   // Footer'ı landing-view'a geri taşı
@@ -156,20 +169,6 @@ function initSmoothScroll() {
 }
 
 // ============================================
-// DEV CONSOLE
-// ============================================
-
-/**
- * Toggle dev console visibility
- */
-function toggleDevConsole() {
-  const devConsole = document.getElementById('devConsole');
-  if (devConsole) {
-    devConsole.classList.toggle('open');
-  }
-}
-
-// ============================================
 // WAVE ANIMATOR
 // ============================================
 
@@ -177,6 +176,7 @@ function toggleDevConsole() {
  * Initialize hero section wave animation
  */
 function initWaveAnimation() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   initWaveAnimator('.hero-soundwave', {
     barCount: 280,
     width: 1600,
@@ -199,6 +199,83 @@ function initWaveAnimation() {
 }
 
 // ============================================
+// SCROLL REVEAL
+// ============================================
+
+/**
+ * Initialize scroll-triggered reveal animations using IntersectionObserver
+ */
+function initScrollReveal() {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Reduced motion: hemen goster
+  if (reducedMotion) {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+    return;
+  }
+
+  const revealElements = document.querySelectorAll('.reveal');
+
+  // Viewport ustunde kalmis elementleri hemen goster
+  revealElements.forEach(el => {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom < 0) {
+      el.classList.add('visible');
+    }
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+
+  revealElements.forEach(el => {
+    if (!el.classList.contains('visible')) {
+      observer.observe(el);
+    }
+  });
+}
+
+// ============================================
+// NAVIGATION EVENT BINDING
+// ============================================
+
+/**
+ * Bind click handlers to navigation elements (replaces inline onclick)
+ */
+function bindNavigationEvents() {
+  // showAppView triggers
+  const appViewTriggers = [
+    document.getElementById('navbarCta'),
+    document.getElementById('heroLaunchBtn'),
+    document.getElementById('heroMicIcon')
+  ];
+  appViewTriggers.forEach(el => el?.addEventListener('click', showAppView));
+
+  // showLandingView triggers (prevent default for <a> tags)
+  const landingViewTriggers = [
+    document.getElementById('footerBrand'),
+    document.getElementById('appHeaderBrand')
+  ];
+  landingViewTriggers.forEach(el => el?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLandingView();
+  }));
+
+  // Hero mic icon hover sync with launch button
+  const heroMicIcon = document.getElementById('heroMicIcon');
+  const heroLaunchBtn = document.getElementById('heroLaunchBtn');
+  if (heroMicIcon && heroLaunchBtn) {
+    heroMicIcon.addEventListener('mouseenter', () => heroLaunchBtn.classList.add('mic-hover-active'));
+    heroMicIcon.addEventListener('mouseleave', () => heroLaunchBtn.classList.remove('mic-hover-active'));
+  }
+}
+
+// ============================================
 // INITIALIZATION
 // ============================================
 
@@ -207,11 +284,12 @@ function init() {
   initNavbarScroll();
   initSmoothScroll();
   initWaveAnimation();
+  initScrollReveal();
+  bindNavigationEvents();
 
-  // Handle initial route
+  // Handle initial route (skip animation on first load)
   handleRoute();
-
-  console.log('[Landing] Initialized');
+  initialRouteHandled = true;
 }
 
 // ============================================
@@ -227,11 +305,3 @@ if (document.readyState === 'loading') {
 
 // Handle browser back/forward
 window.addEventListener('popstate', handleRoute);
-
-// ============================================
-// GLOBAL EXPORTS (for onclick handlers in HTML)
-// ============================================
-
-window.showAppView = showAppView;
-window.showLandingView = showLandingView;
-window.toggleDevConsole = toggleDevConsole;

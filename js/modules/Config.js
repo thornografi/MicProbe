@@ -29,7 +29,7 @@ export const SETTINGS = {
   },
   sampleRate: {
     type: 'enum',
-    values: [16000, 24000, 48000],  // Opus-uyumlu: wideband, super-wideband, fullband
+    values: [16000, 24000, 44100, 48000],  // Opus-uyumlu + 44100 (yaygin Windows mik default'u)
     default: 48000,
     label: 'Sample Rate',
     category: 'constraints',
@@ -132,7 +132,7 @@ export const SETTINGS = {
     unit: 'ms',
     ui: { type: 'radio', name: 'timeslice' }
   }
-  // NOT: delay ayari kaldirildi - monitoring'de sabit 1.7sn kullaniliyor (Monitor.js DEFAULT_DELAY_SECONDS)
+  // NOT: delay ayari kaldirildi - monitoring'de sabit 1.7sn kullaniliyor (constants.js → DELAY.DEFAULT_SECONDS)
 };
 
 // Varsayilan profil degerleri

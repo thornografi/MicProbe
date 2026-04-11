@@ -98,12 +98,12 @@ export async function createAndPlayActivatorAudio(remoteStream, context = 'loopb
   try {
     await audio.play();
     eventBus.emit(EVENTS.LOG_STREAM, {
-      message: `${context}: Activator audio baslatildi`,
+      message: `${context}: Activator audio started`,
       details: { paused: audio.paused, muted: audio.muted }
     });
   } catch (err) {
     eventBus.emit(EVENTS.LOG_WARNING, {
-      message: `${context}: Activator audio hatasi (devam ediliyor)`,
+      message: `${context}: Activator audio error (continuing)`,
       details: { error: err.message }
     });
   }
@@ -157,6 +157,19 @@ export function createAnalyserNode(audioContext) {
   return analyser;
 }
 
+/**
+ * Frekans analizi icin yuksek cozunurluklu AnalyserNode factory
+ * VU meter icin 256 FFT yeterli, frekans analizi icin 2048 gerekli (11.7 Hz/bin @ 48kHz)
+ * @param {AudioContext} audioContext - AudioContext instance
+ * @returns {AnalyserNode} - Yuksek cozunurluklu AnalyserNode
+ */
+export function createAnalysisAnalyserNode(audioContext) {
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = AUDIO.ANALYSIS_FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.1;
+  return analyser;
+}
+
 // === Hesaplama Fonksiyonlari (constants.js'den taşındı) ===
 
 /**
@@ -175,25 +188,3 @@ export const bytesToKB = (bytes) => bytes / BYTES.PER_KB;
 export const calculateLatencyMs = (bufferSize, sampleRate = AUDIO.DEFAULT_SAMPLE_RATE) =>
   (bufferSize / sampleRate) * 1000;
 
-/**
- * RMS degerini dB'e cevir
- * @param {number} rms - RMS degeri (0-1 arasi)
- * @returns {number} dB degeri (MIN_DB ile 0 arasi)
- */
-export const rmsToDb = (rms) =>
-  rms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(rms) : VU_METER.MIN_DB;
-
-/**
- * dB degerini yuzdeye cevir (VU meter icin)
- * @param {number} dB - dB degeri
- * @returns {number} Yuzde (0-100 arasi)
- */
-export const dbToPercent = (dB) =>
-  Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
-
-/**
- * Bitrate'i kbps formatina cevir
- * @param {number} bps - Bits per second
- * @returns {string} Formatli string (orn: "64 kbps")
- */
-export const bitrateToKbps = (bps) => `${Math.round(bps / 1000)} kbps`;

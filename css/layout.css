@@ -1,0 +1,522 @@
+/* MicProbe - App Styles (Sidebar Layout)
+   =======================================
+   Tum renkler variables.css'ten gelir.
+   Bu dosya sadece app-specific layout ve component stilleri icerir.
+*/
+
+/* App view - arka plan body'den miras */
+/* #app-view (index.html#app) icin tasarlanmistir */
+#app-view {
+  /* background body'den miras - DRY */
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Standalone app shell - ileride ayri app sayfasi icin (opsiyonel) */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  /* background body'den miras - DRY */
+}
+
+/* App layout container */
+.app-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: transparent;
+}
+
+.app-layout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--sidebar-width);
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(var(--color-orange-rgb), 0.15) 20%,
+    rgba(var(--color-purple-rgb), 0.25) 50%,
+    rgba(var(--color-orange-rgb), 0.15) 80%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ========== APP LAYOUT ========== */
+/* NOT: .app-layout temel stilleri yukarida tanimli (gradient background) */
+/* Burasi sadece flex layout ozellikleri */
+
+/* ========== SIDEBAR ========== */
+.sidebar {
+  width: var(--sidebar-width);
+  background: rgba(var(--color-white-rgb), 0.015);
+  backdrop-filter: blur(var(--backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--backdrop-blur));
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1; /* Gradient overlay'in ustunde */
+  font-family: var(--font-sans);
+  contain: layout style;
+}
+
+.sidebar-header {
+  padding: var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--gradient-accent-subtle);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.sidebar-header:hover {
+  background: var(--gradient-accent-hover);
+}
+
+.sidebar-header:hover .sidebar-logo {
+  filter: var(--glow-accent-xl);
+  transform: scale(1.05);
+}
+
+.sidebar-header:hover .sidebar-title {
+  color: var(--color-orange);
+}
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  color: var(--color-orange);
+  filter: var(--glow-accent-lg);
+  transition: all var(--transition-normal);
+}
+
+.sidebar-title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  transition: color var(--transition-normal);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: var(--sidebar-nav-top) var(--space-md) var(--space-md) var(--space-md);
+  overflow-y: auto;
+}
+
+.nav-section {
+  margin-bottom: var(--space-xl);
+}
+
+.nav-section + .nav-section {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-secondary);
+}
+
+  .nav-section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 2.2px;
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+  background: transparent;
+  border-left: none;
+  border-radius: 0;
+  opacity: 0.65;
+  font-family: var(--font-mono);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: 10px var(--space-md);
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent; /* smooth transition icin initial state */
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  font-weight: 450;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-align: left;
+  letter-spacing: 0.2px;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.nav-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  fill: currentColor;
+}
+
+.nav-item:hover {
+  background: rgba(var(--color-purple-rgb), 0.06);
+  border-left-color: rgba(var(--color-purple-rgb), 0.2);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.nav-item:hover svg {
+  opacity: 0.9;
+  color: var(--color-purple-light);
+}
+
+.nav-item.active {
+  background: rgba(var(--color-accent-text-rgb), 0.1);
+  border-left: 3px solid var(--profile-accent);
+  position: relative;
+  opacity: 1;
+  box-shadow: inset 0 0 20px rgba(var(--color-accent-text-rgb), 0.04);
+}
+
+.nav-item.active span {
+  color: var(--profile-accent);
+  font-family: var(--font-ui-accent);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(var(--color-accent-text-rgb), 0.05), transparent);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.nav-item.active svg {
+  opacity: 1;
+  color: var(--profile-accent);
+  filter: drop-shadow(0 0 6px var(--profile-accent-glow));
+}
+
+.nav-item.disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+/* Tree görünümü - profiller kategori altında girintili */
+.nav-item-sub {
+  margin-left: var(--space-md);
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+  gap: var(--space-sm);
+}
+
+.nav-item-sub svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-footer {
+  padding: var(--space-md);
+  border-top: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.sidebar-status.recording .status-indicator {
+  background: var(--accent-danger);
+  animation: pulse 0.8s infinite;
+}
+
+.sidebar-status.monitoring .status-indicator {
+  background: var(--color-orange);
+  box-shadow: 0 0 8px rgba(var(--color-orange-rgb), 0.6);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ========== MAIN CONTENT ========== */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-x: visible;
+  overflow-y: hidden;
+  background: transparent; /* Gradient .app-layout'tan gelir */
+  min-height: 0; /* Flex overflow fix */
+  position: relative;
+  z-index: 1; /* Gradient overlay'in ustunde */
+  contain: layout;
+}
+
+.content-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Responsive: Büyük ekranlarda geniş, küçük ekranlarda önce boşluk azalır */
+  --content-right-padding: clamp(16px, calc(20vw - 100px), 405px);
+  --panel-right-bleed: min(var(--content-right-padding), 120px);
+  padding: var(--padding-fluid);
+  padding-right: var(--content-right-padding);
+  overflow-y: auto;
+  min-height: 0; /* Flex overflow fix */
+  /* Büyük ekranlarda içeriği ortala */
+  align-items: center;
+}
+
+/* ========== RESPONSIVE ========== */
+
+/* ========== SIDEBAR RESPONSIVE (768-1200px) ========== */
+/* Küçük ekranlı laptop'lar için kademeli daraltma
+   Varsayılan sidebar: 282px (variables.css)
+
+   Breakpoint Hesaplaması:
+   ─────────────────────────────────────────────────
+   768-1023px:  220px (~78% of 282px) - Kompakt mod
+   1024-1200px: 250px (~89% of 282px) - Orta mod
+   >1200px:     282px (varsayılan)    - Tam genişlik
+
+   NOT: CSS media query condition'larında variable kullanılamadığından
+   width değerleri hardcoded. Sidebar genişliği değişirse burası da güncellenmeli.
+*/
+
+/* 768-1023px arası: Sidebar kompakt (~78% daraltma) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar {
+    width: var(--sidebar-width-compact);
+  }
+
+  .sidebar .nav-section-title {
+    font-size: 10px;   /* Varsayılan: 12px (--fs-xs) */
+    letter-spacing: 1px; /* Daha sıkı spacing */
+  }
+
+  .sidebar .nav-item {
+    padding: 8px 12px;  /* Varsayılan: 10px 16px */
+    font-size: 13px;    /* Varsayılan: 14px (--fs-base) */
+  }
+
+  .sidebar .nav-item svg {
+    width: 16px;  /* Varsayılan: 18px */
+    height: 16px;
+  }
+
+  /* Gradient line - sidebar genişliğiyle senkron */
+  .app-layout::before {
+    left: var(--sidebar-width-compact);
+  }
+}
+
+/* 1024-1200px arası: Sidebar orta (~89% daraltma) */
+@media (min-width: 1024px) and (max-width: 1200px) {
+  .sidebar {
+    width: var(--sidebar-width-medium);
+  }
+
+  .sidebar .nav-item {
+    padding: 9px 14px; /* Varsayılan: 10px 16px - hafif daraltma */
+  }
+
+  /* Gradient line - sidebar genişliğiyle senkron */
+  .app-layout::before {
+    left: var(--sidebar-width-medium);
+  }
+}
+
+/* Büyük tablet ve altı - sağ boşluğu kademeli azalt */
+@media (max-width: 1200px) {
+  .content-container {
+    --content-right-padding: clamp(16px, 8vw, 80px);
+  }
+}
+
+/* Tablet - sağ boşluğu minimize et */
+@media (max-width: 900px) {
+  .content-container {
+    --content-right-padding: 16px;
+    --panel-right-bleed: 0;
+  }
+
+  .panel-unified {
+    width: 100%;
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-layout::before {
+    content: none;
+  }
+
+  .app-header-content {
+    padding: 0 var(--space-md);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: var(--header-height); /* base'den geliyor */
+    height: calc(100vh - var(--header-height));
+    left: calc(-1 * var(--sidebar-width));
+    z-index: var(--z-dropdown);
+    transition: left 0.3s ease;
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+
+  .content-container {
+    padding: var(--space-md);
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .header-left h1 {
+    font-size: var(--fs-2xl);
+  }
+
+  .button-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mic-dropdown {
+    min-width: 140px;
+    font-size: var(--fs-md);
+    padding-right: 28px;
+    background-position: right 8px center;
+  }
+
+  .settings-drawer {
+    width: 100%;
+    right: -100%;
+  }
+}
+
+/* Scrollbar styles are in variables.css - DRY */
+
+/* ========== MOBILE SMALL (480px) RESPONSIVE ========== */
+/* Kucuk mobil cihazlar icin ozel optimizasyonlar */
+@media (max-width: 480px) {
+  /* Content padding azalt - icerik alani genislesin */
+  .content-container {
+    --content-right-padding: 16px;
+    padding: var(--space-sm);
+  }
+
+  /* Panel bleed kapat - overflow-x onle */
+  .panel-unified {
+    width: 100%;
+    margin-right: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  /* Sabit genislikler kaldir */
+  .unified-left .button-row,
+  .unified-left .mic-selector-row,
+  .vu-section {
+    max-width: 100%;
+  }
+
+  /* Row gap azalt */
+  .unified-row {
+    gap: var(--space-md);
+  }
+
+  /* Dev console drawer tam ekran */
+  .dev-console-drawer {
+    width: 100%;
+    right: -100%;
+  }
+
+  .dev-console-drawer.open {
+    right: 0;
+  }
+
+  /* VU meter biraz kucult */
+  .vu-meter {
+    height: 21px;
+  }
+
+  /* Buton min-width kaldir, padding azalt */
+  .btn-action {
+    min-width: 0;
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--fs-sm);
+  }
+
+  /* Header font kucult */
+  .page-header h1 {
+    font-size: var(--fs-xl);
+  }
+
+  /* Mic dropdown tam genislik */
+  .mic-dropdown {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Tips/Status daha kompakt */
+  .unified-tips .utip,
+  .unified-status .stat {
+    font-size: var(--fs-sm);
+  }
+
+  /* Player kompakt */
+  .player-filename {
+    font-size: var(--fs-sm);
+  }
+
+  .player-time {
+    font-size: var(--fs-xs);
+  }
+
+  /* Settings drawer tam ekran */
+  .settings-drawer {
+    width: 100%;
+    right: -100%;
+  }
+
+  .settings-drawer.open {
+    right: 0;
+  }
+}

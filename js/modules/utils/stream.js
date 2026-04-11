@@ -52,12 +52,16 @@ export function wrapAsyncHandler(fn, errorMessage) {
 /**
  * pipeline:analyserReady ve stream:started event'lerini DOGRU sirada emit eder.
  * KRITIK: Bu siralama VuMeter icin zorunludur — ayri emit YAPMA, bu helper'i kullan.
- * @param {AnalyserNode|null} analyserNode - Pipeline'dan gelen analyser (yoksa null)
+ * @param {AnalyserNode|null} analyserNode - Pipeline'dan gelen VU analyser (yoksa null)
  * @param {MediaStream} stream - Baslayan stream
+ * @param {AnalyserNode|null} analysisAnalyserNode - Frekans analizi icin yuksek cozunurluklu analyser (yoksa null)
  */
-export function emitStreamWithAnalyser(analyserNode, stream) {
+export function emitStreamWithAnalyser(analyserNode, stream, analysisAnalyserNode = null) {
   if (analyserNode) {
     eventBus.emit(EVENTS.PIPELINE_ANALYSER_READY, analyserNode);
+  }
+  if (analysisAnalyserNode) {
+    eventBus.emit(EVENTS.PIPELINE_ANALYSIS_ANALYSER_READY, analysisAnalyserNode);
   }
   eventBus.emit(EVENTS.STREAM_STARTED, stream);
 }

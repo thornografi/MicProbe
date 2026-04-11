@@ -61,7 +61,7 @@ class RecordingController {
     // Encoder profil tarafindan belirleniyor (artik kullanici secimi yok)
     const encoder = this.deps.getEncoder();
 
-    log.recorder('Kayit baslat butonuna basildi', { constraints, webAudioEnabled: useWebAudio, pipeline, encoder });
+    log.recorder('Record Start button pressed', { constraints, webAudioEnabled: useWebAudio, pipeline, encoder });
 
     try {
       // Kayit baslarken oynaticiyi durdur
@@ -82,7 +82,7 @@ class RecordingController {
       this.deps.uiStateManager?.startTimer();
 
     } catch (err) {
-      log.error('Kayit baslatilamadi', { error: err.message });
+      log.error('Recording failed to start', { error: err.message });
 
       // Temizlik
       resetState(this.deps);
@@ -94,13 +94,13 @@ class RecordingController {
    * Kayit durdur
    */
   async stop() {
-    log.recorder('Kayit durduruluyor', {});
+    log.recorder('Recording stopping', {});
 
     try {
       this.deps.uiStateManager?.stopTimer();
       await this.deps.recorder?.stop();
     } catch (err) {
-      log.error('Kayit durdurma hatasi', { error: err.message, stack: err.stack });
+      log.error('Recording stop error', { error: err.message, stack: err.stack });
     } finally {
       // Her durumda state reset - hata olsa bile UI tutarli kalsin
       resetState(this.deps);

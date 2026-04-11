@@ -19,12 +19,15 @@ export default class StandardPipeline extends BasePipeline {
     // VU Meter icin AnalyserNode olustur
     this.createAnalyser();
 
-    // Fan-out: ayni sinyal iki hedefe
+    // Frekans analizi icin yuksek cozunurluklu analyser
+    this.createAnalysisAnalyser(this.sourceNode);
+
+    // Fan-out: ayni sinyal uc hedefe
     this.sourceNode.connect(this.analyserNode);      // VU Meter icin
     this.sourceNode.connect(this.destinationNode);   // Encode icin
 
-    this.log('Standard grafigi baglandi (fan-out)', {
-      graph: 'Source -> [AnalyserNode (VU) + DestinationNode (Encode)]'
+    this.log('Standard graph connected (fan-out)', {
+      graph: 'Source -> [AnalyserNode (VU) + AnalyserNode (Analysis) + DestinationNode (Encode)]'
     });
   }
 
@@ -39,6 +42,6 @@ export default class StandardPipeline extends BasePipeline {
     }
 
     await super.cleanup();
-    this.log('Standard pipeline cleanup tamamlandi');
+    this.log('Standard pipeline cleanup complete');
   }
 }

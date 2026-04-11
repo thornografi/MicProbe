@@ -68,7 +68,7 @@ class CustomSettingsPanelHandler {
       customSettingsContent.classList.toggle('collapsed');
       customSettingsToggle.classList.toggle('expanded');
 
-      log.ui(isCollapsed ? 'Ozel ayarlar acildi' : 'Ozel ayarlar kapatildi', {});
+      log.ui(isCollapsed ? 'Custom settings opened' : 'Custom settings closed', {});
     });
   }
 

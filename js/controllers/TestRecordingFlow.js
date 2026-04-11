@@ -58,7 +58,7 @@ class TestRecordingFlow {
     const constraints = this.deps.getConstraints();
     const opusBitrate = this.deps.getOpusBitrate();
 
-    log.stream('Test kaydi baslatiliyor', { constraints, opusBitrate, duration: TEST.DURATION_MS });
+    log.stream('Test recording starting', { constraints, opusBitrate, duration: TEST.DURATION_MS });
 
     try {
       // Player'i durdur
@@ -99,10 +99,10 @@ class TestRecordingFlow {
       // Timer baslat
       this._startTimer();
       eventBus.emit(EVENTS.TEST_RECORDING_STARTED, { durationMs: TEST.DURATION_MS });
-      log.stream(`Test kaydi basladi (${TEST.DURATION_MS / 1000}sn)`);
+      log.stream(`Test recording started (${TEST.DURATION_MS / 1000}s)`);
 
     } catch (err) {
-      log.error('Test kaydi baslatilamadi', { error: err.message });
+      log.error('Test recording failed to start', { error: err.message });
       // Preparing flag'i temizle (UI "Preparing" durumunda takilmasin)
       this.deps.setIsPreparing(false);
       await this._cleanup();
@@ -115,7 +115,7 @@ class TestRecordingFlow {
   async stopRecording() {
     this._clearTimer();
 
-    log.stream('Test kaydi durduruluyor', {});
+    log.stream('Test recording stopping', {});
 
     // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
     const stopPromise = new Promise(resolve => {
@@ -143,7 +143,7 @@ class TestRecordingFlow {
     this.controller.loopbackLocalStream = null;
 
     eventBus.emit(EVENTS.TEST_RECORDING_STOPPED);
-    log.stream('Test kaydi tamamlandi, playback basliyor...');
+    log.stream('Test recording complete, playback starting...');
 
     // Playback'e gec
     await this.startPlayback();
@@ -155,8 +155,8 @@ class TestRecordingFlow {
   async startPlayback() {
     // Blob kontrolu
     if (!this.testAudioBlob || this.testAudioBlob.size === 0) {
-      log.error('Test playback hatasi: Ses verisi yok', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
-      log.error('Test kaydi bos - ses verisi alinamadi');
+      log.error('Test playback error: No audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
+      log.error('Test recording empty - no audio data received');
       await this._cleanup();
       return;
     }
@@ -165,14 +165,14 @@ class TestRecordingFlow {
     this.deps.setCurrentMode('test-playback');
     this.deps.uiStateManager?.updateButtonStates();
 
-    log.stream('Test playback baslatiliyor', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
+    log.stream('Test playback starting', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
 
     // Basit Audio element ile oynat
     this.testAudioUrl = URL.createObjectURL(this.testAudioBlob);
     this.testAudioElement = new Audio(this.testAudioUrl);
 
     this.testAudioElement.onended = async () => {
-      log.stream('Test tamamlandi');
+      log.stream('Test complete');
       await this._cleanup();
       eventBus.emit(EVENTS.TEST_COMPLETED);
     };
@@ -182,16 +182,16 @@ class TestRecordingFlow {
       const mediaError = this.testAudioElement?.error;
       const errorCode = mediaError?.code;
       const errorMsg = mediaError?.message || 'Unknown error';
-      log.error('Test playback hatasi', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
+      log.error('Test playback error', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
       await this._cleanup();
     };
 
     try {
       await this.testAudioElement.play();
       eventBus.emit(EVENTS.TEST_PLAYBACK_STARTED);
-      log.player('Test playback basladi');
+      log.player('Test playback started');
     } catch (err) {
-      log.error('Test play hatasi', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
+      log.error('Test play error', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
       await this._cleanup();
     }
   }
@@ -205,7 +205,7 @@ class TestRecordingFlow {
       this.testAudioElement.onended = null;
       this.testAudioElement.onerror = null;
     }
-    log.player('Test playback durduruldu');
+    log.player('Test playback stopped');
     await this._cleanup();
     eventBus.emit(EVENTS.TEST_PLAYBACK_STOPPED);
   }
@@ -216,7 +216,7 @@ class TestRecordingFlow {
   async cancel() {
     this._clearTimer();
 
-    log.stream('Test iptal ediliyor', {});
+    log.stream('Test cancelling', {});
 
     if (this.testMediaRecorder?.state !== 'inactive') {
       this.testMediaRecorder.stop();
@@ -228,7 +228,7 @@ class TestRecordingFlow {
     stopStreamTracks(this.controller.loopbackLocalStream);
     this.controller.loopbackLocalStream = null;
 
-    log.stream('Test iptal edildi');
+    log.stream('Test cancelled');
     await this._cleanup();
     eventBus.emit(EVENTS.TEST_CANCELLED);
   }

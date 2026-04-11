@@ -36,8 +36,11 @@ export default class DirectPipeline extends BasePipeline {
       // Source -> Analyser (sadece VU icin, ses isleme yok)
       this._vuSourceNode.connect(this.analyserNode);
 
-      this.log('Direct pipeline - VU Meter icin shared AudioContext', {
-        graph: 'MicStream -> [AnalyserNode (VU)] + MediaRecorder (parallel)'
+      // Frekans analizi icin yuksek cozunurluklu analyser
+      this.createAnalysisAnalyser(this._vuSourceNode);
+
+      this.log('Direct pipeline - VU + Analysis Analyser icin shared AudioContext', {
+        graph: 'MicStream -> [AnalyserNode (VU) + AnalyserNode (Analysis)] + MediaRecorder (parallel)'
       });
     } else {
       this.log('Direct pipeline - WebAudio bypass (VU yok)', {
@@ -61,6 +64,6 @@ export default class DirectPipeline extends BasePipeline {
     }
 
     await super.cleanup();
-    this.log('Direct pipeline cleanup tamamlandi');
+    this.log('Direct pipeline cleanup complete');
   }
 }

@@ -9,7 +9,7 @@
  */
 import eventBus from './EventBus.js';
 import { AUDIO } from './constants.js';
-import { log, createAnalyserNode } from './utils.js';
+import { log, createAudioContext, createAnalyserNode } from './utils.js';
 
 class AudioEngine {
   constructor() {
@@ -21,7 +21,7 @@ class AudioEngine {
 
     // VuMeter icin data array (GC onleme)
     this.fftSize = AUDIO.FFT_SIZE;
-    this.dataArray = new Uint8Array(this.fftSize);
+    this.dataArray = new Float32Array(this.fftSize);
 
     // Durum
     this.isWarmedUp = false;
@@ -42,17 +42,15 @@ class AudioEngine {
     }
 
     try {
-      // AudioContext olustur (interactive latency = dusuk gecikme)
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        latencyHint: 'interactive'
-      });
+      // AudioContext olustur (interactive latency = dusuk gecikme) - DRY: utility kullan
+      this.audioContext = await createAudioContext({ latencyHint: 'interactive' });
 
       // DRY: AnalyserNode factory kullan
       this.analyserNode = createAnalyserNode(this.audioContext);
 
       this.isWarmedUp = true;
 
-      log.webaudio('AudioEngine: Warmup tamamlandi', {
+      log.webaudio('AudioEngine: Warmup complete', {
         state: this.audioContext.state,
         sampleRate: this.audioContext.sampleRate,
         baseLatency: this.audioContext.baseLatency,
@@ -61,11 +59,11 @@ class AudioEngine {
 
       // Suspended durumda baslarsa uyari ver
       if (this.audioContext.state === 'suspended') {
-        log.webaudio('AudioEngine: Context suspended - ilk kullanici etkilesiminde resume edilecek', {});
+        log.webaudio('AudioEngine: Context suspended - will resume on first user interaction', {});
       }
 
     } catch (err) {
-      log.error('AudioEngine: Warmup hatasi', { error: err.message });
+      log.error('AudioEngine: Warmup error', { error: err.message });
       throw err;
     }
   }
@@ -113,7 +111,7 @@ class AudioEngine {
 
     this.isConnected = true;
 
-    log.webaudio('AudioEngine: Stream baglandi (VU Meter)', {
+    log.webaudio('AudioEngine: Stream connected (VU Meter)', {
       streamId: stream.id,
       channelCount: this.sourceNode.channelCount,
       contextState: this.audioContext.state
@@ -151,7 +149,7 @@ class AudioEngine {
     this.analyserNode = null;
     this.isWarmedUp = false;
 
-    log.webaudio('AudioEngine: Tamamen kapatildi', {});
+    log.webaudio('AudioEngine: Fully closed', {});
   }
 
   /**
