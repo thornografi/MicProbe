@@ -134,7 +134,7 @@ export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
 
   // Test tamamlandiginda/iptal edildiginde countdown temizle
   const clearCountdown = () => { if (testCountdownEl) testCountdownEl.textContent = ''; };
-  [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_PLAYBACK_STOPPED]
+  [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_PLAYBACK_STOPPED, EVENTS.TEST_RECORDING_STOPPED]
     .forEach(event => unsubscribers.push(eventBus.on(event, clearCountdown)));
 
   // Cleanup fonksiyonu dondur

@@ -44,6 +44,9 @@ class TestRecordingFlow {
     if (this.testPhase === 'recording') {
       // Erken durdur -> playback'e gec (iptal degil)
       await this.stopRecording();
+    } else if (this.testPhase === 'stopping') {
+      // Durdurma async surecinde - ikinci tiklamayi yut (re-entry/deadlock onleme)
+      return;
     } else if (this.testPhase === 'playback') {
       await this.stopPlayback();
     } else {
@@ -113,23 +116,34 @@ class TestRecordingFlow {
    * Test kaydini durdur ve playback'e gec
    */
   async stopRecording() {
+    // GUARD: stopRecording async surecindeyken (timer fire + erken tiklama yarisi)
+    // ikinci kez girilmesin - aksi halde onstop overwrite olur ve ilk promise asla resolve olmaz
+    if (this.testPhase === 'stopping') return;
+    this.testPhase = 'stopping';
+
     this._clearTimer();
 
     log.stream('Test recording stopping', {});
 
     // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
+    // 'inactive' recorder onstop tetiklemez (USB cihaz cekilmesi/ICE kopmasi) -> deadlock onlemek icin direkt resolve
+    const recorder = this.testMediaRecorder;
     const stopPromise = new Promise(resolve => {
-      this.testMediaRecorder.onstop = () => {
-        this.testAudioBlob = new Blob(this.testChunks, { type: this.testMediaRecorder.mimeType || 'audio/webm' });
+      if (!recorder || recorder.state === 'inactive') {
+        this.testAudioBlob = this.testChunks.length
+          ? new Blob(this.testChunks, { type: recorder?.mimeType || 'audio/webm' })
+          : null;
+        log.recorder(`MediaRecorder already inactive: ${this.testChunks.length} chunk`);
+        resolve();
+        return;
+      }
+      recorder.onstop = () => {
+        this.testAudioBlob = new Blob(this.testChunks, { type: recorder.mimeType || 'audio/webm' });
         log.recorder(`MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
         resolve();
       };
+      recorder.stop();
     });
-
-    // MediaRecorder'i durdur
-    if (this.testMediaRecorder?.state !== 'inactive') {
-      this.testMediaRecorder.stop();
-    }
 
     // onstop'u bekle
     await stopPromise;
@@ -158,6 +172,7 @@ class TestRecordingFlow {
       log.error('Test playback error: No audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
       log.error('Test recording empty - no audio data received');
       await this._cleanup();
+      eventBus.emit(EVENTS.TEST_CANCELLED);
       return;
     }
 
@@ -184,6 +199,7 @@ class TestRecordingFlow {
       const errorMsg = mediaError?.message || 'Unknown error';
       log.error('Test playback error', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
       await this._cleanup();
+      eventBus.emit(EVENTS.TEST_CANCELLED);
     };
 
     try {
@@ -193,6 +209,7 @@ class TestRecordingFlow {
     } catch (err) {
       log.error('Test play error', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
       await this._cleanup();
+      eventBus.emit(EVENTS.TEST_CANCELLED);
     }
   }
 
@@ -275,6 +292,12 @@ class TestRecordingFlow {
    */
   async _cleanup() {
     this._clearTimer();
+
+    // Idempotent loopback + mikrofon temizligi - hata/erken cikis yollarinda sizinti onleme.
+    // Normal stopRecording yolunda zaten temizlenmis olur; tum cagrilar null-safe oldugundan tekrar zararsiz.
+    await loopbackManager.cleanup();
+    stopStreamTracks(this.controller.loopbackLocalStream);
+    this.controller.loopbackLocalStream = null;
 
     this.testMediaRecorder = null;
     this.testChunks = [];
