@@ -3,7 +3,7 @@
  * OCP: Farkli format destekleri eklenebilir
  */
 import eventBus from './EventBus.js';
-import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log } from './utils.js';
+import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log, toggleDisplay } from './utils.js';
 import { BYTES, EVENTS } from './constants.js';
 import { convertToMp3 } from './Mp3Converter.js';
 
@@ -112,9 +112,7 @@ class Player {
       this.containerEl.classList.add('visible');
     }
 
-    if (this.noRecordingEl) {
-      this.noRecordingEl.style.display = 'none';
-    }
+    toggleDisplay(this.noRecordingEl, false);
 
     // Duration bazen metadata ile gec gelir (webm/opus). Play'e basmadan sureyi gostermek icin probe et.
     this.probeDuration(blob, mimeType).catch((err) => {
@@ -154,9 +152,7 @@ class Player {
 
     this.syncPlayButtonIcon();
 
-    if (this.noRecordingEl) {
-      this.noRecordingEl.style.display = 'block';
-    }
+    toggleDisplay(this.noRecordingEl, true);
 
     eventBus.emit(EVENTS.PLAYER_RESET);
   }
@@ -194,7 +190,7 @@ class Player {
     const arrayBuffer = await blob.arrayBuffer();
     const ac = new AudioContextCtor();
     try {
-      const decoded = await ac.decodeAudioData(arrayBuffer.slice(0));
+      const decoded = await ac.decodeAudioData(arrayBuffer);
       const durationSeconds = decoded?.duration;
       if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
         this.knownDurationSeconds = durationSeconds;
@@ -469,7 +465,9 @@ class Player {
       if (textNode) textNode.textContent = ' Converting...';
 
       try {
-        const mp3Blob = await convertToMp3(blob);
+        const mp3Blob = await convertToMp3(blob, {
+          onProgress: (p) => { if (textNode) textNode.textContent = ` Converting... ${p}%`; }
+        });
         this._mp3Url = URL.createObjectURL(mp3Blob);
 
         const a = document.createElement('a');

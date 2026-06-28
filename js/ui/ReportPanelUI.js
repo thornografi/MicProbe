@@ -11,21 +11,34 @@ import eventBus from '../modules/EventBus.js';
 import { EVENTS } from '../modules/constants.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
 import { log } from '../modules/utils.js';
+import {
+  reportPopupBackdropEl,
+  reportPanelEl,
+  reportPopupCloseEl,
+  reportScoreBadgeEl,
+  reportOverallEl,
+  reportFindingsEl,
+  reportMetricsGridEl,
+  reportRecommendationsEl,
+  reportDetailedEl,
+  premiumOverlayEl,
+  showReportBtnEl
+} from './UIElements.js';
 
 class ReportPanelUI {
   constructor() {
-    // DOM referanslari
-    this.backdropEl = document.getElementById('reportPopupBackdrop');
-    this.panelEl = document.getElementById('reportPanel');
-    this.closeBtn = document.getElementById('reportPopupClose');
-    this.scoreBadgeEl = document.getElementById('reportScoreBadge');
-    this.overallEl = document.getElementById('reportOverall');
-    this.findingsEl = document.getElementById('reportFindings');
-    this.metricsGridEl = document.getElementById('reportMetricsGrid');
-    this.recommendationsEl = document.getElementById('reportRecommendations');
-    this.detailedEl = document.getElementById('reportDetailed');
-    this.premiumOverlayEl = document.getElementById('premiumOverlay');
-    this.showReportBtn = document.getElementById('showReportBtn');
+    // DOM referanslari (UIElements merkezi registry'den)
+    this.backdropEl = reportPopupBackdropEl;
+    this.panelEl = reportPanelEl;
+    this.closeBtn = reportPopupCloseEl;
+    this.scoreBadgeEl = reportScoreBadgeEl;
+    this.overallEl = reportOverallEl;
+    this.findingsEl = reportFindingsEl;
+    this.metricsGridEl = reportMetricsGridEl;
+    this.recommendationsEl = reportRecommendationsEl;
+    this.detailedEl = reportDetailedEl;
+    this.premiumOverlayEl = premiumOverlayEl;
+    this.showReportBtn = showReportBtnEl;
 
     // Rapor butonu (tekrar acma)
     this.showReportBtn?.addEventListener('click', () => this.open());
@@ -102,6 +115,12 @@ class ReportPanelUI {
     this._previouslyFocused = null;
   }
 
+  // === PRIVATE: Helpers ===
+
+  _buildStars(count) {
+    return '★'.repeat(count) + '☆'.repeat(5 - count);
+  }
+
   // === PRIVATE: Render ===
 
   _renderReport(report) {
@@ -140,7 +159,7 @@ class ReportPanelUI {
 
   _renderScoreBadge(overall) {
     if (!this.scoreBadgeEl) return;
-    const stars = '\u2605'.repeat(overall.stars) + '\u2606'.repeat(5 - overall.stars);
+    const stars = this._buildStars(overall.stars);
     this.scoreBadgeEl.textContent = `${stars} ${overall.label}`;
     this.scoreBadgeEl.dataset.color = overall.color;
   }
@@ -149,7 +168,7 @@ class ReportPanelUI {
     if (!this.overallEl) return;
 
     const emoji = overall.score === 'good' ? '\u2713' : overall.score === 'fair' ? '!' : '\u2715';
-    const stars = '\u2605'.repeat(overall.stars) + '\u2606'.repeat(5 - overall.stars);
+    const stars = this._buildStars(overall.stars);
 
     this.overallEl.innerHTML = `
       <div class="report-overall-indicator" data-color="${overall.color}">${emoji}</div>

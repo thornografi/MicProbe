@@ -273,8 +273,8 @@ class UIStateManager {
       });
     };
 
-    const selectedEncoder = document.querySelector(`input[name="${SETTING_NAMES.ENCODER}"]:checked`)?.value || ENCODER_TYPES.DEFAULT;
-    const selectedPipeline = document.querySelector(`input[name="${SETTING_NAMES.PIPELINE}"]:checked`)?.value;
+    const selectedEncoder = [...this.radioGroups.encoder].find(r => r.checked)?.value || ENCODER_TYPES.DEFAULT;
+    const selectedPipeline = [...this.radioGroups.pipeline].find(r => r.checked)?.value;
 
     disableRadioGroup(this.radioGroups.pipeline, 'pipeline',
       radio => radio.value === PIPELINE_TYPES.WORKLET && !WORKLET_SUPPORTED);

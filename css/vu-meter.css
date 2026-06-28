@@ -86,16 +86,6 @@
   border: 1px solid rgba(var(--color-white-rgb), 0.04);
 }
 
-/* VU Meter segmented background lines - kaldirildi (cizgiler kapatildi) */
-.vu-meter::before {
-  display: none;
-}
-
-/* VU Meter dB tick marks - kaldirildi */
-.vu-meter::after {
-  display: none;
-}
-
 .vu-meter-bar {
   /* Parametrik gradient renkleri - DRY */
   --vu-color-start: var(--vu-green);

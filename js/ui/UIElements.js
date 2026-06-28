@@ -67,6 +67,26 @@ export const bufferInfoText = getEl('bufferInfoText');
 export const timesliceInfoEl = getEl('timesliceInfo');
 
 // ============================================
+// VU METER ELEMENTLERI
+// ============================================
+export const remoteVuContainerEl = getEl('remoteVuContainer');
+
+// ============================================
+// RAPOR PANEL ELEMENTLERI
+// ============================================
+export const reportPopupBackdropEl = getEl('reportPopupBackdrop');
+export const reportPanelEl = getEl('reportPanel');
+export const reportPopupCloseEl = getEl('reportPopupClose');
+export const reportScoreBadgeEl = getEl('reportScoreBadge');
+export const reportOverallEl = getEl('reportOverall');
+export const reportFindingsEl = getEl('reportFindings');
+export const reportMetricsGridEl = getEl('reportMetricsGrid');
+export const reportRecommendationsEl = getEl('reportRecommendations');
+export const reportDetailedEl = getEl('reportDetailed');
+export const premiumOverlayEl = getEl('premiumOverlay');
+export const showReportBtnEl = getEl('showReportBtn');
+
+// ============================================
 // PLAYER ELEMENTLERI
 // ============================================
 export const recordingPlayerEl = getEl('recordingPlayer');

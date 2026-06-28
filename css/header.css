@@ -17,21 +17,20 @@
   align-items: center;
   justify-content: center;
   min-height: var(--header-height); /* base'den geliyor */
+  position: relative;
   padding: 0 var(--space-xl);
-  padding-left: calc(var(--space-xl) + var(--sidebar-width));
   width: 100%;
   background: var(--panel-body-bg);
 }
 
-@media (max-width: 768px) {
-  .app-header-content {
-    padding-left: var(--space-xl);
-  }
-}
+/* Logo absolute konumda - asimetrik padding yok, mobil override gereksiz */
 
 /* .navbar-brand ve .navbar-logo stilleri landing.css'ten miras alinir - DRY */
 /* App header'da sadece hover/disabled ek stilleri */
 .app-header .navbar-brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   transition: all var(--transition-fast);
 }
 
@@ -168,29 +167,25 @@
 
 .status-idle {
   --status-bg: rgba(var(--color-white-rgb), 0.05);
-  --status-border: var(--glass-border);
   --status-color: var(--accent-success);
   --status-shadow: none;
 }
 
 .status-recording {
   --status-bg: var(--accent-danger-muted);
-  --status-border: rgba(229, 57, 53, 0.3);
   --status-color: var(--accent-danger);
   --status-shadow: 0 0 12px rgba(229, 57, 53, 0.2);
 }
 
 .status-monitoring {
   --status-bg: var(--gradient-accent-muted);
-  --status-border: rgba(var(--color-orange-rgb), 0.3);
   --status-color: var(--color-orange);
   --status-shadow: 0 0 15px rgba(var(--color-orange-rgb), 0.25);
 }
 
 .status-testing {
-  --status-bg: var(--accent-info-muted, rgba(33, 150, 243, 0.15));
-  --status-border: rgba(33, 150, 243, 0.3);
-  --status-color: var(--accent-info, #2196f3);
+  --status-bg: var(--accent-info-muted);
+  --status-color: var(--accent-info);
   --status-shadow: 0 0 12px rgba(33, 150, 243, 0.2);
 }
 

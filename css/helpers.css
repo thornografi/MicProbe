@@ -1,3 +1,12 @@
+/* ========== SVG SPRITE ========== */
+/* display:none kullanilmaz — gradient/filter referanslarini bozabilir */
+.svg-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 /* ========== UI HELPERS ========== */
 .ui-disabled {
   opacity: var(--opacity-disabled);

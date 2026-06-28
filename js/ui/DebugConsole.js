@@ -56,9 +56,7 @@ class DebugConsole {
       } else {
         logger.filterByCategory(category);
       }
-      document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
-      const activeBtn = document.querySelector(`[data-category="${category}"]`);
-      if (activeBtn) activeBtn.classList.add('active');
+      // Logger.updateFilterButtons() bu DOM güncellemesini zaten yapıyor
     };
 
     const getLogStats = () => {

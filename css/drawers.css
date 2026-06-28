@@ -7,6 +7,7 @@
   right: calc(-1 * var(--drawer-width));
   width: var(--drawer-width);
   height: 100vh;
+  height: 100dvh;
   background: rgba(10, 10, 15, 0.95);
   backdrop-filter: blur(var(--blur-lg));
   -webkit-backdrop-filter: blur(var(--blur-lg));
@@ -100,7 +101,9 @@
   gap: var(--space-sm);
 }
 
-.btn-close-console {
+/* Drawer/console kapatma butonu - ortak base (DRY) */
+.btn-close-console,
+.btn-close-drawer {
   width: 32px;
   height: 32px;
   display: flex;
@@ -119,7 +122,8 @@
   color: var(--color-orange);
 }
 
-.btn-close-console svg {
+.btn-close-console svg,
+.btn-close-drawer svg {
   width: 20px;
   height: 20px;
 }
@@ -392,28 +396,9 @@ body.production .dev-console-toggle-btn {
   color: var(--text-primary);
 }
 
-.btn-close-drawer {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
 .btn-close-drawer:hover {
   background: var(--bg-input);
   color: var(--text-primary);
-}
-
-.btn-close-drawer svg {
-  width: 20px;
-  height: 20px;
 }
 
 .drawer-body {

@@ -187,7 +187,6 @@ class ProfileUIManager {
 
       if (iconHref && targetUse) {
         targetUse.setAttribute('href', iconHref);
-        targetUse.setAttribute('xlink:href', iconHref);
         pageTitleIcon.classList.remove('hidden');
       } else {
         pageTitleIcon.classList.add('hidden');

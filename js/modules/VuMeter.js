@@ -7,7 +7,7 @@
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
 import { AUDIO, VU_METER, EVENTS } from './constants.js';
-import { log, disconnectNodes, createAudioContext, createAnalyserNode } from './utils.js';
+import { log, disconnectNodes, createAudioContext, createAnalyserNode, toggleDisplay } from './utils.js';
 
 class VuMeter {
   constructor(config) {
@@ -162,9 +162,7 @@ class VuMeter {
     if (!stream) return;
 
     // Remote container'i goster
-    if (this.remoteContainerEl) {
-      this.remoteContainerEl.style.display = 'block';
-    }
+    toggleDisplay(this.remoteContainerEl, true);
 
     // DOM render sonrasi width hesapla (container artik gorunur)
     requestAnimationFrame(() => {

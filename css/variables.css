@@ -22,6 +22,7 @@
   --color-orange-rgb: 192, 63, 164;
   --color-purple-rgb: 168, 85, 247;
   --color-pink-rgb: 217, 70, 168;
+  --color-rose-rgb: var(--color-pink-rgb);  /* rose alias - hero wave (nth-child 1) */
   --color-white-rgb: 255, 255, 255;
   --color-black-rgb: 0, 0, 0;
 
@@ -113,6 +114,7 @@
   --accent-danger: #e53935;
   --accent-warning: #ff9800;
   --accent-success: #1db954;
+  --accent-info: #2196f3;
 
   /* VU Meter colors */
   --vu-green: #22c55e;
@@ -202,8 +204,18 @@
   --shadow-xl: 0 20px 25px rgba(var(--color-black-rgb), 0.6);
 
   /* Glow effects - tutarli accent renkleri */
-  --glow-accent: 0 0 25px rgba(192, 38, 211, 0.35);
+  --glow-accent: 0 0 25px rgba(var(--color-orange-rgb), 0.35);
   --glow-purple: 0 0 25px rgba(192, 132, 252, 0.3);
+  --glow-brand-hover: 0 0 12px rgba(var(--color-pink-rgb), 0.7);
+  /* Primary buton hover parlamasi (landing mic-hover-active) - btn--primary:hover ile ayni */
+  --shadow-glow-orange: 0 0 25px rgba(var(--color-pink-rgb), 0.6), 0 0 50px rgba(var(--color-purple-rgb), 0.35);
+
+  /* Accent muted variants */
+  --accent-danger-muted: rgba(229, 57, 53, 0.15);
+  --accent-info-muted: rgba(33, 150, 243, 0.15);
+
+  /* Brand */
+  --brand-text-color: var(--text-primary);
 
   /* ========== Z-INDEX ========== */
   --z-dropdown: 100;
@@ -213,6 +225,7 @@
   --z-drawer-overlay: 900;
   --z-console-toggle: 900;
   --z-drawer: 1000;
+  --z-report: 1100;
 
   /* ========== LAYOUT ========== */
   --sidebar-width: 282px;
@@ -312,7 +325,7 @@ body::after {
   background-repeat: repeat;
   background-size: 256px 256px;
   pointer-events: none;
-  z-index: var(--z-drawer-overlay); /* 900 - drawer'ların altında */
+  z-index: 1; /* noise texture - en altta */
   mix-blend-mode: overlay;
 }
 
@@ -477,7 +490,7 @@ body::after {
 .site-footer-brand svg {
   width: 22px;
   height: 22px;
-  color: url(#navbar-brand-gradient); /* DRY: tum markalar ayni gradyan */
+  /* SVG gradient fill attribute ile yonetilir, CSS color: url() gecersiz */
   fill: currentColor;
   filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6)); /* landing ile ayni */
   transition: transform var(--transition-normal), filter var(--transition-normal);
