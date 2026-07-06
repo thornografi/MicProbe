@@ -37,7 +37,7 @@
 }
 
 /* ========== ACTION BUTTONS (Base Class) ========== */
-/* Record ve Monitor butonları için ortak base class - DRY prensibi */
+/* Record, Test ve Monitor butonları için ortak base class - DRY prensibi */
 /* .btn'den miras: display, align-items, justify-content, gap */
 .btn-action {
   flex: 1;
@@ -149,6 +149,33 @@
 .btn-record.preparing .icon-square { display: none; }
 
 /* ========== MONITOR BUTTON (Variant) ========== */
+/* Live monitor is advanced/supporting; keep it visually secondary while idle. */
+.btn-monitor {
+  flex: 0 1 126px;
+  min-width: 112px;
+  background: var(--glass-bg-hover);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.btn-monitor::before {
+  opacity: 0.25;
+}
+
+.btn-monitor:hover:not(:disabled):not(.active) {
+  background: var(--gradient-accent-muted);
+  color: var(--text-primary);
+  box-shadow:
+    0 0 14px rgba(var(--color-purple-rgb), 0.18),
+    0 6px 18px rgba(var(--color-black-rgb), 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.btn-monitor.active {
+  flex: 1;
+}
+
 /* Monitor ikonu toggle */
 .btn-monitor .icon-stop { display: none; }
 .btn-monitor.active .icon-play { display: none; }
@@ -278,6 +305,7 @@
 /* ========== SEGMENT CONTROL ========== */
 .segment-control {
   display: inline-flex;
+  position: relative;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
@@ -286,8 +314,21 @@
   width: 100%;
 }
 
+/* a11y: radyolar gorsel gizli ama klavye/odak icin erisilebilir.
+   display:none klavye navigasyonunu tamamen engelliyordu. opacity:0
+   input'un kendi outline'ini de gizler; odak halkasi label'da gosterilir. */
 .segment-control input[type="radio"] {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.segment-control input[type="radio"]:focus-visible + .segment-btn {
+  outline: 2px solid var(--color-purple);
+  outline-offset: 2px;
 }
 
 .segment-btn {

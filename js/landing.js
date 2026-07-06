@@ -248,13 +248,33 @@ function initScrollReveal() {
  * Bind click handlers to navigation elements (replaces inline onclick)
  */
 function bindNavigationEvents() {
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const mobileNav = document.getElementById('mobileNav');
+  const closeMobileMenu = () => {
+    if (!mobileMenuBtn || !mobileNav) return;
+    mobileNav.classList.remove('open');
+    mobileMenuBtn.setAttribute('aria-expanded', 'false');
+    mobileMenuBtn.setAttribute('aria-label', 'Open menu');
+  };
+
+  if (mobileMenuBtn && mobileNav) {
+    mobileMenuBtn.addEventListener('click', () => {
+      const isOpen = mobileNav.classList.toggle('open');
+      mobileMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      mobileMenuBtn.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+    });
+  }
+
   // showAppView triggers
   const appViewTriggers = [
     document.getElementById('navbarCta'),
     document.getElementById('heroLaunchBtn'),
     document.getElementById('heroMicIcon')
   ];
-  appViewTriggers.forEach(el => el?.addEventListener('click', showAppView));
+  appViewTriggers.forEach(el => el?.addEventListener('click', () => {
+    closeMobileMenu();
+    showAppView();
+  }));
 
   // showLandingView triggers (prevent default for <a> tags)
   const landingViewTriggers = [
@@ -263,8 +283,13 @@ function bindNavigationEvents() {
   ];
   landingViewTriggers.forEach(el => el?.addEventListener('click', (e) => {
     e.preventDefault();
+    closeMobileMenu();
     showLandingView();
   }));
+
+  mobileNav?.querySelectorAll('a, button').forEach(el => {
+    el.addEventListener('click', closeMobileMenu);
+  });
 
   // Hero mic icon hover sync with launch button
   const heroMicIcon = document.getElementById('heroMicIcon');
@@ -272,6 +297,14 @@ function bindNavigationEvents() {
   if (heroMicIcon && heroLaunchBtn) {
     heroMicIcon.addEventListener('mouseenter', () => heroLaunchBtn.classList.add('mic-hover-active'));
     heroMicIcon.addEventListener('mouseleave', () => heroLaunchBtn.classList.remove('mic-hover-active'));
+    // a11y: role=button klavye aktivasyonu (Enter/Space)
+    heroMicIcon.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        closeMobileMenu();
+        showAppView();
+      }
+    });
   }
 }
 

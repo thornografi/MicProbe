@@ -88,7 +88,7 @@ class Logger {
   renderFilteredLogs() {
     if (!this.el) return;
 
-    this.el.innerHTML = '';
+    this.el.replaceChildren();
 
     const filteredLogs = this.activeFilter
       ? this.history.filter(h => {
@@ -123,7 +123,7 @@ class Logger {
     this.history = [];
     this.activeFilter = null;
     if (this.el) {
-      this.el.innerHTML = '';
+      this.el.replaceChildren();
     }
     this.log('Log cleared', 'system');
   }

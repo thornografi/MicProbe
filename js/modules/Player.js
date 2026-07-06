@@ -54,6 +54,7 @@ class Player {
 
     if (this.progressBarEl) {
       this.progressBarEl.onclick = (e) => this.seek(e);
+      this.progressBarEl.addEventListener('keydown', (e) => this._onProgressKeydown(e));
     }
 
     // timeupdate yerine requestAnimationFrame kullaniliyor (daha akici)
@@ -288,12 +289,48 @@ class Player {
 
     // Seek sirasinda instant update - transition'siz
     this.setProgressFill(percent, { disableTransition: true });
+    this._updateSliderAria(this.audio.currentTime, duration);
 
     // Seek sonrasi ended/replay ikonunu senkronize et (ozellikle sona seek edildiyse)
     if (!this.isPlaying) {
       this.isEnded = this.isAtEnd(duration);
       this.syncPlayButtonIcon();
     }
+  }
+
+  /**
+   * Klavye ile seek (a11y slider) - Ok tuslari +/-5sn, Home/End
+   */
+  _onProgressKeydown(e) {
+    const duration = this.getDurationSeconds();
+    if (!duration) return;
+    let target = this.audio.currentTime;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowUp': target += 5; break;
+      case 'ArrowLeft':
+      case 'ArrowDown': target -= 5; break;
+      case 'Home': target = 0; break;
+      case 'End': target = duration; break;
+      default: return;
+    }
+    e.preventDefault();
+    this.audio.currentTime = Math.max(0, Math.min(duration, target));
+    this.isEnded = false;
+    this.setProgressFill(this.audio.currentTime / duration, { disableTransition: true });
+    this._updateSliderAria(this.audio.currentTime, duration);
+    if (!this.isPlaying) {
+      this.isEnded = this.isAtEnd(duration);
+      this.syncPlayButtonIcon();
+    }
+  }
+
+  /** Slider ARIA degerlerini guncelle (progressBar role=slider) */
+  _updateSliderAria(currentTime, duration) {
+    if (!this.progressBarEl) return;
+    const pct = duration > 0 ? Math.round(Math.max(0, Math.min(1, currentTime / duration)) * 100) : 0;
+    this.progressBarEl.setAttribute('aria-valuenow', String(pct));
+    this.progressBarEl.setAttribute('aria-valuetext', `${formatTime(currentTime)} / ${formatTime(duration)}`);
   }
 
   updateProgress() {
@@ -326,6 +363,8 @@ class Player {
     if (this.progressFillEl) {
       this.progressFillEl.style.transform = `scaleX(${progress})`;
     }
+
+    this._updateSliderAria(currentTime, duration);
 
     if (this.timeEl) {
       this.timeEl.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
@@ -428,10 +467,13 @@ class Player {
 
     if (this.isPlaying) {
       this.playBtnEl.innerHTML = PAUSE_ICON;
+      this.playBtnEl.setAttribute('aria-label', 'Pause');
       return;
     }
 
-    this.playBtnEl.innerHTML = this.shouldReplayOnNextPlay() ? REPLAY_ICON : PLAY_ICON;
+    const replay = this.shouldReplayOnNextPlay();
+    this.playBtnEl.innerHTML = replay ? REPLAY_ICON : PLAY_ICON;
+    this.playBtnEl.setAttribute('aria-label', replay ? 'Replay' : 'Play');
   }
 
   /**

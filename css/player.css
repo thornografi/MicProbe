@@ -142,7 +142,7 @@
   transform: scaleX(0);
   will-change: transform;
   transition: transform 0.1s linear;
-  box-shadow: 0 0 8px rgba(232, 93, 59, 0.4);
+  box-shadow: 0 0 8px rgba(var(--color-purple-rgb), 0.4);
 }
 
 .progress-fill.no-transition {
@@ -178,6 +178,9 @@
   transition: all var(--transition-fast);
   border: 1px solid var(--border-primary);
   cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .btn-download:hover {

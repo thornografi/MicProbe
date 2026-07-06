@@ -1,7 +1,5 @@
 /* ========== UNIFIED PANEL ========== */
 .panel-unified {
-  max-width: 900px;
-  margin: 0 auto;
   container-type: inline-size;
   container-name: unified-panel;
 }
@@ -34,7 +32,6 @@
 .unified-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
 }
 
 /* Controls Section - Grid ile esit bolunecek */

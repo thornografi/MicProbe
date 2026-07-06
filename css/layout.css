@@ -14,6 +14,7 @@
 
 /* Standalone app shell - ileride ayri app sayfasi icin (opsiyonel) */
 .app-shell {
+  --header-height: calc(var(--navbar-height) * 1.4);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -126,7 +127,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    font-size: 10px;
+    font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--text-muted);
   text-transform: uppercase;
@@ -272,7 +273,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-x: visible;
+  overflow-x: clip;
   overflow-y: hidden;
   background: transparent; /* Gradient .app-layout'tan gelir */
   min-height: 0; /* Flex overflow fix */
@@ -319,7 +320,7 @@
   }
 
   .sidebar .nav-section-title {
-    font-size: 10px;   /* Varsayılan: 12px (--fs-xs) */
+    font-size: var(--fs-xs);
     letter-spacing: 1px; /* Daha sıkı spacing */
   }
 
@@ -387,10 +388,13 @@
   .sidebar {
     position: fixed;
     top: var(--header-height); /* base'den geliyor */
+    width: min(var(--sidebar-width), calc(100vw - 48px));
     height: calc(100vh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
     left: calc(-1 * var(--sidebar-width));
-    z-index: var(--z-dropdown);
+    z-index: var(--z-drawer);
     transition: left 0.3s ease;
+    box-shadow: var(--panel-shadow);
   }
 
   .sidebar.open {

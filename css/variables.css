@@ -330,10 +330,8 @@ body::after {
 }
 
 /* ========== FOCUS STATES ========== */
-:focus {
-  outline: none;
-}
-
+/* a11y: global :focus{outline:none} kaldirildi - klavye gostergesi :focus-visible
+   ile verilir, :focus-visible desteklenmeyen durumda UA fallback outline'i korunur. */
 :focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
