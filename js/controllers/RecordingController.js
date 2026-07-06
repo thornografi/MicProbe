@@ -4,8 +4,8 @@
  * DIP: Bagimliliklar dependency injection ile alinir
  */
 import eventBus from '../modules/EventBus.js';
-import { PIPELINE_TYPES } from '../modules/constants.js';
-import { log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
+import { PIPELINE_TYPES, EVENTS } from '../modules/constants.js';
+import { log, beginPreparing, endPreparing, resetState, getStreamErrorMessage } from '../modules/utils.js';
 
 class RecordingController {
   constructor() {
@@ -62,6 +62,7 @@ class RecordingController {
     const encoder = this.deps.getEncoder();
 
     log.recorder('Record Start button pressed', { constraints, webAudioEnabled: useWebAudio, pipeline, encoder });
+    eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
 
     try {
       // Kayit baslarken oynaticiyi durdur
@@ -82,7 +83,12 @@ class RecordingController {
       this.deps.uiStateManager?.startTimer();
 
     } catch (err) {
+      const userMessage = getStreamErrorMessage(err);
       log.error('Recording failed to start', { error: err.message });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: `${userMessage}. Check microphone access and try recording again.`,
+        tone: 'error'
+      });
 
       // Temizlik
       resetState(this.deps);

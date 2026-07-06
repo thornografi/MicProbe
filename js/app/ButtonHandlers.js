@@ -43,18 +43,23 @@ export function setupButtonHandlers(elements, controllers) {
  * @returns {Object} Drawer controller
  */
 export function createDrawerController(drawerEl, options = {}) {
-  const { overlay = null, lockBody = false } = options;
+  const { overlay = null, lockBody = false, triggerEl = null } = options;
+  const setExpanded = (expanded) => {
+    triggerEl?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  };
 
   return {
     isOpen: () => drawerEl?.classList.contains('open'),
     open() {
       drawerEl?.classList.add('open');
       overlay?.classList.add('open');
+      setExpanded(true);
       if (lockBody) document.body.style.overflow = 'hidden';
     },
     close() {
       drawerEl?.classList.remove('open');
       overlay?.classList.remove('open');
+      setExpanded(false);
       if (lockBody) document.body.style.overflow = '';
     },
     toggle() {
@@ -81,19 +86,29 @@ export function setupDrawerHandlers(elements) {
     closeDrawerBtn,
     devConsoleDrawer,
     devConsoleToggle,
-    closeConsoleBtn
+    closeConsoleBtn,
+    profileSidebar,
+    profileMenuBtn,
+    navItems = []
   } = elements;
 
   // Drawer controller'lar olustur
   const settingsDrawerCtrl = createDrawerController(settingsDrawer, { overlay: drawerOverlay, lockBody: true });
+  const profileDrawerCtrl = createDrawerController(profileSidebar, { overlay: drawerOverlay, lockBody: true, triggerEl: profileMenuBtn });
   const devConsoleCtrl = createDrawerController(devConsoleDrawer);
 
   // Event listener'lari bagla
-  settingsDrawerCtrl.bindCloseButtons(closeDrawerBtn, drawerOverlay);
+  settingsDrawerCtrl.bindCloseButtons(closeDrawerBtn);
+  profileDrawerCtrl.bindButtons(profileMenuBtn);
+  profileDrawerCtrl.bindCloseButtons(...navItems);
+  drawerOverlay?.addEventListener('click', () => {
+    settingsDrawerCtrl.close();
+    profileDrawerCtrl.close();
+  });
   devConsoleCtrl.bindButtons(devConsoleToggle);
   devConsoleCtrl.bindCloseButtons(closeConsoleBtn);
 
-  return { settingsDrawerCtrl, devConsoleCtrl };
+  return { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl };
 }
 
 /**
@@ -102,11 +117,12 @@ export function setupDrawerHandlers(elements) {
  * @returns {Function} - Event handler referansi (cleanup icin)
  */
 export function setupKeyboardHandlers(drawerControllers) {
-  const { settingsDrawerCtrl, devConsoleCtrl } = drawerControllers;
+  const { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl } = drawerControllers;
 
   function handleEscapeKey(e) {
     if (e.key === 'Escape') {
       settingsDrawerCtrl.close();
+      profileDrawerCtrl?.close();
       devConsoleCtrl.close();
     }
   }

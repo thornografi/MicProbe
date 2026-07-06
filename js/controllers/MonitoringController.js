@@ -7,7 +7,7 @@
 import eventBus from '../modules/EventBus.js';
 import loopbackManager from '../modules/LoopbackManager.js';
 import { DELAY, PIPELINE_TYPES, EVENTS } from '../modules/constants.js';
-import { stopStreamTracks, log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
+import { stopStreamTracks, log, beginPreparing, endPreparing, resetState, getStreamErrorMessage } from '../modules/utils.js';
 import { requestStream } from '../modules/StreamHelper.js';
 import TestRecordingFlow from './TestRecordingFlow.js';
 
@@ -75,6 +75,7 @@ class MonitoringController {
     const pipelineDesc = this._buildPipelineDescription(useLoopback, pipeline);
 
     log.stream('Monitor Start button pressed', { constraints, webAudioEnabled: useWebAudio, loopbackEnabled: useLoopback, pipeline, pipelineDesc });
+    eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
 
     try {
       // Player'i durdur
@@ -93,7 +94,12 @@ class MonitoringController {
       }
 
     } catch (err) {
+      const userMessage = getStreamErrorMessage(err);
       log.error('Monitor failed to start', { error: err.message });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: `${userMessage}. Check microphone access, then try Monitor again.`,
+        tone: 'error'
+      });
 
       // Temizlik
       resetState(this.deps);

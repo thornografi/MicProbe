@@ -199,7 +199,7 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
 // İKİ ANA KATEGORİ: call (sesli görüşme) ve record (kayıt)
 export const PROFILES = {
   // ═══════════════════════════════════════════════════════════════
-  // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback, Monitoring Only
+  // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback, Test primary + Monitor advanced
   // ═══════════════════════════════════════════════════════════════
   // Call profilleri: EC/NS/AGC platformlar tarafindan kesinlikle kullaniliyor
   'discord': createProfile('discord', 'Discord', 'Discord, Guilded - Krisp noise suppression, AudioWorklet',
@@ -279,48 +279,48 @@ export const PROFILE_CATEGORIES = {
 export const PROFILE_TIPS = {
   // === CALL Category ===
   'discord': [
-    { step: 1, text: 'Click <strong>Monitor</strong> to hear yourself' },
-    { step: 2, text: 'Test Nitro quality with <strong>Bitrate</strong>' },
-    { step: 3, text: 'Check audio levels with VU meter' }
+    { step: 1, text: 'Run a short Discord-style <strong>Test</strong>' },
+    { step: 2, text: 'Play back the codec-processed audio' },
+    { step: 3, text: 'Open the report for fixes' }
   ],
   'zoom': [
-    { step: 1, text: 'Test meeting audio with <strong>Monitor</strong>' },
+    { step: 1, text: 'Run a short meeting-style <strong>Test</strong>' },
     { step: 2, text: 'Try <strong>Sample Rate</strong> compatibility' },
-    { step: 3, text: 'Adjust levels with VU meter' }
+    { step: 3, text: 'Review the report for fixes' }
   ],
   'whatsapp-call': [
-    { step: 1, text: 'Hear call quality with <strong>Monitor</strong>' },
-    { step: 2, text: 'Test <strong>Bitrate</strong> options' },
-    { step: 3, text: 'Watch audio levels on VU meter' }
+    { step: 1, text: 'Run a WhatsApp call <strong>Test</strong>' },
+    { step: 2, text: 'Compare low-bitrate call quality' },
+    { step: 3, text: 'Use the report to diagnose issues' }
   ],
   'telegram-call': [
-    { step: 1, text: 'Test call audio with <strong>Monitor</strong>' },
+    { step: 1, text: 'Run a Telegram call <strong>Test</strong>' },
     { step: 2, text: 'Adjust quality with <strong>Bitrate</strong>' },
-    { step: 3, text: 'Check levels on VU meter' }
+    { step: 3, text: 'Review the report for fixes' }
   ],
 
   // === RECORD Category ===
   'whatsapp-voice': [
     { step: 1, text: 'Record voice message with <strong>Record</strong>' },
     { step: 2, text: 'Play back and hear WASM Opus quality' },
-    { step: 3, text: 'Adjust quality with <strong>Bitrate</strong>' }
+    { step: 3, text: 'Open the report for fixes' }
   ],
   'telegram-voice': [
     { step: 1, text: 'Make audio recording with <strong>Record</strong>' },
     { step: 2, text: 'Play back and compare quality' },
-    { step: 3, text: 'Try different <strong>Timeslice</strong> values' }
+    { step: 3, text: 'Review the report for fixes' }
   ],
   'raw': [
     { step: 1, text: 'Make raw recording with <strong>Record</strong>' },
     { step: 2, text: 'Compare with other profiles' },
-    { step: 3, text: 'Freely adjust all settings' }
+    { step: 3, text: 'Use the report as a clean baseline' }
   ],
 
   // Default (fallback)
   'default': [
     { step: 1, text: 'Select a profile from the sidebar' },
-    { step: 2, text: 'Use <strong>Monitor</strong> or <strong>Record</strong>' },
-    { step: 3, text: 'Customize settings as needed' }
+    { step: 2, text: 'Run a <strong>Test</strong> or make a <strong>Record</strong>' },
+    { step: 3, text: 'Review the report and fixes' }
   ]
 };
 

@@ -147,6 +147,8 @@ export const EVENTS = {
   CONSTRAINT_MISMATCH: 'constraint:mismatch',
   // Status
   STATUS_CHANGED: 'status:changed',
+  UI_MESSAGE: 'ui:message',
+  UI_CLEAR_MESSAGE: 'ui:clearMessage',
   // Log - Genel
   LOG: 'log',
   LOG_CLEAR: 'log:clear',
@@ -215,4 +217,3 @@ export const LOOPBACK = {
 export const TEST = {
   DURATION_MS: 7000               // Test suresi (7 saniye)
 };
-

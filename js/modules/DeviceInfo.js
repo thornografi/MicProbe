@@ -6,7 +6,7 @@
  * Stream baslangicinda ve profil degisikliginde guncellenir
  */
 import eventBus from './EventBus.js';
-import { stopStreamTracks, log } from './utils.js';
+import { stopStreamTracks, log, getStreamErrorMessage } from './utils.js';
 import { EVENTS } from './constants.js';
 
 // Storage key for persisting mic selection
@@ -150,7 +150,7 @@ class DeviceInfo {
     }
 
     // Dropdown temizle
-    this.micSelector.innerHTML = '';
+    this.micSelector.replaceChildren();
 
     // Secili cihaz hala mevcut mu kontrol et
     const selectedStillExists = realMics.some(m => m.deviceId === this.selectedDeviceId);
@@ -186,6 +186,15 @@ class DeviceInfo {
     return realMics;
   }
 
+  _showMicPermissionPlaceholder(message = 'Click to allow microphone access') {
+    if (!this.micSelector) return;
+    const option = document.createElement('option');
+    option.value = '';
+    option.disabled = true;
+    option.textContent = message;
+    this.micSelector.replaceChildren(option);
+  }
+
   /**
    * Mikrofonlari listele (izin isteyerek)
    * @param {boolean} silent - Log yazma
@@ -205,9 +214,20 @@ class DeviceInfo {
       if (!silent) {
         log.stream(`${realMics.length} microphone(s) found`, { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) });
       }
+      eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
     } catch (err) {
+      const userMessage = getStreamErrorMessage(err);
+      const recoveryMessage = err.name === 'NotFoundError'
+        ? 'Connect a microphone, then click Refresh.'
+        : 'Allow microphone access in the browser, then click Refresh.';
+
       this.hasMicPermission = false;
       log.error('Failed to enumerate microphones', { category: 'stream', error: err.message });
+      this._showMicPermissionPlaceholder(userMessage);
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: `${userMessage}. ${recoveryMessage}`,
+        tone: 'error'
+      });
     }
   }
 
@@ -227,10 +247,10 @@ class DeviceInfo {
       if (hasLabels) {
         this.buildMicrophoneDropdown(allMics, { logWarnings: false });
       } else {
-        this.micSelector.innerHTML = '<option value="" disabled>🎤 Click to allow microphone access</option>';
+        this._showMicPermissionPlaceholder();
       }
     } catch (err) {
-      this.micSelector.innerHTML = '<option value="" disabled>🎤 Click to allow microphone access</option>';
+      this._showMicPermissionPlaceholder();
     }
   }
 

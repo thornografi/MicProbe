@@ -56,6 +56,28 @@
   animation: none;
 }
 
+.app-profile-menu-btn {
+  display: none;
+  position: absolute;
+  left: var(--space-md);
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(var(--color-white-rgb), 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+}
+
+.app-profile-menu-btn:hover {
+  background: rgba(var(--color-purple-rgb), 0.12);
+  border-color: rgba(var(--color-purple-rgb), 0.35);
+  color: var(--color-purple-light);
+}
+
 /* Mic pulse animation */
 @keyframes micPulse {
   0%, 100% { transform: scale(1.1); }
@@ -63,10 +85,7 @@
 }
 
 /* ========== GLOBAL FOCUS STATES (App) ========== */
-#app-view :focus {
-  outline: none;
-}
-
+/* a11y: :focus{outline:none} kaldirildi - bkz. variables.css FOCUS STATES */
 #app-view :focus-visible {
   outline: 2px solid var(--color-purple);
   outline-offset: 2px;
@@ -81,6 +100,12 @@
 #app-view .nav-item:focus-visible {
   outline: 2px solid var(--color-purple);
   outline-offset: -2px;
+}
+
+@media (max-width: 768px) {
+  .app-profile-menu-btn {
+    display: flex;
+  }
 }
 
 /* ========== PAGE HEADER ========== */
@@ -147,6 +172,23 @@
   opacity: 0.7;
 }
 
+.user-message {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--accent-danger-muted);
+  background: rgba(229, 57, 53, 0.1);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  max-width: min(100%, 720px);
+}
+
+.user-message[data-tone="warning"] {
+  border-color: rgba(255, 152, 0, 0.28);
+  background: rgba(255, 152, 0, 0.1);
+}
+
 /* ========== STATUS BADGE ========== */
 .status {
   display: inline-flex;
@@ -175,6 +217,12 @@
   --status-bg: var(--accent-danger-muted);
   --status-color: var(--accent-danger);
   --status-shadow: 0 0 12px rgba(229, 57, 53, 0.2);
+}
+
+.status-error {
+  --status-bg: var(--accent-danger-muted);
+  --status-color: var(--accent-danger);
+  --status-shadow: 0 0 12px rgba(229, 57, 53, 0.24);
 }
 
 .status-monitoring {

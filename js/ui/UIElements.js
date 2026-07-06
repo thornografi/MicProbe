@@ -34,6 +34,7 @@ function queryAll(selector) {
 export const recordToggleBtn = getEl('recordToggle');
 export const monitorToggleBtn = getEl('monitorToggle');
 export const testBtn = getEl('testBtn');
+export const profileMenuBtn = getEl('profileMenuBtn');
 export const testCountdownEl = getEl('testCountdown');
 export const playBtnEl = getEl('playBtn');
 export const downloadBtnEl = getEl('downloadBtn');
@@ -84,14 +85,17 @@ export const reportMetricsGridEl = getEl('reportMetricsGrid');
 export const reportRecommendationsEl = getEl('reportRecommendations');
 export const reportDetailedEl = getEl('reportDetailed');
 export const premiumOverlayEl = getEl('premiumOverlay');
+export const premiumCtaEl = getEl('premiumCta');
+export const premiumStatusEl = getEl('premiumStatus');
 export const showReportBtnEl = getEl('showReportBtn');
 
 // ============================================
 // PLAYER ELEMENTLERI
 // ============================================
 export const recordingPlayerEl = getEl('recordingPlayer');
-export const recordingPlayerCardEl = recordingPlayerEl ? recordingPlayerEl.closest('.card') : null;
-export const recordingPlayerPanelEl = recordingPlayerEl ? recordingPlayerEl.closest('.panel-player') : null;
+export const recordingPlayerRowEl = recordingPlayerEl ? recordingPlayerEl.closest('.unified-row-player') : null;
+export const recordingPlayerCardEl = recordingPlayerRowEl;
+export const recordingPlayerPanelEl = recordingPlayerRowEl;
 export const progressBarEl = getEl('progressBar');
 
 // ============================================
@@ -100,6 +104,7 @@ export const progressBarEl = getEl('progressBar');
 export const settingsDrawer = getEl('settingsDrawer');
 export const drawerOverlay = getEl('drawerOverlay');
 export const devConsoleDrawer = getEl('devConsole');
+export const profileSidebar = getEl('profileSidebar');
 
 // ============================================
 // SECTION ELEMENTLERI
@@ -121,6 +126,7 @@ export const customSettingsGrid = getEl('customSettingsGrid');
 export const pageTitle = getEl('pageTitle');
 export const pageTitleIcon = getEl('pageTitleIcon');
 export const pageSubtitle = getEl('pageSubtitle');
+export const userMessageEl = getEl('userMessage');
 export const scenarioBadge = getEl('scenarioBadge');
 export const scenarioTech = getEl('scenarioTech');
 export const headerBrandLink = queryEl('.brand-mark');

@@ -9,6 +9,7 @@
  */
 import eventBus from '../modules/EventBus.js';
 import { EVENTS } from '../modules/constants.js';
+import premiumAccess from '../modules/PremiumAccess.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
 import { log } from '../modules/utils.js';
 import {
@@ -22,6 +23,8 @@ import {
   reportRecommendationsEl,
   reportDetailedEl,
   premiumOverlayEl,
+  premiumCtaEl,
+  premiumStatusEl,
   showReportBtnEl
 } from './UIElements.js';
 
@@ -38,6 +41,8 @@ class ReportPanelUI {
     this.recommendationsEl = reportRecommendationsEl;
     this.detailedEl = reportDetailedEl;
     this.premiumOverlayEl = premiumOverlayEl;
+    this.premiumCtaEl = premiumCtaEl;
+    this.premiumStatusEl = premiumStatusEl;
     this.showReportBtn = showReportBtnEl;
 
     // Rapor butonu (tekrar acma)
@@ -56,6 +61,12 @@ class ReportPanelUI {
       }
     };
     document.addEventListener('keydown', this._onKeydown);
+
+    this._onPremiumClick = () => this._startPremiumCheckout();
+    this.premiumCtaEl?.addEventListener('click', this._onPremiumClick);
+
+    this._unsubscribePremium = premiumAccess.subscribe(() => this._syncPremiumState());
+    premiumAccess.bootstrap().then(() => this._syncPremiumState());
 
     // Event dinleyiciler
     this._onReportReady = (report) => this._renderReport(report);
@@ -77,6 +88,8 @@ class ReportPanelUI {
   destroy() {
     eventBus.off(EVENTS.DIAGNOSTIC_REPORT_READY, this._onReportReady);
     document.removeEventListener('keydown', this._onKeydown);
+    this.premiumCtaEl?.removeEventListener('click', this._onPremiumClick);
+    this._unsubscribePremium?.();
     this._releaseFocus();
   }
 
@@ -121,6 +134,58 @@ class ReportPanelUI {
     return '★'.repeat(count) + '☆'.repeat(5 - count);
   }
 
+  _createElement(tagName, className = '', text = null) {
+    const el = document.createElement(tagName);
+    if (className) el.className = className;
+    if (text !== null && text !== undefined) el.textContent = String(text);
+    return el;
+  }
+
+  _createIconTextItem(className, icon, text) {
+    const item = this._createElement('div', className);
+    item.append(
+      this._createElement('span', className.startsWith('rec-item') ? 'rec-icon' : 'finding-icon', icon),
+      this._createElement('span', '', text)
+    );
+    return item;
+  }
+
+  async _startPremiumCheckout() {
+    if (!this.premiumCtaEl) return;
+
+    const originalText = this.premiumCtaEl.textContent;
+    this.premiumCtaEl.disabled = true;
+    this.premiumCtaEl.textContent = 'Opening checkout...';
+    this._setPremiumStatus('Redirecting to secure checkout.');
+
+    try {
+      await premiumAccess.startCheckout();
+    } catch (err) {
+      this.premiumCtaEl.disabled = false;
+      this.premiumCtaEl.textContent = originalText;
+      this._setPremiumStatus('Checkout is not configured yet.');
+      log.warning('Freemius checkout could not start', { error: err.message });
+    }
+  }
+
+  _syncPremiumState() {
+    if (premiumAccess.isUnlocked()) {
+      this.detailedEl?.classList.remove('blurred');
+      this.premiumOverlayEl?.classList.add('hidden');
+      this._setPremiumStatus('');
+      return;
+    }
+
+    this.detailedEl?.classList.add('blurred');
+    this.premiumOverlayEl?.classList.remove('hidden');
+  }
+
+  _setPremiumStatus(message) {
+    if (!this.premiumStatusEl) return;
+    this.premiumStatusEl.textContent = message;
+    this.premiumStatusEl.hidden = !message;
+  }
+
   // === PRIVATE: Render ===
 
   _renderReport(report) {
@@ -144,9 +209,7 @@ class ReportPanelUI {
     // Premium: Oneriler
     this._renderRecommendations(detailed.recommendations);
 
-    // Premium blur uygula
-    this.detailedEl?.classList.add('blurred');
-    this.premiumOverlayEl?.classList.remove('hidden');
+    this._syncPremiumState();
 
     // Rapor butonunu goster (tekrar acma icin)
     if (this.showReportBtn) this.showReportBtn.style.display = '';
@@ -170,65 +233,80 @@ class ReportPanelUI {
     const emoji = overall.score === 'good' ? '\u2713' : overall.score === 'fair' ? '!' : '\u2715';
     const stars = this._buildStars(overall.stars);
 
-    this.overallEl.innerHTML = `
-      <div class="report-overall-indicator" data-color="${overall.color}">${emoji}</div>
-      <div class="report-overall-text">
-        <div class="report-overall-label">${overall.label}</div>
-        <div class="report-overall-stars">${stars}</div>
-      </div>
-      <div class="report-overall-summary">${summary}</div>
-    `;
+    const indicator = this._createElement('div', 'report-overall-indicator', emoji);
+    indicator.dataset.color = overall.color;
+
+    const textWrap = this._createElement('div', 'report-overall-text');
+    textWrap.append(
+      this._createElement('div', 'report-overall-label', overall.label),
+      this._createElement('div', 'report-overall-stars', stars)
+    );
+
+    this.overallEl.replaceChildren(
+      indicator,
+      textWrap,
+      this._createElement('div', 'report-overall-summary', summary)
+    );
   }
 
   _renderFindings(findings) {
     if (!this.findingsEl) return;
 
     if (findings.length === 0) {
-      this.findingsEl.innerHTML = `
-        <div class="finding-item finding-item--good">
-          <span class="finding-icon">\u2713</span>
-          <span>No issues detected. Your audio quality looks good.</span>
-        </div>
-      `;
+      this.findingsEl.replaceChildren(
+        this._createIconTextItem(
+          'finding-item finding-item--good',
+          '\u2713',
+          'No issues detected. Your audio quality looks good.'
+        )
+      );
       return;
     }
 
-    this.findingsEl.innerHTML = findings.map(f => `
-      <div class="finding-item finding-item--${f.severity}">
-        <span class="finding-icon">${f.severity === 'critical' ? '!' : '~'}</span>
-        <span>${f.message}</span>
-      </div>
-    `).join('');
+    const items = findings.map(f => {
+      const severity = f.severity === 'critical' ? 'critical' : 'warning';
+      return this._createIconTextItem(
+        `finding-item finding-item--${severity}`,
+        severity === 'critical' ? '!' : '~',
+        f.message
+      );
+    });
+    this.findingsEl.replaceChildren(...items);
   }
 
   _renderMetrics(metrics) {
     if (!this.metricsGridEl || !metrics) return;
 
-    this.metricsGridEl.innerHTML = metrics.map(m => {
+    const cards = metrics.map(m => {
       const val = m.value != null ? m.value : '--';
-      return `
-        <div class="metric-card" data-rating="${m.rating}">
-          <div class="metric-card-label">${m.label}</div>
-          <div class="metric-card-value">${val}<span class="metric-card-unit">${m.unit}</span></div>
-        </div>
-      `;
-    }).join('');
+      const card = this._createElement('div', 'metric-card');
+      card.dataset.rating = m.rating || 'info';
+
+      const valueEl = this._createElement('div', 'metric-card-value', val);
+      valueEl.append(this._createElement('span', 'metric-card-unit', m.unit || ''));
+
+      card.append(
+        this._createElement('div', 'metric-card-label', m.label),
+        valueEl
+      );
+      return card;
+    });
+    this.metricsGridEl.replaceChildren(...cards);
   }
 
   _renderRecommendations(recommendations) {
     if (!this.recommendationsEl) return;
 
     if (!recommendations || recommendations.length === 0) {
-      this.recommendationsEl.innerHTML = '<div class="rec-item"><span class="rec-icon">\u2192</span><span>No additional recommendations found.</span></div>';
+      this.recommendationsEl.replaceChildren(
+        this._createIconTextItem('rec-item', '\u2192', 'No additional recommendations found.')
+      );
       return;
     }
 
-    this.recommendationsEl.innerHTML = recommendations.map(r => `
-      <div class="rec-item">
-        <span class="rec-icon">\u2192</span>
-        <span>${r.message}</span>
-      </div>
-    `).join('');
+    this.recommendationsEl.replaceChildren(
+      ...recommendations.map(r => this._createIconTextItem('rec-item', '\u2192', r.message))
+    );
   }
 }
 

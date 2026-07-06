@@ -1,4 +1,5 @@
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -32,7 +33,8 @@ const mimeTypes = {
 const CSP_POLICY = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data:",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
@@ -43,6 +45,16 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+
+const FREEMIUS_ENV = {
+  productId: process.env.MICPROBE_FREEMIUS_PRODUCT_ID || process.env.FREEMIUS_PRODUCT_ID || '',
+  planId: process.env.MICPROBE_FREEMIUS_PLAN_ID || process.env.FREEMIUS_PLAN_ID || '',
+  checkoutUrl: process.env.MICPROBE_FREEMIUS_CHECKOUT_URL || '',
+  successUrl: process.env.MICPROBE_FREEMIUS_SUCCESS_URL || '',
+  billingCycle: process.env.MICPROBE_FREEMIUS_BILLING_CYCLE || '',
+  title: process.env.MICPROBE_FREEMIUS_CHECKOUT_TITLE || 'MicProbe Premium',
+  productSecret: process.env.MICPROBE_FREEMIUS_PRODUCT_SECRET || process.env.FREEMIUS_PRODUCT_SECRET || ''
 };
 
 function buildHeaders(contentType) {
@@ -69,6 +81,103 @@ function safeJoin(baseDir, requestPathname) {
   return resolvedJoined;
 }
 
+function writeJson(res, statusCode, payload) {
+  const headers = buildHeaders('application/json; charset=utf-8');
+  headers['Cache-Control'] = 'no-store';
+  res.writeHead(statusCode, headers);
+  res.end(JSON.stringify(payload));
+}
+
+function stripSignatureParam(rawUrl) {
+  const hashIndex = rawUrl.indexOf('#');
+  const hash = hashIndex === -1 ? '' : rawUrl.slice(hashIndex);
+  const withoutHash = hashIndex === -1 ? rawUrl : rawUrl.slice(0, hashIndex);
+  const queryIndex = withoutHash.indexOf('?');
+
+  if (queryIndex === -1) return rawUrl;
+
+  const base = withoutHash.slice(0, queryIndex);
+  const query = withoutHash.slice(queryIndex + 1);
+  const parts = query.split('&');
+  const filtered = parts.filter((part) => part.split('=')[0] !== 'signature');
+
+  if (filtered.length === parts.length) return rawUrl;
+
+  return `${base}${filtered.length ? `?${filtered.join('&')}` : ''}${hash}`;
+}
+
+function handleFreemiusConfig(res) {
+  writeJson(res, 200, {
+    configured: Boolean(FREEMIUS_ENV.checkoutUrl || (FREEMIUS_ENV.productId && FREEMIUS_ENV.planId)),
+    productId: FREEMIUS_ENV.productId,
+    planId: FREEMIUS_ENV.planId,
+    checkoutUrl: FREEMIUS_ENV.checkoutUrl,
+    successUrl: FREEMIUS_ENV.successUrl,
+    billingCycle: FREEMIUS_ENV.billingCycle,
+    title: FREEMIUS_ENV.title
+  });
+}
+
+function handleFreemiusVerify(req, res, url) {
+  if (!FREEMIUS_ENV.productSecret) {
+    writeJson(res, 503, { ok: false, error: 'missing_product_secret' });
+    return;
+  }
+
+  const rawUrl = url.searchParams.get('url');
+  if (!rawUrl) {
+    writeJson(res, 400, { ok: false, error: 'missing_url' });
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    writeJson(res, 400, { ok: false, error: 'invalid_url' });
+    return;
+  }
+
+  const signature = parsed.searchParams.get('signature');
+  if (!signature) {
+    writeJson(res, 400, { ok: false, error: 'missing_signature' });
+    return;
+  }
+
+  const cleanUrl = stripSignatureParam(rawUrl);
+  const expected = crypto
+    .createHmac('sha256', FREEMIUS_ENV.productSecret)
+    .update(cleanUrl)
+    .digest('hex');
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+
+  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
+    writeJson(res, 401, { ok: false, error: 'invalid_signature' });
+    return;
+  }
+
+  const params = parsed.searchParams;
+  writeJson(res, 200, {
+    ok: true,
+    entitlement: {
+      action: params.get('action') || '',
+      email: params.get('email') || '',
+      userId: params.get('user_id') || '',
+      planId: params.get('plan_id') || '',
+      pricingId: params.get('pricing_id') || '',
+      paymentId: params.get('payment_id') || '',
+      subscriptionId: params.get('subscription_id') || '',
+      licenseId: params.get('license_id') || '',
+      billingCycle: params.get('billing_cycle') || '',
+      currency: params.get('currency') || '',
+      amount: params.get('amount') || '',
+      expiration: params.get('expiration') || '',
+      trialEndsAt: params.get('trial_ends_at') || ''
+    }
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, buildHeaders('text/plain; charset=utf-8'));
@@ -80,6 +189,16 @@ const server = http.createServer((req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     pathname = url.pathname;
+
+    if (req.method === 'GET' && pathname === '/api/freemius/config') {
+      handleFreemiusConfig(res);
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/freemius/verify') {
+      handleFreemiusVerify(req, res, url);
+      return;
+    }
   } catch {
     res.writeHead(400, buildHeaders('text/plain; charset=utf-8'));
     res.end('400 Bad Request');

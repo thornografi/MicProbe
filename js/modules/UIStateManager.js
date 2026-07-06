@@ -301,11 +301,11 @@ class UIStateManager {
         if (isPreparing && isTesting) {
           testBtnText.textContent = 'Preparing...';
         } else if (isTestRecording) {
-          testBtnText.textContent = 'Done';
+          testBtnText.textContent = 'Finish';
         } else if (isTestPlayback) {
           testBtnText.textContent = 'Stop';
         } else {
-          testBtnText.textContent = 'Test';
+          testBtnText.textContent = 'Run Test';
         }
       }
     }

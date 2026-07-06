@@ -105,7 +105,7 @@ const recorder = new Recorder({
 });
 
 const monitor = new Monitor();
-const statusManager = new StatusManager('statusBadge');
+const statusManager = new StatusManager('statusBadge', 'userMessage');
 const deviceInfo = new DeviceInfo();
 
 // ============================================
@@ -155,16 +155,19 @@ registerLoopbackToggle(UIElements.loopbackToggle, {
 
 setupProfileSelectorHandler(UIElements.profileSelector, profileController, log);
 
-const { settingsDrawerCtrl, devConsoleCtrl } = setupDrawerHandlers({
+const { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl } = setupDrawerHandlers({
   settingsDrawer: UIElements.settingsDrawer,
   drawerOverlay: UIElements.drawerOverlay,
   closeDrawerBtn: UIElements.closeDrawerBtn,
   devConsoleDrawer: UIElements.devConsoleDrawer,
   devConsoleToggle: UIElements.devConsoleToggle,
-  closeConsoleBtn: UIElements.closeConsoleBtn
+  closeConsoleBtn: UIElements.closeConsoleBtn,
+  profileSidebar: UIElements.profileSidebar,
+  profileMenuBtn: UIElements.profileMenuBtn,
+  navItems: [...UIElements.navItems]
 });
 
-const escKeyHandler = setupKeyboardHandlers({ settingsDrawerCtrl, devConsoleCtrl });
+const escKeyHandler = setupKeyboardHandlers({ settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl });
 
 const initialProfile = UIElements.profileSelector?.value || 'discord';
 

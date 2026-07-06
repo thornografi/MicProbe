@@ -6,7 +6,7 @@
 import eventBus from '../modules/EventBus.js';
 import loopbackManager from '../modules/LoopbackManager.js';
 import { TEST, EVENTS } from '../modules/constants.js';
-import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState } from '../modules/utils.js';
+import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState, getStreamErrorMessage } from '../modules/utils.js';
 import { requestStream } from '../modules/StreamHelper.js';
 
 class TestRecordingFlow {
@@ -62,6 +62,7 @@ class TestRecordingFlow {
     const opusBitrate = this.deps.getOpusBitrate();
 
     log.stream('Test recording starting', { constraints, opusBitrate, duration: TEST.DURATION_MS });
+    eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
 
     try {
       // Player'i durdur
@@ -105,7 +106,12 @@ class TestRecordingFlow {
       log.stream(`Test recording started (${TEST.DURATION_MS / 1000}s)`);
 
     } catch (err) {
+      const userMessage = getStreamErrorMessage(err);
       log.error('Test recording failed to start', { error: err.message });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: `${userMessage}. Check microphone access, then try Test again.`,
+        tone: 'error'
+      });
       // Preparing flag'i temizle (UI "Preparing" durumunda takilmasin)
       this.deps.setIsPreparing(false);
       await this._cleanup();
@@ -171,6 +177,10 @@ class TestRecordingFlow {
     if (!this.testAudioBlob || this.testAudioBlob.size === 0) {
       log.error('Test playback error: No audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
       log.error('Test recording empty - no audio data received');
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: 'No audio was captured. Check the selected microphone and try the test again.',
+        tone: 'error'
+      });
       await this._cleanup();
       eventBus.emit(EVENTS.TEST_CANCELLED);
       return;
@@ -198,6 +208,10 @@ class TestRecordingFlow {
       const errorCode = mediaError?.code;
       const errorMsg = mediaError?.message || 'Unknown error';
       log.error('Test playback error', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: 'Test playback failed. Try running the test again.',
+        tone: 'error'
+      });
       await this._cleanup();
       eventBus.emit(EVENTS.TEST_CANCELLED);
     };
@@ -208,6 +222,10 @@ class TestRecordingFlow {
       log.player('Test playback started');
     } catch (err) {
       log.error('Test play error', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: 'Test playback failed. Try running the test again.',
+        tone: 'error'
+      });
       await this._cleanup();
       eventBus.emit(EVENTS.TEST_CANCELLED);
     }
