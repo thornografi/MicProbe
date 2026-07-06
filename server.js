@@ -47,15 +47,30 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
 
-const FREEMIUS_ENV = {
-  productId: process.env.MICPROBE_FREEMIUS_PRODUCT_ID || process.env.FREEMIUS_PRODUCT_ID || '',
-  planId: process.env.MICPROBE_FREEMIUS_PLAN_ID || process.env.FREEMIUS_PLAN_ID || '',
-  checkoutUrl: process.env.MICPROBE_FREEMIUS_CHECKOUT_URL || '',
-  successUrl: process.env.MICPROBE_FREEMIUS_SUCCESS_URL || '',
-  billingCycle: process.env.MICPROBE_FREEMIUS_BILLING_CYCLE || '',
-  title: process.env.MICPROBE_FREEMIUS_CHECKOUT_TITLE || 'MicProbe Premium',
-  productSecret: process.env.MICPROBE_FREEMIUS_PRODUCT_SECRET || process.env.FREEMIUS_PRODUCT_SECRET || ''
-};
+function normalizeFreemiusMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'prod' || normalized === 'production' || normalized === 'live') return 'production';
+  return 'sandbox';
+}
+
+function readFreemiusEnv(mode) {
+  const prefix = mode === 'production'
+    ? 'MICPROBE_FREEMIUS_PRODUCTION_'
+    : 'MICPROBE_FREEMIUS_SANDBOX_';
+
+  return {
+    mode,
+    productId: process.env[`${prefix}PRODUCT_ID`] || process.env.MICPROBE_FREEMIUS_PRODUCT_ID || process.env.FREEMIUS_PRODUCT_ID || '',
+    planId: process.env[`${prefix}PLAN_ID`] || process.env.MICPROBE_FREEMIUS_PLAN_ID || process.env.FREEMIUS_PLAN_ID || '',
+    checkoutUrl: process.env[`${prefix}CHECKOUT_URL`] || process.env.MICPROBE_FREEMIUS_CHECKOUT_URL || '',
+    successUrl: process.env[`${prefix}SUCCESS_URL`] || process.env.MICPROBE_FREEMIUS_SUCCESS_URL || '',
+    billingCycle: process.env[`${prefix}BILLING_CYCLE`] || process.env.MICPROBE_FREEMIUS_BILLING_CYCLE || '',
+    title: process.env[`${prefix}CHECKOUT_TITLE`] || process.env.MICPROBE_FREEMIUS_CHECKOUT_TITLE || 'MicProbe Premium',
+    productSecret: process.env[`${prefix}PRODUCT_SECRET`] || process.env.MICPROBE_FREEMIUS_PRODUCT_SECRET || process.env.FREEMIUS_PRODUCT_SECRET || ''
+  };
+}
+
+const FREEMIUS_ENV = readFreemiusEnv(normalizeFreemiusMode(process.env.MICPROBE_FREEMIUS_MODE));
 
 function buildHeaders(contentType) {
   const headers = { 'Content-Type': contentType, ...SECURITY_HEADERS };
@@ -109,6 +124,7 @@ function stripSignatureParam(rawUrl) {
 function handleFreemiusConfig(res) {
   writeJson(res, 200, {
     configured: Boolean(FREEMIUS_ENV.checkoutUrl || (FREEMIUS_ENV.productId && FREEMIUS_ENV.planId)),
+    mode: FREEMIUS_ENV.mode,
     productId: FREEMIUS_ENV.productId,
     planId: FREEMIUS_ENV.planId,
     checkoutUrl: FREEMIUS_ENV.checkoutUrl,
@@ -161,6 +177,7 @@ function handleFreemiusVerify(req, res, url) {
   writeJson(res, 200, {
     ok: true,
     entitlement: {
+      mode: FREEMIUS_ENV.mode,
       action: params.get('action') || '',
       email: params.get('email') || '',
       userId: params.get('user_id') || '',
