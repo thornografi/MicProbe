@@ -79,12 +79,39 @@ export default class WorkletPipeline extends BasePipeline {
         log.error('AudioWorklet error', { error: e.data.error });
         return;
       }
-      if (e.data.pcm) onPcmData(e.data.pcm);
+      if (e.data.pcmChannels) {
+        onPcmData(e.data.pcmChannels);
+      } else if (e.data.pcm) {
+        onPcmData([new Float32Array(e.data.pcm)]);
+      }
     };
     this.createAnalyser();
     this.createAnalysisAnalyser(this.nodes.worklet);
     this.sourceNode.connect(this.nodes.worklet);
     this.nodes.worklet.connect(this.analyserNode);
+  }
+
+  /**
+   * AudioWorklet kanal bloklarini WAV'in bekledigi interleaved PCM formuna cevir.
+   * Eksik kanal varsa ilk kanali kopyalar; boylece WAV header kanal sayisi ile data uyumlu kalir.
+   */
+  _interleaveChannels(channelData) {
+    if (!Array.isArray(channelData) || channelData.length === 0 || !channelData[0]) {
+      return new Float32Array(0);
+    }
+
+    const channelCount = Math.max(1, this._channels || 1);
+    const frameCount = channelData.reduce((max, channel) => Math.max(max, channel?.length || 0), 0);
+    const interleaved = new Float32Array(frameCount * channelCount);
+
+    for (let frame = 0; frame < frameCount; frame++) {
+      for (let channel = 0; channel < channelCount; channel++) {
+        const sourceChannel = channelData[channel] || channelData[0];
+        interleaved[(frame * channelCount) + channel] = sourceChannel?.[frame] || 0;
+      }
+    }
+
+    return interleaved;
   }
 
   /**
@@ -117,7 +144,12 @@ export default class WorkletPipeline extends BasePipeline {
    */
   async _setupPcmWav() {
     this._pcmChunks = [];
-    this._setupWorkletGraph(pcm => this._pcmChunks.push(new Float32Array(pcm)));
+    this._setupWorkletGraph(channels => {
+      const interleaved = this._interleaveChannels(channels);
+      if (interleaved.length > 0) {
+        this._pcmChunks.push(interleaved);
+      }
+    });
 
     this.log('AudioWorklet + PCM/WAV graph connected', {
       graph: 'Source -> Worklet -> AnalyserNode (VU)',
@@ -136,7 +168,7 @@ export default class WorkletPipeline extends BasePipeline {
     this.accumulator = new Float32Array(OPUS.FRAME_SIZE);
     this.accumulatorIndex = 0;
 
-    this._setupWorkletGraph(pcm => this._accumulateAndEncode(pcm));
+    this._setupWorkletGraph(channels => this._accumulateAndEncode(channels[0] || new Float32Array(0)));
     this._createMuteGain(this.nodes.worklet);
 
     this.log('AudioWorklet + WASM Opus graph connected (fan-out)', {
@@ -227,19 +259,20 @@ export default class WorkletPipeline extends BasePipeline {
    * PCM/WAV encoding'i bitir ve WAV blob dondur
    * @returns {Object} - { blob, sampleCount, encoderType }
    */
-  finishPcmWavEncoding() {
+  async finishPcmWavEncoding() {
     if (this._encoderMode !== 'pcm-wav') {
       throw new Error('PCM/WAV mode not active');
     }
 
     const totalSamples = this._pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const blob = createWavBlob(this._pcmChunks, this.audioContext.sampleRate, this._channels);
+    const blob = await createWavBlob(this._pcmChunks, this.audioContext.sampleRate, this._channels);
 
     this.log('PCM/WAV encoding complete', {
       sampleCount: totalSamples,
       chunkCount: this._pcmChunks.length,
       blobSize: blob.size,
-      sampleRate: this.audioContext.sampleRate
+      sampleRate: this.audioContext.sampleRate,
+      channels: this._channels
     });
 
     return {

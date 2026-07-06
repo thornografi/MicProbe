@@ -67,6 +67,7 @@ class AudioMetricsCollector {
     this._freqBandSums = { subBass: 0, lowMid: 0, highMid: 0, presence: 0 };
     this._freqSnapshotCount = 0;
     this._freqBinSums = null;       // Lazy init: bin-bazli frekans yanit biriktirme
+    this._aWeightTable = null;
 
     // Event listener referanslari (memory leak onleme)
     this._onVuLevel = (data) => this._collectLevel(data);
@@ -75,7 +76,10 @@ class AudioMetricsCollector {
     this._onTestStarted = () => this.start();
     this._onRecordingCompleted = () => this.stop();
     this._onTestCompleted = () => this.stop();
-    this._onStreamStopped = () => { if (this._isCollecting) this.stop(); };
+    this._onStreamStopped = () => {
+      if (this._isCollecting) this.stop();
+      this._clearAnalyser();
+    };
 
     // Pasif dinleyiciler kaydet (her zaman aktif, start/stop sadece toplama kontrolu)
     eventBus.on(EVENTS.PIPELINE_ANALYSIS_ANALYSER_READY, this._onAnalyserReady);
@@ -140,6 +144,7 @@ class AudioMetricsCollector {
 
   destroy() {
     this.stop();
+    this._clearAnalyser();
     eventBus.off(EVENTS.PIPELINE_ANALYSIS_ANALYSER_READY, this._onAnalyserReady);
     eventBus.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     eventBus.off(EVENTS.TEST_RECORDING_STARTED, this._onTestStarted);
@@ -151,31 +156,61 @@ class AudioMetricsCollector {
   // === PRIVATE: Data Collection ===
 
   _setAnalyser(analyserNode) {
+    if (!analyserNode) {
+      this._clearAnalyser();
+      return;
+    }
+
+    const sampleRate = analyserNode.context?.sampleRate || AUDIO.DEFAULT_SAMPLE_RATE;
+    const needsReset = this._analyserNode !== analyserNode
+      || this._sampleRate !== sampleRate
+      || this._freqData?.length !== analyserNode.frequencyBinCount
+      || this._lufsTimeDomainData?.length !== analyserNode.fftSize;
+
     this._analyserNode = analyserNode;
-    // AnalyserNode'un AudioContext'inden sample rate al
-    if (analyserNode?.context) {
-      this._sampleRate = analyserNode.context.sampleRate;
-    }
-    // Frekans buffer'i lazy init
-    if (!this._freqData && analyserNode) {
-      this._freqData = new Float32Array(analyserNode.frequencyBinCount);
+    this._sampleRate = sampleRate;
 
-      // A-agirlik tablosu precompute (bin basina, bir kez hesaplanir)
-      const binCount = analyserNode.frequencyBinCount;
-      const binWidth = this._sampleRate / analyserNode.fftSize;
-      this._aWeightTable = new Float32Array(binCount);
-      for (let i = 0; i < binCount; i++) {
-        this._aWeightTable[i] = this._aWeightDb(i * binWidth);
-      }
-
-      // LUFS calculator + time domain buffer
-      this._lufsCalculator = new LUFSCalculator(this._sampleRate);
-      this._lufsTimeDomainData = new Float32Array(analyserNode.fftSize);
+    if (needsReset) {
+      this._initializeAnalysisBuffers(analyserNode);
     }
-    // Eger toplama aktifse ve frekans henuz baslamadiysa baslat
-    if (this._isCollecting && !this._freqIntervalId) {
+
+    // Eger toplama aktifse analyzer geldigi anda capture baslat/devam ettir
+    if (this._isCollecting) {
       this._startFrequencyCapture();
+      this._startLUFSCapture();
     }
+  }
+
+  _initializeAnalysisBuffers(analyserNode) {
+    const binCount = analyserNode.frequencyBinCount;
+    const fftSize = analyserNode.fftSize;
+    const binWidth = this._sampleRate / fftSize;
+
+    this._freqData = new Float32Array(binCount);
+    this._freqBinSums = new Float32Array(binCount);
+    this._aWeightTable = new Float32Array(binCount);
+    for (let i = 0; i < binCount; i++) {
+      this._aWeightTable[i] = this._aWeightDb(i * binWidth);
+    }
+
+    this._lufsCalculator = new LUFSCalculator(this._sampleRate);
+    this._lufsTimeDomainData = new Float32Array(fftSize);
+    this._freqBandSums = { subBass: 0, lowMid: 0, highMid: 0, presence: 0 };
+    this._freqSnapshotCount = 0;
+  }
+
+  _clearAnalyser() {
+    this._stopFrequencyCapture();
+    this._stopLUFSCapture();
+    this._analyserNode = null;
+    this._sampleRate = AUDIO.DEFAULT_SAMPLE_RATE;
+    this._freqData = null;
+    this._freqBinSums = null;
+    this._aWeightTable = null;
+    this._lufsCalculator = null;
+    this._lufsTimeDomainData = null;
+    this._freqBandSums = { subBass: 0, lowMid: 0, highMid: 0, presence: 0 };
+    this._freqSnapshotCount = 0;
   }
 
   /**

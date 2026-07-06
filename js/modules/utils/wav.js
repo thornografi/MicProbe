@@ -2,6 +2,8 @@
  * WAV/PCM Helper Functions
  */
 
+const WAV_WORKER_URL = new URL('../../workers/wav-worker.js', import.meta.url).href;
+
 /**
  * Float32 PCM data'yi Int16'ya donustur
  * @param {Float32Array} float32Array - Kaynak PCM data
@@ -63,13 +65,15 @@ export function createWavHeader(dataLength, sampleRate, channels = 1, bitsPerSam
 }
 
 /**
- * Float32 PCM data'dan WAV blob olustur
+ * Float32 PCM data'dan WAV blob olustur (Worker ile - non-blocking)
+ * Chunk birlestirme (native memcpy) main thread'de, Int16 donusumu Worker'da yapilir.
  * @param {Float32Array[]} pcmChunks - PCM data chunk'lari
  * @param {number} sampleRate - Ornekleme hizi
  * @param {number} channels - Kanal sayisi
- * @returns {Blob} - WAV formatinda blob
+ * @returns {Promise<Blob>} - WAV formatinda blob
  */
-export function createWavBlob(pcmChunks, sampleRate, channels = 1) {
+export async function createWavBlob(pcmChunks, sampleRate, channels = 1) {
+  // Chunk'lari tek Float32Array'e birleştir (native set() — hizli)
   const totalLength = pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const mergedFloat32 = new Float32Array(totalLength);
   let offset = 0;
@@ -78,9 +82,25 @@ export function createWavBlob(pcmChunks, sampleRate, channels = 1) {
     offset += chunk.length;
   }
 
-  const int16Data = float32ToInt16(mergedFloat32);
-  const dataLength = int16Data.length * 2;
-  const header = createWavHeader(dataLength, sampleRate, channels, 16);
+  // Int16 donusumu + WAV header → Worker thread
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WAV_WORKER_URL);
 
-  return new Blob([header, int16Data.buffer], { type: 'audio/wav' });
+    worker.onmessage = (e) => {
+      if (e.data.type === 'done') {
+        worker.terminate();
+        resolve(new Blob([e.data.header, e.data.pcmData], { type: 'audio/wav' }));
+      }
+    };
+
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error('WAV Worker error: ' + err.message));
+    };
+
+    worker.postMessage(
+      { type: 'createWav', pcmBuffer: mergedFloat32.buffer, sampleRate, channels },
+      [mergedFloat32.buffer]
+    );
+  });
 }

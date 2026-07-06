@@ -423,7 +423,7 @@ class Recorder {
       try {
         log.recorder('PCM/WAV encoding finishing...');
 
-        const result = this.pipelineStrategy.finishPcmWavEncoding();
+        const result = await this.pipelineStrategy.finishPcmWavEncoding();
         const sampleRate = this.audioContext?.sampleRate || 48000;
         const theoreticalBitrate = sampleRate * 1 * 16; // mono, 16-bit
 

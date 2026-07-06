@@ -36,11 +36,11 @@ class PassthroughProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // WASM Opus modu: PCM data'yi main thread'e gonder
+    // Encoder modu: PCM data'yi main thread'e gonder
     if (this.sendPcm && input[0]) {
-      // Float32Array kopyasi olustur (transferable icin)
-      const pcmCopy = new Float32Array(input[0]);
-      this.port.postMessage({ pcm: pcmCopy }, [pcmCopy.buffer]);
+      const pcmChannels = input.map(channelData => new Float32Array(channelData));
+      const transferList = pcmChannels.map(channelData => channelData.buffer);
+      this.port.postMessage({ pcmChannels }, transferList);
     }
 
     return true;

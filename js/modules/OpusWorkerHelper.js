@@ -12,6 +12,8 @@ const OPUS_ENCODER_WORKER_URL = new URL('../lib/opus/encoderWorker.min.js', impo
 const OPUS_HEAD_SIGNATURE = [0x4F, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64]; // "OpusHead"
 const OPUS_TAGS_SIGNATURE = [0x4F, 0x70, 0x75, 0x73, 0x54, 0x61, 0x67, 0x73]; // "OpusTags"
 const VENDOR_STRING = 'MicProbe WASM Opus';
+const OPUS_INIT_TIMEOUT_MS = 5000;
+const OPUS_FINISH_TIMEOUT_MS = 10000;
 
 /**
  * WASM Opus destegi kontrolu
@@ -111,9 +113,25 @@ export class OpusRecorderWrapper {
     // Promise resolver'lar
     this._initResolver = null;
     this._finishResolver = null;
+    this._initTimeout = null;
+    this._finishTimeout = null;
 
     // Ogg serial number (consistent across all pages)
     this._serialNumber = null;
+  }
+
+  _clearInitTimeout() {
+    if (this._initTimeout) {
+      clearTimeout(this._initTimeout);
+      this._initTimeout = null;
+    }
+  }
+
+  _clearFinishTimeout() {
+    if (this._finishTimeout) {
+      clearTimeout(this._finishTimeout);
+      this._finishTimeout = null;
+    }
   }
 
   /**
@@ -131,7 +149,7 @@ export class OpusRecorderWrapper {
           this._initResolver.reject(new Error('Opus Worker init timeout (5s)'));
           this._initResolver = null;
         }
-      }, 5000);
+      }, OPUS_INIT_TIMEOUT_MS);
 
       try {
         this.worker = new Worker(OPUS_ENCODER_WORKER_URL);
@@ -141,11 +159,16 @@ export class OpusRecorderWrapper {
 
         this.worker.onmessage = this._handleMessage.bind(this);
         this.worker.onerror = (e) => {
-          clearTimeout(this._initTimeout);
           const error = new Error(`Opus Worker error: ${e.message}`);
+          this._clearInitTimeout();
+          this._clearFinishTimeout();
           if (this._initResolver) {
             this._initResolver.reject(error);
             this._initResolver = null;
+          }
+          if (this._finishResolver) {
+            this._finishResolver.reject(error);
+            this._finishResolver = null;
           }
           if (this.onError) this.onError(error);
         };
@@ -157,7 +180,7 @@ export class OpusRecorderWrapper {
         });
 
       } catch (error) {
-        clearTimeout(this._initTimeout);
+        this._clearInitTimeout();
         reject(error);
       }
     });
@@ -192,11 +215,31 @@ export class OpusRecorderWrapper {
         reject(new Error('Worker not initialized'));
         return;
       }
+      if (this._finishResolver) {
+        reject(new Error('Opus Worker finish already in progress'));
+        return;
+      }
 
       this._finishResolver = { resolve, reject };
+      this._finishTimeout = setTimeout(() => {
+        if (!this._finishResolver) return;
+
+        const error = new Error('Opus Worker finish timeout (10s)');
+        this._finishResolver.reject(error);
+        this._finishResolver = null;
+        this._clearFinishTimeout();
+        if (this.onError) this.onError(error);
+        this.terminate();
+      }, OPUS_FINISH_TIMEOUT_MS);
 
       // opus-recorder done komutu
-      this.worker.postMessage({ command: 'done' });
+      try {
+        this.worker.postMessage({ command: 'done' });
+      } catch (error) {
+        this._clearFinishTimeout();
+        this._finishResolver = null;
+        reject(error);
+      }
     });
   }
 
@@ -204,7 +247,8 @@ export class OpusRecorderWrapper {
    * Worker'i sonlandir
    */
   terminate() {
-    clearTimeout(this._initTimeout);
+    this._clearInitTimeout();
+    this._clearFinishTimeout();
     // BUG-8 fix: Pending promise'leri reject et (askida kalma onleme)
     if (this._initResolver) {
       this._initResolver.reject?.(new Error('Worker terminated'));
@@ -414,7 +458,7 @@ export class OpusRecorderWrapper {
    * serial[14-17], pageSeq[18-21], CRC32[22-25], segments[26], segTable[27+]
    * @private
    */
-  _fixOggStream(audioPages) {
+  async _fixOggStream(audioPages) {
     if (!audioPages || audioPages.length === 0) {
       // Bos kayit - sadece header'lar
       const emptyHead = this._createOpusHeadPage();
@@ -431,42 +475,54 @@ export class OpusRecorderWrapper {
     const opusHeadPage = this._createOpusHeadPage();
     const opusTagsPage = this._createOpusTagsPage();
 
-    // Audio page'lerin page sequence'ini 2'den baslat ve CRC guncelle
-    const fixedAudioPages = audioPages.map((page, idx) => {
-      const newPage = new Uint8Array(page);
+    // Audio page'leri chunked olarak isle (main thread'i bloke etmemek icin)
+    const CHUNK_SIZE = 1000;
+    const fixedAudioPages = [];
 
-      // Serial number guncelle (offset 14-17)
-      newPage[14] = this._serialNumber & 0xFF;
-      newPage[15] = (this._serialNumber >> 8) & 0xFF;
-      newPage[16] = (this._serialNumber >> 16) & 0xFF;
-      newPage[17] = (this._serialNumber >> 24) & 0xFF;
+    for (let start = 0; start < audioPages.length; start += CHUNK_SIZE) {
+      const end = Math.min(start + CHUNK_SIZE, audioPages.length);
 
-      // Page sequence guncelle (offset 18-21) - 2'den basla
-      const newPageSeq = idx + 2;
-      newPage[18] = newPageSeq & 0xFF;
-      newPage[19] = (newPageSeq >> 8) & 0xFF;
-      newPage[20] = (newPageSeq >> 16) & 0xFF;
-      newPage[21] = (newPageSeq >> 24) & 0xFF;
+      for (let idx = start; idx < end; idx++) {
+        const newPage = new Uint8Array(audioPages[idx]);
 
-      // Son page'e EOS flag ekle
-      if (idx === audioPages.length - 1) {
-        newPage[5] |= 0x04; // EOS flag
+        // Serial number guncelle (offset 14-17)
+        newPage[14] = this._serialNumber & 0xFF;
+        newPage[15] = (this._serialNumber >> 8) & 0xFF;
+        newPage[16] = (this._serialNumber >> 16) & 0xFF;
+        newPage[17] = (this._serialNumber >> 24) & 0xFF;
+
+        // Page sequence guncelle (offset 18-21) - 2'den basla
+        const newPageSeq = idx + 2;
+        newPage[18] = newPageSeq & 0xFF;
+        newPage[19] = (newPageSeq >> 8) & 0xFF;
+        newPage[20] = (newPageSeq >> 16) & 0xFF;
+        newPage[21] = (newPageSeq >> 24) & 0xFF;
+
+        // Son page'e EOS flag ekle
+        if (idx === audioPages.length - 1) {
+          newPage[5] |= 0x04; // EOS flag
+        }
+
+        // CRC sifirla ve yeniden hesapla (offset 22-25)
+        newPage[22] = 0;
+        newPage[23] = 0;
+        newPage[24] = 0;
+        newPage[25] = 0;
+
+        const crc = this._calculateCRC32(newPage);
+        newPage[22] = crc & 0xFF;
+        newPage[23] = (crc >> 8) & 0xFF;
+        newPage[24] = (crc >> 16) & 0xFF;
+        newPage[25] = (crc >> 24) & 0xFF;
+
+        fixedAudioPages.push(newPage);
       }
 
-      // CRC sifirla ve yeniden hesapla (offset 22-25)
-      newPage[22] = 0;
-      newPage[23] = 0;
-      newPage[24] = 0;
-      newPage[25] = 0;
-
-      const crc = this._calculateCRC32(newPage);
-      newPage[22] = crc & 0xFF;
-      newPage[23] = (crc >> 8) & 0xFF;
-      newPage[24] = (crc >> 16) & 0xFF;
-      newPage[25] = (crc >> 24) & 0xFF;
-
-      return newPage;
-    });
+      // Yield to event loop between chunks
+      if (end < audioPages.length) {
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
 
     return [opusHeadPage, opusTagsPage, ...fixedAudioPages];
   }
@@ -505,7 +561,7 @@ export class OpusRecorderWrapper {
    * Worker mesaj handler
    * @private
    */
-  _handleMessage(e) {
+  async _handleMessage(e) {
     try {
       const data = e.data;
 
@@ -514,7 +570,7 @@ export class OpusRecorderWrapper {
 
       switch (data.message) {
         case 'ready':
-          clearTimeout(this._initTimeout);
+          this._clearInitTimeout();
           if (this._initResolver) {
             this._initResolver.resolve();
             this._initResolver = null;
@@ -544,11 +600,12 @@ export class OpusRecorderWrapper {
 
           // opus-recorder'in serial number'ini oku (ilk page'den)
           // ve tum page'leri ayni serial + ardisik page sequence ile yeniden yaz
-          const fixedPages = this._fixOggStream(this.pages);
+          const fixedPages = await this._fixOggStream(this.pages);
 
           const blob = new Blob(fixedPages, { type: 'audio/ogg; codecs=opus' });
           const duration = this.totalSamples / (this.config?.originalSampleRate || 48000);
 
+          this._clearFinishTimeout();
           if (this._finishResolver) {
             this._finishResolver.resolve({
               blob,
@@ -575,6 +632,8 @@ export class OpusRecorderWrapper {
           // Bilinmeyen mesaj - error olabilir
           if (data.error) {
             const error = new Error(data.error);
+            this._clearInitTimeout();
+            this._clearFinishTimeout();
             if (this._initResolver) {
               this._initResolver.reject(error);
               this._initResolver = null;
@@ -591,6 +650,16 @@ export class OpusRecorderWrapper {
     } catch (err) {
       // Worker message handling hatasi - sessizce yoksayma, logla
       console.error('[OpusWorkerHelper] _handleMessage error:', err);
+      this._clearInitTimeout();
+      this._clearFinishTimeout();
+      if (this._initResolver) {
+        this._initResolver.reject(err);
+        this._initResolver = null;
+      }
+      if (this._finishResolver) {
+        this._finishResolver.reject(err);
+        this._finishResolver = null;
+      }
       if (this.onError) {
         this.onError(err);
       }
