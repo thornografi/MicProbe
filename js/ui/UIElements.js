@@ -54,7 +54,6 @@ export const agcCheckbox = getEl('agc');
 // ============================================
 // SELECTOR & INPUT ELEMENTLERI
 // ============================================
-export const profileSelector = getEl('profileSelector');
 export const micSelector = getEl('micSelector');
 
 // ============================================
@@ -129,7 +128,7 @@ export const pageSubtitle = getEl('pageSubtitle');
 export const userMessageEl = getEl('userMessage');
 export const scenarioBadge = getEl('scenarioBadge');
 export const scenarioTech = getEl('scenarioTech');
-export const headerBrandLink = queryEl('.brand-mark');
+export const headerBrandLink = getEl('appHeaderBrand');
 export const footerBrandLink = queryEl('.site-footer-brand');
 export const footerLinks = queryAll('.site-footer-links a');
 
@@ -169,5 +168,5 @@ export const channelCountRadios = queryAll(`input[name="${SETTING_NAMES.CHANNEL_
 // ============================================
 // SENARYO & NAV KOLEKSIYONLARI
 // ============================================
-export const scenarioCards = queryAll('.scenario-card');
+export const scenarioCards = document.querySelectorAll('.scenario-card');
 export const navItems = queryAll('.nav-item[data-profile]');

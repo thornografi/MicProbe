@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mic Probe - Diagnose Microphone Issues</title>
-  <meta name="description" content="Test your microphone with real-world simulations. WebRTC, codec testing, and voice app profiles for Discord, Zoom, WhatsApp, and more.">
+  <meta name="description" content="Test your microphone with behavior-based call and voice-message profiles. WebRTC, codec testing, and practical audio diagnostics.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
-  <!-- Font preconnect (performans) -->
+  <!-- Fonts are loaded post-load by js/landing.js so local first paint stays fast. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- CSS (fonts are imported in variables.css) -->
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;family=Poppins:wght@400;700&amp;family=Rubik:wght@500;600;700;800&amp;display=swap"></noscript>
+  <!-- Critical landing CSS only; app CSS is loaded by js/landing.js when app view is requested. -->
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/landing.css">
-  <link rel="stylesheet" href="css/style.css">
 
   <!-- Early Error Capture - LogManager yüklenmeden önce hataları yakala -->
   <script>
@@ -69,6 +69,9 @@
     </symbol>
     <symbol id="icon-zoom" viewBox="0 0 24 24">
       <path d="M4.585 6.836A1.414 1.414 0 0 0 3.172 8.25v7.5a1.413 1.413 0 0 0 1.413 1.414h9.344a1.413 1.413 0 0 0 1.414-1.414v-2.197l3.727 2.484a.944.944 0 0 0 .943.007.938.938 0 0 0 .475-.816V8.777a.938.938 0 0 0-.475-.816.944.944 0 0 0-.943.007l-3.727 2.484V8.25a1.414 1.414 0 0 0-1.414-1.414z"/>
+    </symbol>
+    <symbol id="icon-phone" viewBox="0 0 24 24">
+      <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1.02 1.02 0 0 0-1.02.24l-2.2 2.2a15.074 15.074 0 0 1-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01A11.36 11.36 0 0 1 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/>
     </symbol>
     <symbol id="icon-whatsapp" viewBox="0 0 24 24">
       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -174,11 +177,11 @@
       <div class="hero-content">
         <h1 class="hero-title">
           <span class="hero-title-line">Diagnose Microphone Issues</span>
-          <span class="hero-title-line">With <span class="gradient-text">Real-World Simulations</span></span>
+          <span class="hero-title-line">With <span class="gradient-text">Real-World Test Profiles</span></span>
         </h1>
 
         <p class="hero-subtitle">
-          Simulate voice calls and recordings from Discord, Zoom, WhatsApp, and more.
+          Compare Discord voice, meeting calls, WhatsApp/Telegram calls, and voice-message recordings.
           Run short scenario tests, analyze audio quality, and get clear fixes before the next call.
         </p>
 
@@ -235,7 +238,7 @@
       <div class="section-header reveal">
         <span class="section-badge">Features</span>
         <h2 class="section-title" id="features-title">Everything You Need to Test Your Mic</h2>
-        <p class="section-subtitle">Professional-grade tools to diagnose and analyze microphone issues across different platforms.</p>
+        <p class="section-subtitle">Professional-grade tools to diagnose and analyze microphone issues across practical call and recording behaviors.</p>
       </div>
 
       <div class="features-grid reveal-stagger">
@@ -246,9 +249,9 @@
               <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1.02 1.02 0 00-1.02.24l-2.2 2.2a15.074 15.074 0 01-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01A11.36 11.36 0 018.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/>
             </svg>
           </div>
-          <h3 class="feature-title">Voice Call Simulation</h3>
+          <h3 class="feature-title">Voice Call Testing</h3>
           <p class="feature-description">
-            Test your mic with real WebRTC loopback. Simulate Discord, Zoom, Google Meet, and Teams with authentic Opus codec settings.
+            Test your mic with real WebRTC loopback across Discord-style, meeting, high-fidelity, and WhatsApp/Telegram call profiles.
           </p>
         </div>
 
@@ -259,7 +262,7 @@
           </div>
           <h3 class="feature-title">Voice Message Testing</h3>
           <p class="feature-description">
-            Record and playback with MediaRecorder. Test WhatsApp and Telegram voice message quality with configurable bitrates.
+            Record, play it back, and hear how your mic holds up in WhatsApp and Telegram-style voice messages.
           </p>
         </div>
 
@@ -272,18 +275,18 @@
           </div>
           <h3 class="feature-title">Actionable Reports</h3>
           <p class="feature-description">
-            Get a clear score, issue summary, detailed metrics, and platform-specific recommendations after each test.
+            Get a clear score, issue summary, detailed metrics, and profile-specific recommendations after each test.
           </p>
         </div>
 
-        <!-- Feature 4: Profile-Based Testing -->
+        <!-- Feature 4: Behavior-Based Profiles -->
         <div class="landing-card feature-card reveal" style="--reveal-index: 3">
           <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor"><use href="#icon-settings"/></svg>
           </div>
-          <h3 class="feature-title">Profile-Based Testing</h3>
+          <h3 class="feature-title">Behavior-Based Profiles</h3>
           <p class="feature-description">
-            Pre-configured profiles for popular apps. One click to match Discord, Zoom, WhatsApp, or Telegram audio settings.
+            Pre-configured profiles focus on audible differences, not an endless list of app names.
           </p>
         </div>
       </div>
@@ -302,7 +305,7 @@
           <div class="step-number" aria-hidden="true">1</div>
           <h3 class="step-title">Select a Profile</h3>
           <p class="step-description">
-            Choose from Voice Calls (Discord, Zoom) or Voice Messages (WhatsApp, Telegram). Each profile mimics real app settings.
+            Choose from Discord, meetings, Zoom High Fidelity, WhatsApp/Telegram calls, or Voice Messages.
           </p>
         </div>
 
@@ -377,17 +380,17 @@
               <svg><use href="#icon-discord"/></svg>
               <span>Discord</span>
             </button>
-            <button class="nav-item nav-item-sub" data-profile="zoom">
+            <button class="nav-item nav-item-sub" data-profile="meeting-call">
               <svg><use href="#icon-zoom"/></svg>
-              <span>Zoom / Meet / Teams</span>
+              <span>Meeting Call</span>
             </button>
-            <button class="nav-item nav-item-sub" data-profile="whatsapp-call">
-              <svg><use href="#icon-whatsapp"/></svg>
-              <span>WhatsApp Call</span>
+            <button class="nav-item nav-item-sub" data-profile="zoom-hifi">
+              <svg><use href="#icon-music"/></svg>
+              <span>Zoom High Fidelity</span>
             </button>
-            <button class="nav-item nav-item-sub" data-profile="telegram-call">
-              <svg><use href="#icon-telegram"/></svg>
-              <span>Telegram Call</span>
+            <button class="nav-item nav-item-sub" data-profile="whatsapp-telegram-call">
+              <svg><use href="#icon-phone"/></svg>
+              <span>WhatsApp / Telegram Call</span>
             </button>
           </div>
 
@@ -733,7 +736,7 @@
                 <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93s3.05-7.44 7-7.93v15.86zm2-15.86c1.03.13 2 .45 2.87.93H13v-.93zM13 7h5.24c.25.31.48.65.68 1H13V7zm0 3h6.74c.08.33.15.66.19 1H13v-1zm0 9.93V19h2.87c-.87.48-1.84.8-2.87.93zM18.24 17H13v-1h5.92c-.2.35-.43.69-.68 1zm1.5-3H13v-1h6.93c-.04.34-.11.67-.19 1z"/></svg>
                 <div>
                   <span class="toggle-title" id="loopbackTitle">WebRTC Loopback</span>
-                  <span class="toggle-desc" id="loopbackDesc">Live call codec simulation</span>
+                  <span class="toggle-desc" id="loopbackDesc">Live call codec approximation</span>
                 </div>
               </div>
               <label class="toggle-switch loopback-switch">
@@ -762,6 +765,8 @@
                 <label for="bitrate96" class="segment-btn">96 kbps</label>
                 <input type="radio" name="bitrate" id="bitrate128" value="128000">
                 <label for="bitrate128" class="segment-btn">128 kbps</label>
+                <input type="radio" name="bitrate" id="bitrate192" value="192000">
+                <label for="bitrate192" class="segment-btn">192 kbps</label>
                 <input type="radio" name="bitrate" id="bitrate256" value="256000">
                 <label for="bitrate256" class="segment-btn">256 kbps</label>
                 <input type="radio" name="bitrate" id="bitrate384" value="384000">
@@ -820,17 +825,6 @@
         </div>
       </div>
       <div id="drawerOverlay" class="drawer-overlay"></div>
-
-      <!-- Hidden profile selector for compatibility -->
-      <select id="profileSelector" class="profile-dropdown hidden">
-        <option value="discord" selected>Discord Voice</option>
-        <option value="zoom">Zoom / Meet</option>
-        <option value="whatsapp-call">WhatsApp Call</option>
-        <option value="telegram-call">Telegram Call</option>
-        <option value="whatsapp-voice">WhatsApp Voice</option>
-        <option value="telegram-voice">Telegram Voice</option>
-        <option value="raw">Raw Recording</option>
-      </select>
 
       <div id="scenarioCards" class="hidden"></div>
       <div id="activeScenarioInfo" class="hidden">

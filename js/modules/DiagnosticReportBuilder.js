@@ -2,7 +2,7 @@
  * DiagnosticReportBuilder - Yapilandirilmis diagnostik rapor olusturucu
  *
  * Test/kayit tamamlandiginda tum verileri birlestirip JSON rapor olusturur.
- * Bu rapor ileride AI evaluator'a beslenecek.
+ * Mevcut degerlendirme ReportEvaluator tarafindan kural bazli yapilir.
  *
  * Veri kaynaklari:
  * - AudioMetricsCollector (ses kalite metrikleri)
@@ -31,11 +31,19 @@ class DiagnosticReportBuilder {
     this._lastLoopbackStats = null;
     this._lastReport = null;
     this._lastDeliveredSampleRate = null;
+    this._activeRunType = null;
+    this._testSampleReady = false;
+    this._reportTimerId = null;
+    this._lastProfileId = null;
 
     // Event listener referanslari
+    this._onRecordingStarted = () => this._beginRun('record');
+    this._onTestRecordingStarted = () => this._beginRun('test');
+    this._onProfileChanged = (data) => this._handleProfileChanged(data);
     this._onRecordingCompleted = (data) => this._handleRecordingCompleted(data);
     this._onTestRecordingStopped = () => this._handleTestRecordingStopped();
     this._onTestCompleted = () => this._handleTestCompleted();
+    this._onTestCancelled = () => this._handleTestCancelled();
     this._onLoopbackStats = (stats) => { this._lastLoopbackStats = stats; };
     this._lastCapabilities = null;
     this._onStreamStarted = (stream) => {
@@ -52,9 +60,13 @@ class DiagnosticReportBuilder {
       };
     };
 
+    eventBus.on(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
+    eventBus.on(EVENTS.TEST_RECORDING_STARTED, this._onTestRecordingStarted);
+    eventBus.on(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.on(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
     eventBus.on(EVENTS.TEST_RECORDING_STOPPED, this._onTestRecordingStopped);
     eventBus.on(EVENTS.TEST_COMPLETED, this._onTestCompleted);
+    eventBus.on(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
     eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
@@ -97,33 +109,87 @@ class DiagnosticReportBuilder {
   }
 
   destroy() {
+    this._clearReportTimer();
+    eventBus.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
+    eventBus.off(EVENTS.TEST_RECORDING_STARTED, this._onTestRecordingStarted);
+    eventBus.off(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.off(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
     eventBus.off(EVENTS.TEST_RECORDING_STOPPED, this._onTestRecordingStopped);
     eventBus.off(EVENTS.TEST_COMPLETED, this._onTestCompleted);
+    eventBus.off(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
     eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
 
   // === PRIVATE: Event Handlers ===
 
+  _beginRun(type) {
+    this._clearReportTimer();
+    this._activeRunType = type;
+    this._testSampleReady = false;
+    this._lastRecordingData = null;
+    this._lastLoopbackStats = null;
+    this._lastReport = null;
+  }
+
+  _resetRunState() {
+    this._clearReportTimer();
+    this._activeRunType = null;
+    this._testSampleReady = false;
+    this._lastRecordingData = null;
+    this._lastLoopbackStats = null;
+    this._lastReport = null;
+  }
+
+  _handleProfileChanged(data = {}) {
+    const nextProfileId = data.profile || null;
+    if (!nextProfileId) return;
+
+    if (this._lastProfileId && nextProfileId !== this._lastProfileId) {
+      this._resetRunState();
+    }
+
+    this._lastProfileId = nextProfileId;
+  }
+
   _handleRecordingCompleted(data) {
     this._lastRecordingData = data;
     // Kisa gecikme: MetricsCollector.stop() RECORDING_COMPLETED'dan once
     // calisabilir, setTimeout ile rapor sira garantisi
-    setTimeout(() => this._buildAndEmit(), 0);
+    this._scheduleBuildAndEmit(0);
   }
 
   _handleTestRecordingStopped() {
-    // Test kaydi bitti - playback basarisiz olsa bile rapor olustur
-    // 100ms: MetricsCollector.stop() async olabilir, 0ms sira garantisi yeterli olmayabilir
-    setTimeout(() => this._buildAndEmit(), 100);
+    // Rapor, kullanici playback'i duyduktan sonra TEST_COMPLETED ile acilir.
+    // Playback basarisiz olursa TEST_CANCELLED handler'i sample hazirsa raporu yine acar.
+    this._testSampleReady = true;
   }
 
   _handleTestCompleted() {
-    // Test tamamlandi (playback da bitti) - rapor zaten olusturulmussa tekrar olusturma
-    if (!this._lastReport) {
-      setTimeout(() => this._buildAndEmit(), 0);
+    if (this._testSampleReady && !this._lastReport) {
+      this._scheduleBuildAndEmit(0);
     }
+  }
+
+  _handleTestCancelled() {
+    if (this._testSampleReady && !this._lastReport) {
+      this._scheduleBuildAndEmit(0);
+    }
+  }
+
+  _clearReportTimer() {
+    if (this._reportTimerId) {
+      clearTimeout(this._reportTimerId);
+      this._reportTimerId = null;
+    }
+  }
+
+  _scheduleBuildAndEmit(delayMs) {
+    this._clearReportTimer();
+    this._reportTimerId = setTimeout(() => {
+      this._reportTimerId = null;
+      this._buildAndEmit();
+    }, delayMs);
   }
 
   _buildAndEmit() {
@@ -151,6 +217,10 @@ class DiagnosticReportBuilder {
       version: '1.0',
       generatedAt: new Date().toISOString(),
       sessionId: logManager?.sessionId || null,
+      run: {
+        type: this._activeRunType,
+        testSampleReady: this._activeRunType === 'test' ? this._testSampleReady : undefined
+      },
 
       environment: this._buildEnvironment(),
       device: this._buildDevice(),
@@ -224,6 +294,8 @@ class DiagnosticReportBuilder {
   }
 
   _buildRecording() {
+    if (this._activeRunType !== 'record') return null;
+
     const d = this._lastRecordingData;
     if (!d) return null;
 
@@ -242,6 +314,8 @@ class DiagnosticReportBuilder {
   }
 
   _buildLoopback() {
+    if (this._activeRunType !== 'test') return null;
+
     const s = this._lastLoopbackStats;
     if (!s) return null;
 

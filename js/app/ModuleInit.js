@@ -1,7 +1,7 @@
 /**
  * ModuleInit - Modul initialization fonksiyonlari
  */
-import { toggleDisplay, log, usesWebAudio } from '../modules/utils.js';
+import { toggleDisplay, log } from '../modules/utils.js';
 import { PROFILES } from '../modules/Config.js';
 
 /**
@@ -10,7 +10,6 @@ import { PROFILES } from '../modules/Config.js';
 export function initProfileController(profileController, callbacks, elements, stateGetters) {
   profileController.init({
     loopbackToggle: elements.loopbackToggle,
-    profileSelector: elements.profileSelector,
     customSettingsGrid: elements.customSettingsGrid,
     pipelineSection: elements.pipelineSection,
     webrtcSection: elements.webrtcSection,
@@ -44,7 +43,6 @@ export function initUIStateManager(uiStateManager, elements, stateGetters, profi
     downloadBtn: elements.downloadBtnEl,
     micSelector: elements.micSelector,
     refreshMicsBtn: elements.refreshMicsBtn,
-    profileSelector: elements.profileSelector,
     timerEl: elements.timerEl,
     headerBrandLink: elements.headerBrandLink,
     customSettingsToggle: elements.customSettingsToggle,
@@ -106,8 +104,7 @@ export function initProfileUIManager(profileUIManager, elements, stateGetters, c
     pageTitleIcon: elements.pageTitleIcon,
     pageSubtitle: elements.pageSubtitle,
     scenarioBadge: elements.scenarioBadge,
-    scenarioTech: elements.scenarioTech,
-    profileSelector: elements.profileSelector
+    scenarioTech: elements.scenarioTech
   });
   profileUIManager.setStateGetters(stateGetters);
   profileUIManager.setCallbacks(callbacks);
@@ -144,8 +141,7 @@ export function updateCategoryUI(profileId, elements) {
 /**
  * Baslangic UI senkronizasyonu
  */
-export function syncInitialUI(elements, isWebAudioEnabled, workletSupported, wasmOpusSupported) {
-  toggleDisplay(elements.pipelineContainer, isWebAudioEnabled);
+export function syncInitialUI(elements, workletSupported, wasmOpusSupported) {
   toggleDisplay(elements.encoderContainer, true);
 
   if (!workletSupported) {

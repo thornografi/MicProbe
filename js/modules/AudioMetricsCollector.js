@@ -6,7 +6,7 @@
  * bitiste yapilandirilmis istatistik dondurur.
  *
  * Toplanan metrikler: noise floor, SNR, dynamic range, clipping rate,
- * dropout count, signal stability, frekans dagitimi
+ * dropout count, signal stability, LUFS ve frekans response
  */
 import eventBus from './EventBus.js';
 import { EVENTS, QUALITY, AUDIO } from './constants.js';
@@ -60,6 +60,8 @@ class AudioMetricsCollector {
     this._lufsCalculator = null;
     this._lufsTimeDomainData = null;  // getFloatTimeDomainData buffer
     this._lufsIntervalId = null;
+    this._levelEventName = null;
+    this._metricSource = 'local';
 
     // Frekans analizi
     this._freqData = null;          // Pre-allocated Float32Array (lazy init)
@@ -72,8 +74,8 @@ class AudioMetricsCollector {
     // Event listener referanslari (memory leak onleme)
     this._onVuLevel = (data) => this._collectLevel(data);
     this._onAnalyserReady = (node) => this._setAnalyser(node);
-    this._onRecordingStarted = () => this.start();
-    this._onTestStarted = () => this.start();
+    this._onRecordingStarted = () => this.start({ source: 'local', levelEvent: EVENTS.VUMETER_LEVEL });
+    this._onTestStarted = () => this.start({ source: 'remote-loopback', levelEvent: EVENTS.VUMETER_REMOTE_LEVEL });
     this._onRecordingCompleted = () => this.stop();
     this._onTestCompleted = () => this.stop();
     this._onStreamStopped = () => {
@@ -92,14 +94,20 @@ class AudioMetricsCollector {
 
   // === PUBLIC API ===
 
-  start() {
+  start(options = {}) {
     if (this._isCollecting) return;
+    const {
+      source = 'local',
+      levelEvent = EVENTS.VUMETER_LEVEL
+    } = options;
     this._reset();
     this._isCollecting = true;
+    this._metricSource = source;
+    this._levelEventName = levelEvent;
     this._startTime = Date.now();
 
     // VU level dinlemeye basla
-    eventBus.on(EVENTS.VUMETER_LEVEL, this._onVuLevel);
+    eventBus.on(this._levelEventName, this._onVuLevel);
 
     // Frekans snapshot + LUFS baslat
     if (this._analyserNode) {
@@ -117,7 +125,9 @@ class AudioMetricsCollector {
     const durationMs = Date.now() - this._startTime;
 
     // Dinleyicileri kaldir
-    eventBus.off(EVENTS.VUMETER_LEVEL, this._onVuLevel);
+    if (this._levelEventName) {
+      eventBus.off(this._levelEventName, this._onVuLevel);
+    }
     this._stopFrequencyCapture();
     this._stopLUFSCapture();
 
@@ -128,7 +138,8 @@ class AudioMetricsCollector {
     log.audio('AudioMetricsCollector stopped', {
       frames: this._totalFrames,
       durationMs,
-      snrDb: results.snr.estimatedDb
+      snrDb: results.snr.estimatedDb,
+      source: results.source
     });
 
     return results;
@@ -401,6 +412,7 @@ class AudioMetricsCollector {
     return {
       sampleCount: n,
       durationMs,
+      source: this._metricSource,
       level: {
         average: +(this._levelSum / n).toFixed(1),
         peak: +this._levelMax.toFixed(1),
@@ -408,7 +420,7 @@ class AudioMetricsCollector {
       },
       noiseFloor: {
         estimatedDb: +noiseFloorDb.toFixed(1),
-        method: 'lowest-percentile-10-Aweighted'
+        method: 'lowest-percentile-10-raw-db'
       },
       snr: {
         estimatedDb: snrDb !== null ? +snrDb.toFixed(1) : null,
@@ -473,8 +485,9 @@ class AudioMetricsCollector {
     return {
       sampleCount: 0,
       durationMs,
+      source: this._metricSource,
       level: { average: 0, peak: 0, min: 0 },
-      noiseFloor: { estimatedDb: -96, method: 'lowest-percentile-10' },
+      noiseFloor: { estimatedDb: -96, method: 'lowest-percentile-10-raw-db' },
       snr: { estimatedDb: null, signalDb: -96, noiseDb: -96, method: 'power-ratio' },
       dynamicRange: { db: 0 },
       clipping: { rate: 0, eventCount: 0, totalFrames: 0, clippedFrames: 0 },

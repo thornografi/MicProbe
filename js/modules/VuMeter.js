@@ -308,6 +308,18 @@ class VuMeter {
     );
     this.remotePeakLevel = result.peakLevel;
     this.remotePeakHoldTime = result.peakHoldTime;
+
+    const maxSample = this.calculatePeak(this.remoteDataArray);
+    const peakdB = maxSample > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(maxSample) : VU_METER.MIN_DB;
+    const isClipping = peakdB >= VU_METER.CLIPPING_THRESHOLD_DB;
+
+    eventBus.emit(EVENTS.VUMETER_REMOTE_LEVEL, {
+      level: result.level,
+      peak: this.remotePeakLevel,
+      dB: result.dB.toFixed(1),
+      rawDb: result.rawDb.toFixed(1),
+      isClipping
+    });
   }
 
   stop() {

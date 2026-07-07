@@ -103,7 +103,7 @@ export const SETTINGS = {
   },
   bitrate: {
     type: 'enum',
-    values: [16000, 24000, 32000, 48000, 64000, 96000, 128000, 256000, 384000],  // Discord Nitro: 256k, 384k
+    values: [16000, 24000, 32000, 48000, 64000, 96000, 128000, 192000, 256000, 384000],  // Discord Nitro: 256k, 384k; Zoom Hi-Fi stereo: 192k
     default: 64000,
     label: 'Opus Bitrate (WebRTC)',
     category: 'loopback',
@@ -195,59 +195,59 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
   };
 }
 
-// Senaryo bazli profil tanimlari
+// Davranis bazli profil tanimlari
 // İKİ ANA KATEGORİ: call (sesli görüşme) ve record (kayıt)
 export const PROFILES = {
   // ═══════════════════════════════════════════════════════════════
   // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback, Test primary + Monitor advanced
   // ═══════════════════════════════════════════════════════════════
-  // Call profilleri: EC/NS/AGC platformlar tarafindan kesinlikle kullaniliyor
-  'discord': createProfile('discord', 'Discord', 'Discord, Guilded - Krisp noise suppression, AudioWorklet',
+  // Call profilleri platform klonu degil, duyulur codec/DSP davranisi yaklasimidir.
+  'discord': createProfile('discord', 'Discord Voice', 'Discord-style voice channel with Krisp-like processing and higher Opus bitrate range',
     'gamepad', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 64000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'sampleRate', 'channelCount', 'ec', 'ns', 'agc'],
       editable: ['bitrate'],
       allowedValues: { bitrate: [64000, 96000, 128000, 256000, 384000] },
-      detection: { method: 'AudioWorklet', source: 'krisp-worker.js', details: 'Krisp AI noise suppression via AudioWorkletNode' } }),
+      detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'Discord-style Opus bitrate test with browser noise processing; not an exact Discord client clone' } }),
 
-  'zoom': createProfile('zoom', 'Zoom / Meet / Teams', 'Zoom, Teams, Meet - AudioWorklet pipeline',
+  'meeting-call': createProfile('meeting-call', 'Meeting Call', 'Default browser meeting call approximation for Zoom, Google Meet, and Microsoft Teams',
     'video', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 48000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'ec', 'ns', 'agc'],
       editable: ['bitrate', 'sampleRate'],
       allowedValues: { bitrate: [32000, 48000, 64000], sampleRate: [16000, 24000, 48000] },
-      detection: { method: 'AudioWorklet', source: 'audio-worklet-processor.js', details: 'Platform-specific audio processing via AudioWorkletNode' } }),
+      detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'Default meeting-call behavior: mono Opus with browser EC/NS/AGC enabled' } }),
 
-  'whatsapp-call': createProfile('whatsapp-call', 'WhatsApp Web Call', 'WhatsApp Web voice/video call',
+  'zoom-hifi': createProfile('zoom-hifi', 'Zoom High Fidelity', 'Zoom Original Sound / high fidelity music mode approximation',
+    'music', 'call', { ec: false, ns: false, agc: false, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 96000, sampleRate: 48000, channelCount: 1 },
+    { locked: ['loopback', 'pipeline', 'encoder', 'sampleRate', 'ec', 'ns', 'agc'],
+      editable: ['bitrate', 'channelCount'],
+      allowedValues: { bitrate: [96000, 128000, 192000], channelCount: [1, 2] },
+      detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'High-fidelity meeting mode: 48kHz, higher Opus bitrate, browser EC/NS/AGC disabled' } }),
+
+  'whatsapp-telegram-call': createProfile('whatsapp-telegram-call', 'WhatsApp / Telegram Call', 'Practical test for WhatsApp, Telegram, and similar app voice calls',
     'phone', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 24000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'ec', 'ns', 'agc'],
       editable: ['bitrate'],
-      allowedValues: { bitrate: [16000, 24000, 32000] },
-      detection: { method: 'WebRTC', source: 'peerconnection', details: 'WebRTC PeerConnection with Opus codec via RTCPeerConnection' } }),
-
-  'telegram-call': createProfile('telegram-call', 'Telegram Web Call', 'Telegram Web voice call',
-    'phone', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 24000, sampleRate: 48000, channelCount: 1 },
-    { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'ec', 'ns', 'agc'],
-      editable: ['bitrate'],
-      allowedValues: { bitrate: [24000, 32000, 48000, 64000] },
-      detection: { method: 'WebRTC', source: 'peerconnection', details: 'WebRTC PeerConnection with Opus codec via RTCPeerConnection' } }),
+      allowedValues: { bitrate: [16000, 24000, 32000, 48000] },
+      detection: { method: 'WebRTC', source: 'local peerconnection', details: 'WhatsApp/Telegram call approximation; exact native app codecs are not reproduced' } }),
 
   // ═══════════════════════════════════════════════════════════════
   // 🎙️ KAYIT (record) - MediaRecorder, Recording Primary
   // ═══════════════════════════════════════════════════════════════
   'whatsapp-voice': createProfile('whatsapp-voice', 'WhatsApp Voice Message',
-    'ScriptProcessor + WASM Opus (16-32kbps) - WhatsApp Web simulation',
+    'Legacy-style low bitrate Opus voice message approximation',
     'message', 'record', { mediaBitrate: 16000, timeslice: 0, loopback: false, pipeline: 'scriptprocessor', encoder: 'wasm-opus', buffer: 4096 },
     { locked: ['pipeline', 'encoder', 'buffer', 'timeslice'],
       editable: ['ec', 'ns', 'agc', 'mediaBitrate'],
       allowedValues: { mediaBitrate: [16000, 24000, 32000] },
-      detection: { method: 'WASM Worker', source: 'ptt-audio-encoder.js', details: 'ScriptProcessorNode(4096,1,1) + WASM Opus encoder in Web Worker' } }),
+      detection: { method: 'ScriptProcessor + WASM Opus', source: 'local encoder', details: 'Low bitrate voice-message approximation using the legacy ScriptProcessor path' } }),
 
   'telegram-voice': createProfile('telegram-voice', 'Telegram Voice Message',
-    'AudioWorklet + WASM Opus VBR - Telegram Web simulation via encoderWorker.min.js',
+    'Modern Opus voice message approximation with VBR support',
     'send', 'record', { mediaBitrate: 0, timeslice: 0, loopback: false, pipeline: 'worklet', encoder: 'wasm-opus', channelCount: 1 },
     { locked: ['pipeline', 'encoder', 'timeslice', 'channelCount'],
       editable: ['ec', 'ns', 'agc', 'mediaBitrate'],
       allowedValues: { mediaBitrate: [0, 16000, 24000, 32000] },  // 0 = VBR (varsayılan)
-      detection: { method: 'WASM Worker', source: 'encoderWorker.min.js', details: 'AudioWorkletNode + WASM Opus VBR encoder (opus-recorder library), mediaBitrate:0 = VBR mode' } }),
+      detection: { method: 'AudioWorklet + WASM Opus', source: 'local encoder', details: 'Voice-message Opus path with VBR as a valid default mode' } }),
 
   'raw': createProfile('raw', 'Raw Recording', 'Worklet + PCM/WAV - uncompressed 16-bit WAV recording',
     'mic', 'record', { ec: false, ns: false, agc: false, pipeline: 'worklet', encoder: 'pcm-wav', loopback: false },
@@ -262,7 +262,7 @@ export const PROFILE_CATEGORIES = {
     id: 'call',
     label: 'Voice Calls',
     icon: '📞',
-    desc: 'Discord, Zoom, WhatsApp/Telegram calls',
+    desc: 'Discord, meetings, Zoom Hi-Fi, WhatsApp/Telegram',
     order: 1
   },
   record: {
@@ -279,24 +279,24 @@ export const PROFILE_CATEGORIES = {
 export const PROFILE_TIPS = {
   // === CALL Category ===
   'discord': [
-    { step: 1, text: 'Run a short Discord-style <strong>Test</strong>' },
+    { step: 1, text: 'Run a short Discord voice <strong>Test</strong>' },
     { step: 2, text: 'Play back the codec-processed audio' },
     { step: 3, text: 'Open the report for fixes' }
   ],
-  'zoom': [
-    { step: 1, text: 'Run a short meeting-style <strong>Test</strong>' },
+  'meeting-call': [
+    { step: 1, text: 'Run a default meeting-call <strong>Test</strong>' },
     { step: 2, text: 'Try <strong>Sample Rate</strong> compatibility' },
     { step: 3, text: 'Review the report for fixes' }
   ],
-  'whatsapp-call': [
-    { step: 1, text: 'Run a WhatsApp call <strong>Test</strong>' },
-    { step: 2, text: 'Compare low-bitrate call quality' },
-    { step: 3, text: 'Use the report to diagnose issues' }
+  'zoom-hifi': [
+    { step: 1, text: 'Run a high-fidelity meeting <strong>Test</strong>' },
+    { step: 2, text: 'Compare mono/stereo and high bitrate' },
+    { step: 3, text: 'Review clipping and room noise' }
   ],
-  'telegram-call': [
-    { step: 1, text: 'Run a Telegram call <strong>Test</strong>' },
-    { step: 2, text: 'Adjust quality with <strong>Bitrate</strong>' },
-    { step: 3, text: 'Review the report for fixes' }
+  'whatsapp-telegram-call': [
+    { step: 1, text: 'Run a WhatsApp / Telegram Call <strong>Test</strong>' },
+    { step: 2, text: 'Check whether speech stays clear after heavier call compression' },
+    { step: 3, text: 'Use the report to diagnose noise' }
   ],
 
   // === RECORD Category ===

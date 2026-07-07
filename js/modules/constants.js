@@ -140,6 +140,7 @@ export const EVENTS = {
   VUMETER_STARTED: 'vumeter:started',
   VUMETER_STOPPED: 'vumeter:stopped',
   VUMETER_LEVEL: 'vumeter:level',
+  VUMETER_REMOTE_LEVEL: 'vumeter:remoteLevel',
   VUMETER_AUDIOCONTEXT: 'vumeter:audiocontext',
   // Profile
   PROFILE_CHANGED: 'profile:changed',
@@ -195,6 +196,7 @@ export const QUALITY = {
   // Evaluator esikleri
   SNR_GOOD_DB: 20,
   SNR_WARNING_DB: 10,
+  SNR_CRITICAL_DB: 5,
   NOISE_FLOOR_GOOD_DB: -45,
   NOISE_FLOOR_WARNING_DB: -30,
   NOISE_FLOOR_CRITICAL_DB: -20,

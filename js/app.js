@@ -12,7 +12,7 @@ import Recorder from './modules/Recorder.js';
 import Monitor from './modules/Monitor.js';
 import StatusManager from './modules/StatusManager.js';
 import DeviceInfo from './modules/DeviceInfo.js';
-import { toggleDisplay, log } from './modules/utils.js';
+import { log } from './modules/utils.js';
 import { IS_DEV } from './modules/constants.js';
 import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
@@ -35,8 +35,7 @@ import {
   setupButtonHandlers,
   setupDrawerHandlers,
   setupKeyboardHandlers,
-  setupTestCountdownHandlers,
-  setupProfileSelectorHandler
+  setupTestCountdownHandlers
 } from './app/ButtonHandlers.js';
 
 // App Modulleri
@@ -153,8 +152,6 @@ registerLoopbackToggle(UIElements.loopbackToggle, {
   eventBus
 });
 
-setupProfileSelectorHandler(UIElements.profileSelector, profileController, log);
-
 const { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl } = setupDrawerHandlers({
   settingsDrawer: UIElements.settingsDrawer,
   drawerOverlay: UIElements.drawerOverlay,
@@ -169,7 +166,7 @@ const { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl } = setupDrawerHan
 
 const escKeyHandler = setupKeyboardHandlers({ settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl });
 
-const initialProfile = UIElements.profileSelector?.value || 'discord';
+const initialProfile = 'discord';
 
 // ============================================
 // STOP FONKSIYONLARI
@@ -204,7 +201,6 @@ initProfileController(
   },
   {
     loopbackToggle: UIElements.loopbackToggle,
-    profileSelector: UIElements.profileSelector,
     customSettingsGrid: UIElements.customSettingsGrid,
     pipelineSection: UIElements.pipelineSection,
     webrtcSection: UIElements.webrtcSection,
@@ -275,7 +271,7 @@ profileController.applyProfile(initialProfile);
 profileUIManager.updateAll(initialProfile);
 customSettingsPanelHandler.updatePanel(initialProfile);
 
-syncInitialUI(UIElements, profileController.isWebAudioEnabled?.() ?? true, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
+syncInitialUI(UIElements, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
 
 loopbackManager.workletSupported = WORKLET_SUPPORTED;
 
@@ -304,8 +300,7 @@ initProfileUIManager(
     pageTitleIcon: UIElements.pageTitleIcon,
     pageSubtitle: UIElements.pageSubtitle,
     scenarioBadge: UIElements.scenarioBadge,
-    scenarioTech: UIElements.scenarioTech,
-    profileSelector: UIElements.profileSelector
+    scenarioTech: UIElements.scenarioTech
   },
   { currentMode: getCurrentMode, isPreparing: getIsPreparing },
   { updateCustomSettingsPanel: (profileId) => customSettingsPanelHandler.updatePanel(profileId) }
@@ -337,7 +332,22 @@ async function initializeAudio() {
   log.system('Audio pre-initialization complete (AudioEngine lazy)', { recorderWarmedUp: recorder.isWarmedUp });
 }
 
-initializeAudio();
+let audioWarmupPromise = null;
+function warmupAudioOnce() {
+  if (!audioWarmupPromise) {
+    audioWarmupPromise = initializeAudio();
+  }
+  return audioWarmupPromise;
+}
+
+function registerAudioWarmupTriggers() {
+  const options = { once: true, passive: true };
+  window.addEventListener('pointerdown', warmupAudioOnce, options);
+  window.addEventListener('touchstart', warmupAudioOnce, options);
+  window.addEventListener('keydown', warmupAudioOnce, { once: true });
+}
+
+registerAudioWarmupTriggers();
 
 log.system('Mic Probe ready. Select a test mode.');
 log.system('Application started', {
@@ -360,6 +370,7 @@ window.addEventListener('beforeunload', () => {
   reportPanelUI.destroy();
   profileUIManager.destroy();
   debugConsole.destroy();
+  statusManager.destroy();
   document.removeEventListener('keydown', escKeyHandler);
   cleanupCountdownHandlers();
 });

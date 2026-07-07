@@ -156,26 +156,3 @@ export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
   // Cleanup fonksiyonu dondur
   return () => unsubscribers.forEach(unsub => typeof unsub === 'function' && unsub());
 }
-
-/**
- * Profil selector handler kaydet
- * @param {HTMLElement} profileSelector - Profil selector elementi
- * @param {Object} profileController - ProfileController referansi
- * @param {Object} log - Log fonksiyonu
- * @returns {Function} - Event handler referansi (cleanup icin)
- */
-export function setupProfileSelectorHandler(profileSelector, profileController, log) {
-  async function handleProfileChange(e) {
-    try {
-      await profileController.applyProfile(e.target.value);
-    } catch (err) {
-      log.error('Profile change error', { profileId: e.target.value, error: err.message });
-    }
-  }
-
-  if (profileSelector) {
-    profileSelector.addEventListener('change', handleProfileChange);
-  }
-
-  return handleProfileChange;
-}

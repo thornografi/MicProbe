@@ -36,7 +36,6 @@ class ProfileController {
     // UI element referanslari
     this.elements = {
       loopbackToggle: null,
-      profileSelector: null,
       customSettingsGrid: null,
       pipelineSection: null,
       webrtcSection: null,

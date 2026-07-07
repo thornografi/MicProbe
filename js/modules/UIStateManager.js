@@ -32,7 +32,6 @@ class UIStateManager {
       downloadBtn: null,
       micSelector: null,
       refreshMicsBtn: null,
-      profileSelector: null,
       timerEl: null,
       headerBrandLink: null,
       customSettingsToggle: null,
@@ -201,7 +200,7 @@ class UIStateManager {
       loopbackToggle, ecCheckbox, nsCheckbox, agcCheckbox,
       pipelineContainer, encoderContainer, timesliceContainer,
       recordingPlayerCard, playBtn, progressBar, downloadBtn,
-      micSelector, refreshMicsBtn, profileSelector
+      micSelector, refreshMicsBtn
     } = this.elements;
 
     // Aktif islem sirasinda kayit tarafini kilitle
@@ -240,7 +239,6 @@ class UIStateManager {
       card.classList.toggle(UI_CLASSES.DISABLED, disableProfiles);
       card.setAttribute('aria-disabled', disableProfiles ? 'true' : 'false');
     });
-    if (profileSelector) profileSelector.disabled = disableProfiles;
 
     // Header/Footer linkler
     const { headerBrandLink, customSettingsToggle, footerBrandLink, settingsDrawer, drawerOverlay } = this.elements;

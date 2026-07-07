@@ -19,7 +19,6 @@ class ProfileUIManager {
       pageSubtitle: null,
       scenarioBadge: null,
       scenarioTech: null,
-      profileSelector: null,
       customSettingsPanel: null
     };
 
@@ -109,11 +108,6 @@ class ProfileUIManager {
     }
 
     try {
-      const { profileSelector } = this.elements;
-      if (profileSelector) {
-        profileSelector.value = profileId;
-      }
-
       await profileController.applyProfile(profileId);
       this.updateScenarioCardSelection(profileId);
       this.updateNavItemSelection(profileId);
