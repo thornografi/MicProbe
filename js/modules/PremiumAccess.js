@@ -33,6 +33,7 @@ const FREEMIUS_PARAM_NAMES = [
 class PremiumAccess {
   constructor() {
     this.entitlement = this._readStoredEntitlement();
+    this.config = null;
     this.listeners = new Set();
     this.bootstrapPromise = null;
   }
@@ -60,6 +61,10 @@ class PremiumAccess {
   isUnlocked() {
     if (!this.entitlement?.verified) return false;
 
+    if (this.config?.mode && this.entitlement.mode && this.entitlement.mode !== this.config.mode) {
+      return false;
+    }
+
     const expiry = this.entitlement.expiresAt;
     if (!expiry) return true;
 
@@ -81,6 +86,8 @@ class PremiumAccess {
   }
 
   async _processRedirectIfPresent() {
+    await this._loadCheckoutConfig();
+
     const params = new URLSearchParams(window.location.search);
     if (!params.has('signature')) {
       this._notify();
@@ -101,6 +108,7 @@ class PremiumAccess {
       this._cleanFreemiusParamsFromUrl();
       this._notify();
       log.ui('Freemius premium access unlocked', {
+        mode: this.entitlement.mode,
         action: this.entitlement.action,
         planId: this.entitlement.planId,
         licenseId: this.entitlement.licenseId
@@ -116,9 +124,14 @@ class PremiumAccess {
   async _loadCheckoutConfig() {
     try {
       const response = await fetch(CONFIG_ENDPOINT, { headers: { Accept: 'application/json' } });
-      if (!response.ok) return {};
-      return await response.json();
+      if (!response.ok) {
+        this.config = null;
+        return {};
+      }
+      this.config = await response.json();
+      return this.config;
     } catch (err) {
+      this.config = null;
       log.warning('Freemius config endpoint unavailable', { error: err.message });
       return {};
     }
@@ -157,6 +170,7 @@ class PremiumAccess {
     return {
       verified: true,
       verifiedAt: new Date().toISOString(),
+      mode: data.mode || '',
       action: data.action || '',
       email: data.email || '',
       userId: data.userId || '',
