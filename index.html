@@ -422,7 +422,7 @@
                   <use href="#icon-discord"/>
                 </svg>
                 <h1 id="pageTitle">Discord Voice Test</h1>
-                <span id="statusBadge" class="status status-idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Ready</span>
+                <span id="statusBadge" class="status status-idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Ready to Test</span>
               </div>
               <p id="pageSubtitle">WebRTC Loopback + Opus 64kbps</p>
               <div id="userMessage" class="user-message" role="status" aria-live="polite" hidden></div>
@@ -447,12 +447,12 @@
                   </div>
 
                   <div class="button-row">
-                    <button id="recordToggle" class="btn btn-action btn-record always-active" aria-label="Start recording" aria-pressed="false">
+                    <button id="recordToggle" class="btn btn-action btn-record always-active" title="Record test sample" aria-label="Record test sample" aria-pressed="false">
                       <svg class="icon-circle" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
                       <svg class="icon-square" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                       <span class="btn-text">Record</span>
                     </button>
-                    <button id="testBtn" class="btn btn-action btn-test always-active" title="Run a 7-second scenario test" aria-label="Run 7-second scenario test">
+                    <button id="testBtn" class="btn btn-action btn-test always-active" title="Run 7-second scenario test" aria-label="Run 7-second scenario test" aria-pressed="false">
                       <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                       <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                       <span class="btn-text">Run Test</span>
@@ -531,10 +531,10 @@
                     </a>
                   </div>
                 </div>
-                <p id="noRecording" class="empty-state" style="display: none;">No recording yet</p>
-                <button id="showReportBtn" class="btn-show-report" style="display:none">
+                <p id="noRecording" class="empty-state" style="display: none;">Run a test or record a sample to generate a report</p>
+                <button id="showReportBtn" class="btn-show-report" style="display:none" aria-label="Open test report">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-                  View Analysis Results
+                  Open Test Report
                 </button>
               </div>
 

@@ -11,19 +11,21 @@
   width: 100%;
   padding: 10px var(--space-md);
   margin-top: var(--space-sm);
-  background: rgba(152, 85, 247, 0.08);
-  border: 1px solid rgba(152, 85, 247, 0.25);
+  background: var(--gradient-accent-muted);
+  border: 1px solid rgba(var(--color-purple-rgb), 0.35);
   border-radius: var(--radius-md);
-  color: var(--color-accent-text);
+  color: var(--text-primary);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 0 14px rgba(var(--color-purple-rgb), 0.12);
   transition: all var(--transition-normal);
 }
 
 .btn-show-report:hover {
-  background: rgba(152, 85, 247, 0.15);
-  border-color: rgba(152, 85, 247, 0.4);
+  background: var(--gradient-accent-strong);
+  border-color: rgba(var(--color-purple-rgb), 0.5);
+  box-shadow: 0 0 18px rgba(var(--color-purple-rgb), 0.2);
 }
 
 .btn-show-report svg {

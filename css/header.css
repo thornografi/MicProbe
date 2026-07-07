@@ -225,7 +225,9 @@
   --status-shadow: 0 0 12px rgba(229, 57, 53, 0.24);
 }
 
-.status-monitoring {
+.status-monitoring,
+.status-webaudio,
+.status-loopback {
   --status-bg: var(--gradient-accent-muted);
   --status-color: var(--color-orange);
   --status-shadow: 0 0 15px rgba(var(--color-orange-rgb), 0.25);

@@ -12,12 +12,12 @@ class StatusManager {
     this.currentStatus = 'idle';
 
     this.statusConfig = {
-      idle: { class: 'status-idle', text: 'Ready' },
-      recording: { class: 'status-recording', text: 'Recording' },
-      monitoring: { class: 'status-monitoring', text: 'Monitor Active' },
-      webaudio: { class: 'status-webaudio', text: 'WebAudio Active' },
-      loopback: { class: 'status-loopback', text: 'WebRTC Loopback' },
-      testing: { class: 'status-testing', text: 'Testing' },
+      idle: { class: 'status-idle', text: 'Ready to Test' },
+      recording: { class: 'status-recording', text: 'Recording Sample' },
+      monitoring: { class: 'status-monitoring', text: 'Live Monitor' },
+      webaudio: { class: 'status-webaudio', text: 'Live Monitor' },
+      loopback: { class: 'status-loopback', text: 'Live Preview' },
+      testing: { class: 'status-testing', text: 'Running Test' },
       error: { class: 'status-error', text: 'Needs Attention' }
     };
 

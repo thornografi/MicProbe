@@ -172,8 +172,14 @@ class UIStateManager {
     monitorToggleBtn?.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isMonitoring);
 
     // Disable kontrolu
-    if (recordToggleBtn) recordToggleBtn.disabled = isMonitoring || isTesting || (isPreparing && !isRecording);
-    if (monitorToggleBtn) monitorToggleBtn.disabled = isRecording || isTesting || (isPreparing && !isMonitoring);
+    if (recordToggleBtn) {
+      recordToggleBtn.disabled = isMonitoring || isTesting || (isPreparing && !isRecording);
+      recordToggleBtn.setAttribute('aria-pressed', isRecording ? 'true' : 'false');
+    }
+    if (monitorToggleBtn) {
+      monitorToggleBtn.disabled = isRecording || isTesting || (isPreparing && !isMonitoring);
+      monitorToggleBtn.setAttribute('aria-pressed', isMonitoring ? 'true' : 'false');
+    }
 
     // Test butonu
     if (testBtn) {
@@ -181,6 +187,7 @@ class UIStateManager {
       testBtn.classList.toggle(UI_CLASSES.PLAYBACK, isTestPlayback);
       testBtn.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isTesting);
       testBtn.disabled = isRecording || isMonitoring || (isPreparing && !isTesting);
+      testBtn.setAttribute('aria-pressed', isTesting ? 'true' : 'false');
     }
   }
 
@@ -297,17 +304,23 @@ class UIStateManager {
     // Test buton text
     if (testBtn) {
       const testBtnText = testBtn.querySelector('.btn-text');
+      let testLabel = 'Run 7-second scenario test';
       if (testBtnText) {
         if (isPreparing && isTesting) {
           testBtnText.textContent = 'Preparing...';
+          testLabel = 'Preparing scenario test';
         } else if (isTestRecording) {
           testBtnText.textContent = 'Finish';
+          testLabel = 'Finish test recording and play back';
         } else if (isTestPlayback) {
           testBtnText.textContent = 'Stop';
+          testLabel = 'Stop test playback';
         } else {
           testBtnText.textContent = 'Run Test';
         }
       }
+      testBtn.setAttribute('aria-label', testLabel);
+      testBtn.title = testLabel;
     }
 
     // Record/Monitor buton text
@@ -315,18 +328,28 @@ class UIStateManager {
     const monitorBtnText = monitorToggleBtn?.querySelector('.btn-text');
 
     if (recordBtnText) {
+      let recordLabel = 'Record test sample';
       if (isPreparing && isRecording) {
         recordBtnText.textContent = 'Preparing...';
+        recordLabel = 'Preparing recording';
       } else {
         recordBtnText.textContent = isRecording ? 'Stop' : 'Record';
+        if (isRecording) recordLabel = 'Stop recording';
       }
+      recordToggleBtn?.setAttribute('aria-label', recordLabel);
+      if (recordToggleBtn) recordToggleBtn.title = recordLabel;
     }
     if (monitorBtnText) {
+      let monitorLabel = 'Start advanced live monitor';
       if (isPreparing && isMonitoring) {
         monitorBtnText.textContent = 'Preparing...';
+        monitorLabel = 'Preparing live monitor';
       } else {
         monitorBtnText.textContent = isMonitoring ? 'Stop' : 'Monitor';
+        if (isMonitoring) monitorLabel = 'Stop live monitor';
       }
+      monitorToggleBtn?.setAttribute('aria-label', monitorLabel);
+      if (monitorToggleBtn) monitorToggleBtn.title = isMonitoring ? monitorLabel : 'Advanced live monitor';
     }
   }
 
