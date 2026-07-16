@@ -213,11 +213,8 @@ class MonitoringController {
   /** Test kayit durdur - TestRecordingFlow'a delege */
   async stopTestRecording() { return this._testFlow.stopRecording(); }
 
-  /** Test playback baslat - TestRecordingFlow'a delege */
-  async startTestPlayback() { return this._testFlow.startPlayback(); }
-
-  /** Test playback durdur - TestRecordingFlow'a delege */
-  async stopTestPlayback() { return this._testFlow.stopPlayback(); }
+  /** Test analiz fazi baslat - TestRecordingFlow'a delege */
+  async startTestAnalysing() { return this._testFlow.startAnalysing(); }
 
   /** Test iptal - TestRecordingFlow'a delege */
   async cancelTest() { return this._testFlow.cancel(); }

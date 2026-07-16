@@ -22,6 +22,7 @@ class DiagnosticReportBuilder {
     // Dependency injection ile set edilecek referanslar
     this._deps = {
       metricsCollector: null,
+      systemProbeCollector: null,
       profileController: null,
       logManager: null
     };
@@ -29,6 +30,7 @@ class DiagnosticReportBuilder {
     // Son event verilerini yakala (rapor aninda kullanmak icin)
     this._lastRecordingData = null;
     this._lastLoopbackStats = null;
+    this._lastDeepAnalysis = null;
     this._lastReport = null;
     this._lastDeliveredSampleRate = null;
     this._activeRunType = null;
@@ -45,6 +47,7 @@ class DiagnosticReportBuilder {
     this._onTestCompleted = () => this._handleTestCompleted();
     this._onTestCancelled = () => this._handleTestCancelled();
     this._onLoopbackStats = (stats) => { this._lastLoopbackStats = stats; };
+    this._onDeepAnalysisReady = (data) => { this._lastDeepAnalysis = data; };
     this._lastCapabilities = null;
     this._onStreamStarted = (stream) => {
       const track = stream?.getAudioTracks?.()?.[0];
@@ -68,6 +71,7 @@ class DiagnosticReportBuilder {
     eventBus.on(EVENTS.TEST_COMPLETED, this._onTestCompleted);
     eventBus.on(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.on(EVENTS.DEEP_ANALYSIS_READY, this._onDeepAnalysisReady);
     eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
 
@@ -118,6 +122,7 @@ class DiagnosticReportBuilder {
     eventBus.off(EVENTS.TEST_COMPLETED, this._onTestCompleted);
     eventBus.off(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.off(EVENTS.DEEP_ANALYSIS_READY, this._onDeepAnalysisReady);
     eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
 
@@ -129,6 +134,7 @@ class DiagnosticReportBuilder {
     this._testSampleReady = false;
     this._lastRecordingData = null;
     this._lastLoopbackStats = null;
+    this._lastDeepAnalysis = null;
     this._lastReport = null;
   }
 
@@ -138,6 +144,7 @@ class DiagnosticReportBuilder {
     this._testSampleReady = false;
     this._lastRecordingData = null;
     this._lastLoopbackStats = null;
+    this._lastDeepAnalysis = null;
     this._lastReport = null;
   }
 
@@ -214,7 +221,7 @@ class DiagnosticReportBuilder {
     const audioMetrics = metricsCollector?.getResults?.() || null;
 
     return {
-      version: '1.0',
+      version: '1.1',
       generatedAt: new Date().toISOString(),
       sessionId: logManager?.sessionId || null,
       run: {
@@ -228,12 +235,78 @@ class DiagnosticReportBuilder {
       recording: this._buildRecording(),
       loopback: this._buildLoopback(),
       audioMetrics: audioMetrics,
+      deepAnalysis: this._lastDeepAnalysis,   // Offline spektral pass (DeepAnalysisEngine); yoksa null
+      system: this._buildSystem(audioMetrics, profileController),   // Dolayli sistem/perf sinyalleri; yoksa null
       sanityCheck: this._buildSanityCheck(logManager),
       logs: this._buildLogSummary(logManager)
     };
   }
 
   // === PRIVATE: Section Builders ===
+
+  /**
+   * Sistem/performans sinyalleri + korelasyon.
+   * DURUSTLUK: yalnizca dolayli proxy; her cikti confidence + disclaimer tasir.
+   */
+  _buildSystem(audioMetrics, profileController) {
+    const sys = this._deps.systemProbeCollector?.getResults?.();
+    if (!sys) return null;
+    const pipeline = profileController?.getCurrentProfile?.()?.values?.pipeline || null;
+    return { ...sys, correlation: this._correlateSystem(sys, audioMetrics, pipeline) };
+  }
+
+  _correlateSystem(sys, audioMetrics, pipeline) {
+    const dropoutCount = audioMetrics?.dropouts?.count ?? 0;
+    const jitterSpikes = sys?.mainThreadJitter?.spikeCount ?? 0;
+    const severeSpikes = sys?.mainThreadJitter?.severeSpikeCount ?? 0;
+    const concealmentEvents = sys?.network?.concealmentEvents ?? 0;
+    const findings = [];
+
+    // ScriptProcessor ana thread'de calisir -> jitter<->glitch bagi GUCLU/DOGRUDAN;
+    // worklet/direct/standard'da ses ayri thread'de -> bag DOLAYLI/ZAYIF (genel sistem yuku gostergesi)
+    const strongLink = pipeline === 'scriptprocessor';
+    const hasAudioGlitch = dropoutCount > 0 || concealmentEvents > 0;
+
+    if ((jitterSpikes > 0 || severeSpikes > 0) && hasAudioGlitch) {
+      findings.push({
+        id: 'CPU_LIKELY',
+        confidence: (severeSpikes > 0 && strongLink) ? 'medium' : 'low',
+        message: strongLink
+          ? 'Main-thread stalls coincide with audio glitches; likely CPU/background load affecting the ScriptProcessor pipeline.'
+          : 'Main-thread stalls seen alongside audio glitches; possible CPU/background load (indirect signal for this pipeline).'
+      });
+    }
+
+    if (concealmentEvents > 0 && jitterSpikes === 0) {
+      findings.push({
+        id: 'NETWORK_LIKELY',
+        confidence: 'low',
+        message: 'Audio concealment without main-thread stalls; likely encode/transport (loopback) jitter rather than CPU.'
+      });
+    }
+
+    if (findings.length === 0) {
+      findings.push({
+        id: 'INCONCLUSIVE',
+        confidence: 'low',
+        message: 'No clear correlation between system load and audio glitches in this run.'
+      });
+    }
+
+    if (sys?.tabWasHidden) {
+      findings.push({
+        id: 'TAB_HIDDEN',
+        confidence: 'low',
+        message: 'The tab was backgrounded during the test; main-thread jitter measurements are unreliable.'
+      });
+    }
+
+    return {
+      method: 'session-count-heuristic',
+      findings,
+      disclaimer: 'Dolayli sinyallere dayanir; kesin nedensellik iddia etmez. Tarayici gercek CPU/RAM olcemez.'
+    };
+  }
 
   _buildEnvironment() {
     let audioWorkletSupported = false;

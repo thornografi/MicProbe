@@ -91,6 +91,7 @@ export const UI_CLASSES = {
   PREPARING: 'preparing',
   RECORDING: 'recording',
   PLAYBACK: 'playback',
+  ANALYSING: 'analysing',
   OPEN: 'open',
   VISIBLE: 'visible',
   LOCKED: 'locked',
@@ -121,8 +122,8 @@ export const EVENTS = {
   // Test
   TEST_RECORDING_STARTED: 'test:recording-started',
   TEST_RECORDING_STOPPED: 'test:recording-stopped',
-  TEST_PLAYBACK_STARTED: 'test:playback-started',
-  TEST_PLAYBACK_STOPPED: 'test:playback-stopped',
+  TEST_ANALYSING_STARTED: 'test:analysing-started',       // Kayit bitti, analiz fazi basladi (playback yerine)
+  TEST_ANALYSING_PROGRESS: 'test:analysing-progress',     // { ratio: 0..1 } — UI progress bar
   TEST_COMPLETED: 'test:completed',
   TEST_CANCELLED: 'test:cancelled',
   TEST_COUNTDOWN: 'test:countdown',
@@ -175,7 +176,12 @@ export const EVENTS = {
   // Diagnostik Rapor
   METRICS_STARTED: 'metrics:started',
   METRICS_STOPPED: 'metrics:stopped',
-  DIAGNOSTIC_REPORT_READY: 'diagnostic:reportReady'
+  DIAGNOSTIC_REPORT_READY: 'diagnostic:reportReady',
+  // Deep Analysis (offline spektral pass)
+  DEEP_ANALYSIS_STARTED: 'deepAnalysis:started',
+  DEEP_ANALYSIS_PROGRESS: 'deepAnalysis:progress',   // { ratio, stage }
+  DEEP_ANALYSIS_READY: 'deepAnalysis:ready',          // deepAnalysis payload
+  DEEP_ANALYSIS_FAILED: 'deepAnalysis:failed'         // { reason } — fatal DEGIL
 };
 
 // === QUALITY (Diagnostik Analiz) ===
@@ -215,7 +221,30 @@ export const LOOPBACK = {
   ICE_WAIT_MS: 10000              // ICE baglanti timeout suresi (ms)
 };
 
+// === SYSTEM PROBE (Dolayli Performans Sinyalleri) ===
+// Tarayici OS'tan gercek CPU%/RAM% okuyamaz (sandbox). Bu esikler yalniz DOLAYLI
+// proxy sinyaller uretir; her cikti confidence + disclaimer tasir.
+export const JITTER = {
+  SPIKE_THRESHOLD_MS: 50,          // rAF frame'i bu ms'in ustundeyse = orta seviye ana-thread stall (~3 frame kaybi @60Hz)
+  SEVERE_SPIKE_THRESHOLD_MS: 150,  // duyulabilir glitch olceginde stall
+  GRACE_SAMPLES: 3,                // ilk N ornek yok sayilir (kurulum jitter'i)
+  MAX_SPIKE_EVENTS: 40             // bounded spike gecmisi
+};
+
 // === TEST (Loopback Test Ozelligi) ===
 export const TEST = {
   DURATION_MS: 7000               // Test suresi (7 saniye)
+};
+
+// === DEEP ANALYSIS (Offline Spektral Pass) ===
+// Kayit buffer'i decode edilip yuksek cozunurluklu FFT/LUFS/noise-floor uretilir.
+// Canli 250ms snapshot'tan (AudioMetricsCollector) daha dogru; "Analysing" progress bar'ini besleyen gercek is.
+export const DEEP_ANALYSIS = {
+  FFT_SIZE: 4096,                 // ~11.7 Hz/bin @ 48kHz (yuksek cozunurluk)
+  HOP_SIZE: 2048,                 // %50 overlap (Welch ortalamasi)
+  OUTPUT_BINS: 96,                // Rapora yazilan log-spaced frekans egrisi nokta sayisi
+  MAX_DURATION_SEC: 30,           // Decode/analiz tavani (uzun record kayitlari kirpilir)
+  MAX_WAIT_MS: 8000,              // build() bu kadar bekler; asilirsa deepAnalysis:null (degrade rapor)
+  MIN_SAMPLES: 8192,              // Bunun altinda analiz atlanir (status:'skipped')
+  PROGRESS_FRAME_INTERVAL: 8      // Her N frame'de bir progress emit
 };

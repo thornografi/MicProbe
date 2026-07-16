@@ -2,6 +2,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { evaluatePremiumReport } = require('./server/premium-report-evaluator');
 
 const DEFAULT_PORT = 8080;
 const basePort = (() => {
@@ -9,6 +10,7 @@ const basePort = (() => {
   if (Number.isFinite(fromEnv) && fromEnv > 0 && fromEnv < 65536) return fromEnv;
   return DEFAULT_PORT;
 })();
+const strictPort = /^(1|true|yes)$/i.test(process.env.MICPROBE_STRICT_PORT || '');
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -80,24 +82,92 @@ function normalizeFreemiusMode(value) {
   return 'sandbox';
 }
 
+function firstEnvValue(names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return '';
+}
+
 function readFreemiusEnv(mode) {
   const prefix = mode === 'production'
     ? 'MICPROBE_FREEMIUS_PRODUCTION_'
     : 'MICPROBE_FREEMIUS_SANDBOX_';
+  const readValue = (key, fallbackNames = []) => {
+    const modeSpecific = process.env[`${prefix}${key}`] || '';
+    if (modeSpecific || mode === 'production') return modeSpecific;
+    return firstEnvValue(fallbackNames);
+  };
 
   return {
     mode,
-    productId: process.env[`${prefix}PRODUCT_ID`] || process.env.MICPROBE_FREEMIUS_PRODUCT_ID || process.env.FREEMIUS_PRODUCT_ID || '',
-    planId: process.env[`${prefix}PLAN_ID`] || process.env.MICPROBE_FREEMIUS_PLAN_ID || process.env.FREEMIUS_PLAN_ID || '',
-    checkoutUrl: process.env[`${prefix}CHECKOUT_URL`] || process.env.MICPROBE_FREEMIUS_CHECKOUT_URL || '',
-    successUrl: process.env[`${prefix}SUCCESS_URL`] || process.env.MICPROBE_FREEMIUS_SUCCESS_URL || '',
-    billingCycle: process.env[`${prefix}BILLING_CYCLE`] || process.env.MICPROBE_FREEMIUS_BILLING_CYCLE || '',
-    title: process.env[`${prefix}CHECKOUT_TITLE`] || process.env.MICPROBE_FREEMIUS_CHECKOUT_TITLE || 'MicProbe Premium',
-    productSecret: process.env[`${prefix}PRODUCT_SECRET`] || process.env.MICPROBE_FREEMIUS_PRODUCT_SECRET || process.env.FREEMIUS_PRODUCT_SECRET || ''
+    productId: readValue('PRODUCT_ID', ['MICPROBE_FREEMIUS_PRODUCT_ID', 'FREEMIUS_PRODUCT_ID']),
+    planId: readValue('PLAN_ID', ['MICPROBE_FREEMIUS_PLAN_ID', 'FREEMIUS_PLAN_ID']),
+    pricingId: readValue('PRICING_ID', ['MICPROBE_FREEMIUS_PRICING_ID', 'FREEMIUS_PRICING_ID']),
+    checkoutUrl: readValue('CHECKOUT_URL', ['MICPROBE_FREEMIUS_CHECKOUT_URL']),
+    successUrl: readValue('SUCCESS_URL', ['MICPROBE_FREEMIUS_SUCCESS_URL']),
+    billingCycle: readValue('BILLING_CYCLE', ['MICPROBE_FREEMIUS_BILLING_CYCLE']),
+    title: readValue('CHECKOUT_TITLE', ['MICPROBE_FREEMIUS_CHECKOUT_TITLE']) || 'MicProbe Premium',
+    productSecret: readValue('PRODUCT_SECRET', ['MICPROBE_FREEMIUS_PRODUCT_SECRET', 'FREEMIUS_PRODUCT_SECRET'])
   };
 }
 
 const FREEMIUS_ENV = readFreemiusEnv(normalizeFreemiusMode(process.env.MICPROBE_FREEMIUS_MODE));
+
+function isHttpsUrl(value) {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeBillingCycle(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+  if (normalized === 'yearly') return 'annual';
+  if (normalized === 'life_time') return 'lifetime';
+  return normalized;
+}
+
+function getFreemiusConfigIssues(env) {
+  const issues = [];
+  if (!env.checkoutUrl && (!env.productId || !env.planId)) {
+    issues.push('missing_checkout_target');
+  }
+  if (!env.productSecret) {
+    issues.push('missing_product_secret');
+  }
+  if (env.mode === 'production') {
+    if (!env.successUrl) {
+      issues.push('missing_production_success_url');
+    } else if (!isHttpsUrl(env.successUrl)) {
+      issues.push('production_success_url_must_be_https');
+    }
+  }
+  return issues;
+}
+
+function validateFreemiusRedirectParams(params) {
+  const licenseId = params.get('license_id') || '';
+  if (!licenseId) return 'missing_license_id';
+
+  if (FREEMIUS_ENV.planId) {
+    const planId = params.get('plan_id') || '';
+    if (!planId) return 'missing_plan_id';
+    if (planId !== FREEMIUS_ENV.planId) return 'plan_mismatch';
+  }
+
+  if (FREEMIUS_ENV.pricingId) {
+    const pricingId = params.get('pricing_id') || '';
+    if (!pricingId) return 'missing_pricing_id';
+    if (pricingId !== FREEMIUS_ENV.pricingId) return 'pricing_mismatch';
+  }
+
+  // NOT: Freemius signed-redirect'e billing_cycle eklemez; dogrulama sarti yapilmaz
+  // (worker/dev.js ile ayni gerekce). Yalnizca bilgi amacli entitlement'a yaziliyor.
+  return null;
+}
 
 function buildHeaders(contentType) {
   const headers = { 'Content-Type': contentType, ...SECURITY_HEADERS };
@@ -130,6 +200,90 @@ function writeJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function readJsonBody(req, maxBytes = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        reject(new Error('payload_too_large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error('invalid_json'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+function signValue(value) {
+  return crypto
+    .createHmac('sha256', FREEMIUS_ENV.productSecret)
+    .update(value)
+    .digest('base64url');
+}
+
+function createEntitlementToken(entitlement) {
+  const payload = {
+    v: 1,
+    mode: entitlement.mode,
+    planId: entitlement.planId,
+    pricingId: entitlement.pricingId,
+    billingCycle: entitlement.billingCycle,
+    expiresAt: entitlement.expiration || entitlement.trialEndsAt || '',
+    iat: Date.now()
+  };
+  const encoded = base64UrlEncode(JSON.stringify(payload));
+  return `${encoded}.${signValue(encoded)}`;
+}
+
+function verifyEntitlementToken(token) {
+  if (!FREEMIUS_ENV.productSecret || !token || typeof token !== 'string') return null;
+  const [encoded, signature] = token.split('.');
+  if (!encoded || !signature) return null;
+
+  const expected = signValue(encoded);
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
+    return null;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecode(encoded));
+  } catch {
+    return null;
+  }
+
+  if (payload.v !== 1) return null;
+  if (payload.mode !== FREEMIUS_ENV.mode) return null;
+  if (FREEMIUS_ENV.planId && payload.planId !== FREEMIUS_ENV.planId) return null;
+  if (FREEMIUS_ENV.pricingId && payload.pricingId !== FREEMIUS_ENV.pricingId) return null;
+  // billing_cycle bilerek dogrulanmiyor (bkz. validateFreemiusRedirectParams notu).
+
+  if (payload.expiresAt) {
+    const expiresAt = Date.parse(String(payload.expiresAt).replace(' ', 'T'));
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
+  }
+
+  return payload;
+}
+
 function stripSignatureParam(rawUrl) {
   const hashIndex = rawUrl.indexOf('#');
   const hash = hashIndex === -1 ? '' : rawUrl.slice(hashIndex);
@@ -149,15 +303,18 @@ function stripSignatureParam(rawUrl) {
 }
 
 function handleFreemiusConfig(res) {
+  const issues = getFreemiusConfigIssues(FREEMIUS_ENV);
   writeJson(res, 200, {
-    configured: Boolean(FREEMIUS_ENV.checkoutUrl || (FREEMIUS_ENV.productId && FREEMIUS_ENV.planId)),
+    configured: issues.length === 0,
     mode: FREEMIUS_ENV.mode,
     productId: FREEMIUS_ENV.productId,
     planId: FREEMIUS_ENV.planId,
+    pricingId: FREEMIUS_ENV.pricingId,
     checkoutUrl: FREEMIUS_ENV.checkoutUrl,
     successUrl: FREEMIUS_ENV.successUrl,
     billingCycle: FREEMIUS_ENV.billingCycle,
-    title: FREEMIUS_ENV.title
+    title: FREEMIUS_ENV.title,
+    issues
   });
 }
 
@@ -201,34 +358,65 @@ function handleFreemiusVerify(req, res, url) {
   }
 
   const params = parsed.searchParams;
+  const validationError = validateFreemiusRedirectParams(params);
+  if (validationError) {
+    writeJson(res, 403, { ok: false, error: validationError });
+    return;
+  }
+
+  const entitlement = {
+    mode: FREEMIUS_ENV.mode,
+    action: params.get('action') || '',
+    planId: params.get('plan_id') || '',
+    pricingId: params.get('pricing_id') || '',
+    billingCycle: params.get('billing_cycle') || '',
+    expiration: params.get('expiration') || '',
+    trialEndsAt: params.get('trial_ends_at') || ''
+  };
+
   writeJson(res, 200, {
     ok: true,
     entitlement: {
-      mode: FREEMIUS_ENV.mode,
-      action: params.get('action') || '',
-      email: params.get('email') || '',
-      userId: params.get('user_id') || '',
-      planId: params.get('plan_id') || '',
-      pricingId: params.get('pricing_id') || '',
-      paymentId: params.get('payment_id') || '',
-      subscriptionId: params.get('subscription_id') || '',
-      licenseId: params.get('license_id') || '',
-      billingCycle: params.get('billing_cycle') || '',
-      currency: params.get('currency') || '',
-      amount: params.get('amount') || '',
-      expiration: params.get('expiration') || '',
-      trialEndsAt: params.get('trial_ends_at') || ''
+      ...entitlement,
+      accessToken: createEntitlementToken(entitlement)
     }
   });
 }
 
-const server = http.createServer((req, res) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405, buildHeaders('text/plain; charset=utf-8'));
-    res.end('405 Method Not Allowed');
+async function handleDetailedReport(req, res) {
+  if (!FREEMIUS_ENV.productSecret) {
+    writeJson(res, 503, { ok: false, error: 'missing_product_secret' });
     return;
   }
 
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (err) {
+    writeJson(res, err.message === 'payload_too_large' ? 413 : 400, { ok: false, error: err.message });
+    return;
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const headerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+  const entitlement = verifyEntitlementToken(headerToken || payload.entitlementToken);
+  if (!entitlement) {
+    writeJson(res, 403, { ok: false, error: 'invalid_entitlement' });
+    return;
+  }
+
+  if (!payload.report?.audioMetrics) {
+    writeJson(res, 400, { ok: false, error: 'missing_report' });
+    return;
+  }
+
+  writeJson(res, 200, {
+    ok: true,
+    detailed: evaluatePremiumReport(payload.report)
+  });
+}
+
+const server = http.createServer((req, res) => {
   let pathname;
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -241,6 +429,19 @@ const server = http.createServer((req, res) => {
 
     if (req.method === 'GET' && pathname === '/api/freemius/verify') {
       handleFreemiusVerify(req, res, url);
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/report/detailed') {
+      handleDetailedReport(req, res).catch((err) => {
+        writeJson(res, 500, { ok: false, error: err.message || 'detailed_report_failed' });
+      });
+      return;
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, buildHeaders('text/plain; charset=utf-8'));
+      res.end('405 Method Not Allowed');
       return;
     }
   } catch {
@@ -327,14 +528,18 @@ function listenWithFallback(startPort, maxAttempts = 20) {
   };
 
   server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE' && port < startPort + maxAttempts) {
+    if (!strictPort && err.code === 'EADDRINUSE' && port < startPort + maxAttempts) {
       console.warn(`Port ${port} in use, trying ${port + 1}...`);
       port += 1;
       tryListen();
       return;
     }
 
-    console.error(err);
+    if (strictPort && err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} in use. Strict port mode enabled; not trying another port.`);
+    } else {
+      console.error(err);
+    }
     process.exitCode = 1;
   });
 

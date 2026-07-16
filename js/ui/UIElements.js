@@ -36,6 +36,7 @@ export const monitorToggleBtn = getEl('monitorToggle');
 export const testBtn = getEl('testBtn');
 export const profileMenuBtn = getEl('profileMenuBtn');
 export const testCountdownEl = getEl('testCountdown');
+export const testProgressFillEl = getEl('testProgressFill');
 export const playBtnEl = getEl('playBtn');
 export const downloadBtnEl = getEl('downloadBtn');
 export const closeDrawerBtn = getEl('closeDrawer');

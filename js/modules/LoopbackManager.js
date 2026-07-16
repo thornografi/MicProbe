@@ -348,6 +348,14 @@ class LoopbackManager {
         let jitter = null;
         let packetsLost = 0;
         let packetsReceived = 0;
+        // Sistem/performans proxy sinyalleri (SystemProbeCollector tuketir)
+        let jitterBufferDelay = null;
+        let jitterBufferEmittedCount = null;
+        let concealedSamples = null;
+        let concealmentEvents = null;
+        let insertedSamplesForDeceleration = null;
+        let removedSamplesForAcceleration = null;
+        let totalSamplesReceived = null;
 
         stats.forEach(report => {
           if (report.type === 'outbound-rtp' && report.kind === 'audio') {
@@ -360,6 +368,14 @@ class LoopbackManager {
           if (report.type === 'inbound-rtp' && report.kind === 'audio') {
             packetsLost = report.packetsLost || 0;
             packetsReceived = report.packetsReceived || 0;
+            // Chrome-only glitch/jitter-buffer alanlari (feature-detect: ?? null)
+            jitterBufferDelay = report.jitterBufferDelay ?? null;
+            jitterBufferEmittedCount = report.jitterBufferEmittedCount ?? null;
+            concealedSamples = report.concealedSamples ?? null;
+            concealmentEvents = report.concealmentEvents ?? null;
+            insertedSamplesForDeceleration = report.insertedSamplesForDeceleration ?? null;
+            removedSamplesForAcceleration = report.removedSamplesForAcceleration ?? null;
+            totalSamplesReceived = report.totalSamplesReceived ?? null;
           }
         });
 
@@ -385,7 +401,14 @@ class LoopbackManager {
             rttMs: rtt !== null ? +(rtt * 1000).toFixed(1) : null,
             jitterMs: jitter !== null ? +(jitter * 1000).toFixed(2) : null,
             packetLossRate: lossRate !== null ? +lossRate.toFixed(4) : null,
-            isDtxActive
+            isDtxActive,
+            // Sistem/performans proxy sinyalleri (feature-detect; desteklenmeyen tarayicida null)
+            jitterBufferDelayMsAvg: (jitterBufferDelay != null && jitterBufferEmittedCount) ? +((jitterBufferDelay / jitterBufferEmittedCount) * 1000).toFixed(2) : null,
+            concealedSamples,
+            concealmentEvents,
+            insertedSamplesForDeceleration,
+            removedSamplesForAcceleration,
+            totalSamplesReceived
           });
 
           // Sapma uyarisi: Ramp-up ve DTX periyodunda bastir

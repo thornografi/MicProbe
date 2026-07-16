@@ -18,7 +18,9 @@ import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
 import loopbackManager from './modules/LoopbackManager.js';
 import audioMetricsCollector from './modules/AudioMetricsCollector.js';
+import systemProbeCollector from './modules/SystemProbeCollector.js';
 import diagnosticReportBuilder from './modules/DiagnosticReportBuilder.js';
+import deepAnalysisEngine from './modules/DeepAnalysisEngine.js';
 import reportPanelUI from './ui/ReportPanelUI.js';
 import profileController from './controllers/ProfileController.js';
 import uiStateManager from './modules/UIStateManager.js';
@@ -27,6 +29,12 @@ import monitoringController from './controllers/MonitoringController.js';
 import debugConsole from './ui/DebugConsole.js';
 import profileUIManager from './ui/ProfileUIManager.js';
 import customSettingsPanelHandler from './ui/CustomSettingsPanelHandler.js';
+import {
+  exposeStartupDiagnostics,
+  getStartupDiagnosticLogLines,
+  getStartupDiagnostics,
+  markStartupDiag
+} from './modules/StartupDiagnostics.js';
 
 // UI Modulleri
 import * as UIElements from './ui/UIElements.js';
@@ -61,6 +69,11 @@ import {
 } from './app/ModuleInit.js';
 import { createControllerDeps } from './app/Dependencies.js';
 
+markStartupDiag('app.module.evaluating', {
+  path: window.location.pathname,
+  readyState: document.readyState
+});
+
 // ============================================
 // ENVIRONMENT
 // ============================================
@@ -76,6 +89,7 @@ const WASM_OPUS_SUPPORTED = isWasmOpusSupported();
 // MODUL INSTANCES
 // ============================================
 const logger = new Logger('log');
+markStartupDiag('app.logger.ready');
 
 const vuMeter = new VuMeter({
   barId: 'vuMeterBar',
@@ -283,10 +297,24 @@ initDebugConsole(debugConsole, {
   audioEngine,
   diagnosticReportBuilder
 });
+markStartupDiag('app.debugConsole.ready');
+exposeStartupDiagnostics();
+
+let startupDiagnosticsFlushCount = 0;
+window.__micprobeFlushStartupDiagnosticsToLog = (reason = 'manual') => {
+  startupDiagnosticsFlushCount += 1;
+  markStartupDiag('diag.flush.requested', { reason, count: startupDiagnosticsFlushCount });
+  const startupDiagnosticsSnapshot = getStartupDiagnostics();
+  getStartupDiagnosticLogLines().forEach((line, index) => {
+    log.webaudio(line, index === 0 ? startupDiagnosticsSnapshot : { startupDiagId: startupDiagnosticsSnapshot.id });
+  });
+  return startupDiagnosticsSnapshot;
+};
 
 // Diagnostik rapor sistemi
 diagnosticReportBuilder.init({
   metricsCollector: audioMetricsCollector,
+  systemProbeCollector,
   profileController,
   logManager
 });
@@ -318,7 +346,7 @@ setupButtonHandlers(
   { recordingController, monitoringController }
 );
 
-const cleanupCountdownHandlers = setupTestCountdownHandlers(UIElements.testCountdownEl, eventBus);
+const cleanupCountdownHandlers = setupTestCountdownHandlers(UIElements.testCountdownEl, UIElements.testProgressFillEl, eventBus);
 
 // ============================================
 // BASLANGIC - PRE-INITIALIZATION
@@ -357,6 +385,11 @@ log.system('Application started', {
   mediaDevicesSupported: !!navigator.mediaDevices?.getUserMedia,
   rtcPeerConnectionSupported: !!window.RTCPeerConnection
 });
+markStartupDiag('app.ready', {
+  currentProfileId: profileController.getCurrentProfileId(),
+  workletSupported: WORKLET_SUPPORTED,
+  wasmOpusSupported: WASM_OPUS_SUPPORTED
+});
 
 // ============================================
 // CLEANUP - PAGE UNLOAD
@@ -366,6 +399,8 @@ window.addEventListener('beforeunload', () => {
   deviceInfo.destroy();
   player.destroy();
   audioMetricsCollector.destroy();
+  systemProbeCollector.destroy();
+  deepAnalysisEngine.destroy();
   diagnosticReportBuilder.destroy();
   reportPanelUI.destroy();
   profileUIManager.destroy();

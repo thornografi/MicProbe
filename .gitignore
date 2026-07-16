@@ -4,6 +4,8 @@ node_modules/
 # Environment
 .env
 .env.local
+.dev.vars
+.dev.vars.*
 
 # IDE
 .vscode/
@@ -23,9 +25,11 @@ logs/
 # Build
 dist/
 build/
+.wrangler/
 
 # Temp
 *.tmp
+.tmp/
 temp/
 tmpclaude-*
 

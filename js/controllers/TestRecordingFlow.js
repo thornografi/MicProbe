@@ -1,11 +1,16 @@
 /**
- * TestRecordingFlow - Loopback test kayit ve playback akisi
+ * TestRecordingFlow - Loopback test kayit ve analiz akisi
  * SRP: MonitoringController'dan ayrildi, sadece test flow'undan sorumlu
  * DIP: Bagimliliklar controller uzerinden alinir
+ *
+ * Akis: kayit (7sn konusma) -> stopRecording -> startAnalysing (offline deep analiz +
+ * gercek progress bar) -> TEST_COMPLETED -> rapor. Playback (geri dinletme) kaldirildi;
+ * yerini kullanicinin duydugu "Analysing" fazi aldi.
  */
 import eventBus from '../modules/EventBus.js';
 import loopbackManager from '../modules/LoopbackManager.js';
-import { TEST, EVENTS } from '../modules/constants.js';
+import deepAnalysisEngine from '../modules/DeepAnalysisEngine.js';
+import { TEST, EVENTS, DEEP_ANALYSIS } from '../modules/constants.js';
 import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState, getStreamErrorMessage } from '../modules/utils.js';
 import { requestStream } from '../modules/StreamHelper.js';
 
@@ -21,10 +26,8 @@ class TestRecordingFlow {
     this.testCountdownInterval = null;
     this.testMediaRecorder = null;
     this.testAudioBlob = null;
-    this.testAudioElement = null;
-    this.testAudioUrl = null;
     this.testActivatorAudio = null;  // Chrome/WebRTC activator
-    this.testPhase = null;  // 'recording' | 'playback' | null
+    this.testPhase = null;  // 'recording' | 'stopping' | 'analysing' | null
     this.testChunks = [];
   }
 
@@ -35,20 +38,19 @@ class TestRecordingFlow {
 
   /**
    * Test toggle (test butonuna tiklandiginda)
-   * Skype/Zoom pattern: Kayit sirasinda tiklanirsa erken durdur ve playback'e gec
+   * Kayit sirasinda tiklanirsa erken durdur ve analize gec.
    */
   async toggle() {
     // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
     if (this.deps.getIsPreparing?.()) return;
 
     if (this.testPhase === 'recording') {
-      // Erken durdur -> playback'e gec (iptal degil)
+      // Erken durdur -> analize gec (iptal degil)
       await this.stopRecording();
-    } else if (this.testPhase === 'stopping') {
-      // Durdurma async surecinde - ikinci tiklamayi yut (re-entry/deadlock onleme)
+    } else if (this.testPhase === 'stopping' || this.testPhase === 'analysing') {
+      // Durdurma/analiz async surecinde - tiklamayi yut (re-entry onleme; analiz kisa surer,
+      // MAX_WAIT_MS butcesi asilsa bile startAnalysing raporu yine acar)
       return;
-    } else if (this.testPhase === 'playback') {
-      await this.stopPlayback();
     } else {
       await this.startRecording();
     }
@@ -131,118 +133,100 @@ class TestRecordingFlow {
 
     log.stream('Test recording stopping', {});
 
-    // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
-    // 'inactive' recorder onstop tetiklemez (USB cihaz cekilmesi/ICE kopmasi) -> deadlock onlemek icin direkt resolve
-    const recorder = this.testMediaRecorder;
-    const stopPromise = new Promise(resolve => {
-      if (!recorder || recorder.state === 'inactive') {
-        this.testAudioBlob = this.testChunks.length
-          ? new Blob(this.testChunks, { type: recorder?.mimeType || 'audio/webm' })
-          : null;
-        log.recorder(`MediaRecorder already inactive: ${this.testChunks.length} chunk`);
-        resolve();
-        return;
-      }
-      recorder.onstop = () => {
-        this.testAudioBlob = new Blob(this.testChunks, { type: recorder.mimeType || 'audio/webm' });
-        log.recorder(`MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
-        resolve();
-      };
-      recorder.stop();
-    });
+    try {
+      // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
+      // 'inactive' recorder onstop tetiklemez (USB cihaz cekilmesi/ICE kopmasi) -> deadlock onlemek icin direkt resolve
+      const recorder = this.testMediaRecorder;
+      const stopPromise = new Promise(resolve => {
+        if (!recorder || recorder.state === 'inactive') {
+          this.testAudioBlob = this.testChunks.length
+            ? new Blob(this.testChunks, { type: recorder?.mimeType || 'audio/webm' })
+            : null;
+          log.recorder(`MediaRecorder already inactive: ${this.testChunks.length} chunk`);
+          resolve();
+          return;
+        }
+        recorder.onstop = () => {
+          this.testAudioBlob = new Blob(this.testChunks, { type: recorder.mimeType || 'audio/webm' });
+          log.recorder(`MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
+          resolve();
+        };
+        recorder.stop();
+      });
 
-    // onstop'u bekle
-    await stopPromise;
+      // onstop'u bekle
+      await stopPromise;
 
-    // VU Meter event'leri
-    eventBus.emit(EVENTS.STREAM_STOPPED);
+      // VU Meter event'leri
+      eventBus.emit(EVENTS.STREAM_STOPPED);
 
-    // DRY: LoopbackManager.cleanup() dogrudan kullan
-    await loopbackManager.cleanup();
-    stopStreamTracks(this.controller.loopbackLocalStream);
-    this.controller.loopbackLocalStream = null;
+      // DRY: LoopbackManager.cleanup() dogrudan kullan
+      await loopbackManager.cleanup();
+      stopStreamTracks(this.controller.loopbackLocalStream);
+      this.controller.loopbackLocalStream = null;
 
-    eventBus.emit(EVENTS.TEST_RECORDING_STOPPED);
-    log.stream('Test recording complete, playback starting...');
+      eventBus.emit(EVENTS.TEST_RECORDING_STOPPED);
+      log.stream('Test recording complete, playback starting...');
+    } catch (err) {
+      // Kayit sonlandirma hatasi -> raporsuz temiz cikis (sayfa kilitlenmesin)
+      log.error('Test stopRecording error', { error: err.message });
+      eventBus.emit(EVENTS.UI_MESSAGE, {
+        message: 'Test could not finish cleanly. Try running the test again.',
+        tone: 'error'
+      });
+      await this._finish(EVENTS.TEST_CANCELLED);
+      return;
+    }
 
-    // Playback'e gec
-    await this.startPlayback();
+    // Analize gec (kendi hata yonetimi var)
+    await this.startAnalysing();
   }
 
   /**
-   * Test playback baslat
+   * Test analiz fazi (playback yerine): offline deep analiz + gercek progress bar.
+   * Kayit bittikten sonra buffer decode edilip yuksek cozunurluklu spektral analiz yapilir;
+   * progress bar bu gercek isi yansitir, tamamlaninca rapor acilir.
    */
-  async startPlayback() {
-    // Blob kontrolu
+  async startAnalysing() {
+    // Bos kayit -> raporsuz iptal (eski playback blob guard'i ile ayni davranis)
     if (!this.testAudioBlob || this.testAudioBlob.size === 0) {
-      log.error('Test playback error: No audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
-      log.error('Test recording empty - no audio data received');
+      log.error('Test analysing skipped: no audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
       eventBus.emit(EVENTS.UI_MESSAGE, {
         message: 'No audio was captured. Check the selected microphone and try the test again.',
         tone: 'error'
       });
-      await this._cleanup();
-      eventBus.emit(EVENTS.TEST_CANCELLED);
+      await this._finish(EVENTS.TEST_CANCELLED);
       return;
     }
 
-    this.testPhase = 'playback';
-    this.deps.setCurrentMode('test-playback');
+    this.testPhase = 'analysing';
+    this.deps.setCurrentMode('test-analysing');
     this.deps.uiStateManager?.updateButtonStates();
+    eventBus.emit(EVENTS.TEST_ANALYSING_STARTED);
+    log.stream('Test analysing starting', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
 
-    log.stream('Test playback starting', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
-
-    // Basit Audio element ile oynat
-    this.testAudioUrl = URL.createObjectURL(this.testAudioBlob);
-    this.testAudioElement = new Audio(this.testAudioUrl);
-
-    this.testAudioElement.onended = async () => {
-      log.stream('Test complete');
-      await this._cleanup();
-      eventBus.emit(EVENTS.TEST_COMPLETED);
-    };
-
-    this.testAudioElement.onerror = async (e) => {
-      // Audio element error event'i MediaError objesi dondurur
-      const mediaError = this.testAudioElement?.error;
-      const errorCode = mediaError?.code;
-      const errorMsg = mediaError?.message || 'Unknown error';
-      log.error('Test playback error', { errorCode, errorMsg, blobType: this.testAudioBlob?.type });
-      eventBus.emit(EVENTS.UI_MESSAGE, {
-        message: 'Test playback failed. Try running the test again.',
-        tone: 'error'
-      });
-      await this._cleanup();
-      eventBus.emit(EVENTS.TEST_CANCELLED);
-    };
+    // Blob referansini yakala (_cleanup testAudioBlob'u null'lar; deepAnalysisEngine kendi referansini tutar)
+    const blob = this.testAudioBlob;
 
     try {
-      await this.testAudioElement.play();
-      eventBus.emit(EVENTS.TEST_PLAYBACK_STARTED);
-      log.player('Test playback started');
-    } catch (err) {
-      log.error('Test play error', { error: err.message, name: err.name, blobSize: this.testAudioBlob?.size });
-      eventBus.emit(EVENTS.UI_MESSAGE, {
-        message: 'Test playback failed. Try running the test again.',
-        tone: 'error'
+      const analyzePromise = deepAnalysisEngine.analyze(blob, {
+        source: 'test',
+        onProgress: (ratio) => eventBus.emit(EVENTS.TEST_ANALYSING_PROGRESS, { ratio })
       });
-      await this._cleanup();
-      eventBus.emit(EVENTS.TEST_CANCELLED);
-    }
-  }
 
-  /**
-   * Test playback durdur
-   */
-  async stopPlayback() {
-    if (this.testAudioElement) {
-      this.testAudioElement.pause();
-      this.testAudioElement.onended = null;
-      this.testAudioElement.onerror = null;
+      // Guvenlik butcesi: analiz asilirsa (worker takilirsa) rapor yine acilir (degrade)
+      await Promise.race([
+        analyzePromise,
+        new Promise(resolve => setTimeout(resolve, DEEP_ANALYSIS.MAX_WAIT_MS))
+      ]);
+    } catch (err) {
+      // Analiz hatasi raporu iptal ETMEZ — audioMetrics zaten kayit sirasinda toplandi
+      log.error('Test analysing error', { error: err.message });
     }
-    log.player('Test playback stopped');
-    await this._cleanup();
-    eventBus.emit(EVENTS.TEST_PLAYBACK_STOPPED);
+
+    // Bar'i tamamla ve raporu ac
+    eventBus.emit(EVENTS.TEST_ANALYSING_PROGRESS, { ratio: 1 });
+    await this._finish(EVENTS.TEST_COMPLETED);
   }
 
   /**
@@ -253,19 +237,23 @@ class TestRecordingFlow {
 
     log.stream('Test cancelling', {});
 
-    if (this.testMediaRecorder?.state !== 'inactive') {
-      this.testMediaRecorder.stop();
+    try {
+      // null-safe: recorder yoksa stop() cagirma (aksi halde throw)
+      if (this.testMediaRecorder && this.testMediaRecorder.state !== 'inactive') {
+        this.testMediaRecorder.stop();
+      }
+
+      // DRY: Mevcut cleanup fonksiyonlari kullan
+      eventBus.emit(EVENTS.STREAM_STOPPED);
+      await loopbackManager.cleanup();
+      stopStreamTracks(this.controller.loopbackLocalStream);
+      this.controller.loopbackLocalStream = null;
+    } catch (err) {
+      log.error('Test cancel error', { error: err.message });
+    } finally {
+      log.stream('Test cancelled');
+      await this._finish(EVENTS.TEST_CANCELLED);
     }
-
-    // DRY: Mevcut cleanup fonksiyonlari kullan
-    eventBus.emit(EVENTS.STREAM_STOPPED);
-    await loopbackManager.cleanup();
-    stopStreamTracks(this.controller.loopbackLocalStream);
-    this.controller.loopbackLocalStream = null;
-
-    log.stream('Test cancelled');
-    await this._cleanup();
-    eventBus.emit(EVENTS.TEST_CANCELLED);
   }
 
   /**
@@ -286,7 +274,10 @@ class TestRecordingFlow {
     }, 1000);
 
     // Ana timer (7 sn sonra dur)
-    this.testTimerId = setTimeout(() => this.stopRecording(), TEST.DURATION_MS);
+    // Fire-and-forget: wrapAsyncHandler kapsaminin DISINDA -> .catch() zorunlu (unhandled rejection + UI kilidi onleme)
+    this.testTimerId = setTimeout(() => {
+      this.stopRecording().catch(err => log.error('Test auto-stop failed', { error: err.message }));
+    }, TEST.DURATION_MS);
   }
 
   /**
@@ -313,32 +304,39 @@ class TestRecordingFlow {
 
     // Idempotent loopback + mikrofon temizligi - hata/erken cikis yollarinda sizinti onleme.
     // Normal stopRecording yolunda zaten temizlenmis olur; tum cagrilar null-safe oldugundan tekrar zararsiz.
-    await loopbackManager.cleanup();
-    stopStreamTracks(this.controller.loopbackLocalStream);
-    this.controller.loopbackLocalStream = null;
+    // KRITIK: loopbackManager.cleanup() throw etse bile resetState() finally'de DAIMA calismali.
+    // Aksi halde document.body.dataset.appState 'testing'de takilir ve helpers.css tum sayfayi kilitler
+    // (RecordingController.stop() / MonitoringController.stop() ile ayni try/catch/finally deseni).
+    try {
+      await loopbackManager.cleanup();
+      stopStreamTracks(this.controller.loopbackLocalStream);
+    } catch (err) {
+      log.error('Test cleanup error', { error: err.message });
+    } finally {
+      this.controller.loopbackLocalStream = null;
+      this.testMediaRecorder = null;
+      this.testChunks = [];
+      this.testAudioBlob = null;
 
-    this.testMediaRecorder = null;
-    this.testChunks = [];
-    this.testAudioBlob = null;
+      // DRY: Activator audio temizle
+      cleanupActivatorAudio(this.testActivatorAudio);
+      this.testActivatorAudio = null;
 
-    if (this.testAudioUrl) {
-      URL.revokeObjectURL(this.testAudioUrl);
-      this.testAudioUrl = null;
+      this.testPhase = null;
+      resetState(this.deps);
     }
+  }
 
-    if (this.testAudioElement) {
-      this.testAudioElement.pause();
-      this.testAudioElement.onended = null;
-      this.testAudioElement.onerror = null;
-      this.testAudioElement = null;
-    }
-
-    // DRY: Activator audio temizle
-    cleanupActivatorAudio(this.testActivatorAudio);
-    this.testActivatorAudio = null;
-
-    this.testPhase = null;
-    resetState(this.deps);
+  /**
+   * Cleanup + terminal event'i atomik olarak birlikte tetikle (DRY).
+   * _cleanup() -> resetState() (appState) ile terminal event -> StatusManager idle gecisinin
+   * asenkron ayrismasini yapisal olarak imkansiz kilar.
+   * @param {string} eventName - EVENTS.TEST_COMPLETED | TEST_CANCELLED
+   * @private
+   */
+  async _finish(eventName) {
+    await this._cleanup();
+    eventBus.emit(eventName);
   }
 }
 

@@ -23,6 +23,25 @@ const LOG_CATEGORIES = {
   UI: 'ui'
 };
 
+const LOG_EVENT_BUCKETS = {
+  [EVENTS.LOG_ERROR]: LOG_CATEGORIES.ERROR,
+  [EVENTS.LOG_WARNING]: LOG_CATEGORIES.WARNING,
+  [EVENTS.LOG_AUDIO]: LOG_CATEGORIES.AUDIO,
+  [EVENTS.LOG_STREAM]: LOG_CATEGORIES.STREAM,
+  [EVENTS.LOG_WEBAUDIO]: LOG_CATEGORIES.WEBAUDIO,
+  [EVENTS.LOG_RECORDER]: LOG_CATEGORIES.RECORDER,
+  [EVENTS.LOG_SYSTEM]: LOG_CATEGORIES.SYSTEM,
+  [EVENTS.LOG_UI]: LOG_CATEGORIES.UI,
+  [EVENTS.LOG_LOOPBACK]: LOG_CATEGORIES.STREAM,
+  [EVENTS.LOG_CONSTRAINT]: LOG_CATEGORIES.STREAM,
+  [EVENTS.LOG_PLAYER]: LOG_CATEGORIES.AUDIO,
+  [EVENTS.LOG_PIPELINE]: LOG_CATEGORIES.WEBAUDIO,
+  [EVENTS.LOG_ENCODER]: LOG_CATEGORIES.WEBAUDIO,
+  [EVENTS.LOG_VUMETER]: LOG_CATEGORIES.WEBAUDIO,
+  [EVENTS.LOG_DEVICE]: LOG_CATEGORIES.SYSTEM,
+  [EVENTS.LOG_PROFILE]: LOG_CATEGORIES.UI
+};
+
 class LogManager {
   constructor() {
     this.logs = {
@@ -132,17 +151,9 @@ class LogManager {
     // Genel log event'i
     eventBus.on(EVENTS.LOG, (msg) => this.log('ui', msg));
 
-    // Kategorili event'ler
-    eventBus.on(EVENTS.LOG_ERROR, (data) => this.log('error', data.message, data.details));
-    eventBus.on(EVENTS.LOG_AUDIO, (data) => this.log('audio', data.message, data.details));
-    eventBus.on(EVENTS.LOG_STREAM, (data) => this.log('stream', data.message, data.details));
-    eventBus.on(EVENTS.LOG_WEBAUDIO, (data) => this.log('webaudio', data.message, data.details));
-    eventBus.on(EVENTS.LOG_RECORDER, (data) => this.log('recorder', data.message, data.details));
-    eventBus.on(EVENTS.LOG_SYSTEM, (data) => this.log('system', data.message, data.details));
-    eventBus.on(EVENTS.LOG_UI, (data) => this.log('ui', data.message, data.details));
-    eventBus.on(EVENTS.LOG_WARNING, (data) => {
-      // Warning'lar ayri kategoride (console'da turuncu)
-      this.log('warning', data.message, data.details);
+    // Kategorili event'ler: 16 helper -> 8 storage bucket.
+    Object.entries(LOG_EVENT_BUCKETS).forEach(([event, category]) => {
+      eventBus.on(event, (data) => this.log(category, data.message, data.details));
     });
 
     // Stream event'leri

@@ -44,6 +44,7 @@ class ReportPanelUI {
     this.premiumCtaEl = premiumCtaEl;
     this.premiumStatusEl = premiumStatusEl;
     this.showReportBtn = showReportBtnEl;
+    this.currentReport = null;
 
     // Rapor butonu (tekrar acma)
     this.showReportBtn?.addEventListener('click', () => this.open());
@@ -173,9 +174,11 @@ class ReportPanelUI {
       this.detailedEl?.classList.remove('blurred');
       this.premiumOverlayEl?.classList.add('hidden');
       this._setPremiumStatus('');
+      this._renderPremiumDetails();
       return;
     }
 
+    this._clearPremiumDetails();
     this.detailedEl?.classList.add('blurred');
     this.premiumOverlayEl?.classList.remove('hidden');
   }
@@ -190,9 +193,9 @@ class ReportPanelUI {
 
   _renderReport(report) {
     if (!report) return;
+    this.currentReport = report;
 
     const free = reportEvaluator.evaluateFree(report);
-    const detailed = reportEvaluator.evaluateDetailed(report);
 
     // Score badge
     this._renderScoreBadge(free.overall);
@@ -203,12 +206,6 @@ class ReportPanelUI {
     // Bulgular
     this._renderFindings(free.findings);
 
-    // Premium: Metrikler
-    this._renderMetrics(detailed.metrics);
-
-    // Premium: Oneriler
-    this._renderRecommendations(detailed.recommendations);
-
     this._syncPremiumState();
 
     // Rapor butonunu goster (tekrar acma icin)
@@ -218,6 +215,30 @@ class ReportPanelUI {
     this.open();
 
     log.ui('Report popup rendered', { score: free.overall.score, findingCount: free.findings.length });
+  }
+
+  async _renderPremiumDetails() {
+    if (!this.currentReport) {
+      this._clearPremiumDetails();
+      return;
+    }
+
+    try {
+      const detailed = await premiumAccess.fetchDetailedReport(this.currentReport);
+      this._renderMetrics(detailed.metrics);
+      this._renderRecommendations(detailed.recommendations);
+    } catch (err) {
+      this._clearPremiumDetails();
+      this.detailedEl?.classList.add('blurred');
+      this.premiumOverlayEl?.classList.remove('hidden');
+      this._setPremiumStatus('Premium details could not be loaded. Try checkout again.');
+      log.warning('Premium details could not be loaded', { error: err.message });
+    }
+  }
+
+  _clearPremiumDetails() {
+    this.metricsGridEl?.replaceChildren();
+    this.recommendationsEl?.replaceChildren();
   }
 
   _renderScoreBadge(overall) {
@@ -304,9 +325,41 @@ class ReportPanelUI {
       return;
     }
 
-    this.recommendationsEl.replaceChildren(
-      ...recommendations.map(r => this._createIconTextItem('rec-item', '\u2192', r.message))
+    const CATEGORY_LABELS = {
+      setting: 'Settings', microphone: 'Microphone', system: 'System / Performance',
+      environment: 'Environment', profile: 'Profile'
+    };
+    const ORDER = ['setting', 'microphone', 'system', 'environment', 'profile'];
+
+    // Kategoriye gore grupla
+    const groups = {};
+    for (const r of recommendations) {
+      const cat = r.category || 'profile';
+      (groups[cat] = groups[cat] || []).push(r);
+    }
+    const cats = Object.keys(groups).sort(
+      (a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99)
     );
+
+    const nodes = [];
+    for (const cat of cats) {
+      const title = this._createElement('div', `report-section-title rec-category-${cat}`, CATEGORY_LABELS[cat] || cat);
+      nodes.push(title);
+
+      for (const r of groups[cat]) {
+        const item = this._createElement('div', 'rec-item rec-item--rich');
+        const head = this._createElement('div', 'rec-head');
+        head.append(this._createElement('span', 'rec-icon', '\u2192'));
+        head.append(this._createElement('span', 'rec-reason', r.reason || r.message || ''));
+        if (r.confidence) {
+          head.append(this._createElement('span', `rec-confidence rec-confidence--${r.confidence}`, r.confidence));
+        }
+        item.append(head);
+        if (r.action) item.append(this._createElement('div', 'rec-action', r.action));
+        nodes.push(item);
+      }
+    }
+    this.recommendationsEl.replaceChildren(...nodes);
   }
 }
 

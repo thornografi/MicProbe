@@ -1,0 +1,14 @@
+{
+  "name": "micprobe",
+  "private": true,
+  "scripts": {
+    "cf:dev:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cloudflare-dev-assets.ps1",
+    "cf:dev:dry-run": "npm run cf:dev:assets && npx wrangler deploy --env dev --dry-run",
+    "cf:dev:deploy": "npm run cf:dev:assets && npx wrangler deploy --env dev",
+    "cf:dev:secret:list": "npx wrangler secret list --env dev",
+    "cf:dev:secret:product": "npx wrangler secret put MICPROBE_FREEMIUS_SANDBOX_PRODUCT_SECRET --env dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.50.0"
+  }
+}

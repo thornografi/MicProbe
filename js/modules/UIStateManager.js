@@ -135,10 +135,10 @@ class UIStateManager {
       isRecording: currentMode === 'recording',
       isMonitoring: currentMode === 'monitoring',
       isTestRecording: currentMode === 'test-recording',
-      isTestPlayback: currentMode === 'test-playback',
+      isTestAnalysing: currentMode === 'test-analysing',
       isPreparing
     };
-    flags.isTesting = flags.isTestRecording || flags.isTestPlayback;
+    flags.isTesting = flags.isTestRecording || flags.isTestAnalysing;
 
     // Global UI state - CSS whitelist yaklaşımı için
     const appState = isPreparing ? 'preparing'
@@ -159,7 +159,7 @@ class UIStateManager {
    * @private
    */
   _updateActionButtons(flags) {
-    const { isRecording, isMonitoring, isTestRecording, isTestPlayback, isTesting, isPreparing } = flags;
+    const { isRecording, isMonitoring, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
     const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
 
     // Toggle butonlarin active state'leri
@@ -183,7 +183,7 @@ class UIStateManager {
     // Test butonu
     if (testBtn) {
       testBtn.classList.toggle(UI_CLASSES.RECORDING, isTestRecording && !isPreparing);
-      testBtn.classList.toggle(UI_CLASSES.PLAYBACK, isTestPlayback);
+      testBtn.classList.toggle(UI_CLASSES.ANALYSING, isTestAnalysing);
       testBtn.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isTesting);
       testBtn.disabled = isRecording || isMonitoring || (isPreparing && !isTesting);
       testBtn.setAttribute('aria-pressed', isTesting ? 'true' : 'false');
@@ -296,7 +296,7 @@ class UIStateManager {
    * @private
    */
   _updateButtonTexts(flags) {
-    const { isRecording, isMonitoring, isTestRecording, isTestPlayback, isTesting, isPreparing } = flags;
+    const { isRecording, isMonitoring, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
     const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
 
     // Test buton text
@@ -309,10 +309,10 @@ class UIStateManager {
           testLabel = 'Preparing scenario test';
         } else if (isTestRecording) {
           testBtnText.textContent = 'Finish';
-          testLabel = 'Finish test recording and play back';
-        } else if (isTestPlayback) {
-          testBtnText.textContent = 'Stop';
-          testLabel = 'Stop test playback';
+          testLabel = 'Finish test recording and analyse';
+        } else if (isTestAnalysing) {
+          testBtnText.textContent = 'Analysing...';
+          testLabel = 'Analysing recording';
         } else {
           testBtnText.textContent = 'Run Test';
         }

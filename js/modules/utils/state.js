@@ -9,7 +9,7 @@
 /**
  * Preparing moduna gir
  * @param {Object} deps - Controller dependencies
- * @param {string} mode - 'recording' | 'monitoring' | 'test-recording' | 'test-playback'
+ * @param {string} mode - 'recording' | 'monitoring' | 'test-recording' | 'test-analysing'
  */
 export function beginPreparing(deps, mode) {
   deps.setCurrentMode(mode);

@@ -18,6 +18,7 @@ class StatusManager {
       webaudio: { class: 'status-webaudio', text: 'Live Monitor' },
       loopback: { class: 'status-loopback', text: 'Live Preview' },
       testing: { class: 'status-testing', text: 'Running Test' },
+      analysing: { class: 'status-analysing', text: 'Analysing Sample' },
       error: { class: 'status-error', text: 'Needs Attention' }
     };
 
@@ -48,10 +49,9 @@ class StatusManager {
       [EVENTS.LOOPBACK_STARTED]: () => this.setStatus('loopback', { clearMessage: true }),
       [EVENTS.LOOPBACK_STOPPED]: () => this.setStatus('idle'),
       [EVENTS.TEST_RECORDING_STARTED]: () => this.setStatus('testing', { clearMessage: true }),
-      [EVENTS.TEST_PLAYBACK_STARTED]: () => this.setStatus('testing', { clearMessage: true }),
+      [EVENTS.TEST_ANALYSING_STARTED]: () => this.setStatus('analysing', { clearMessage: true }),
       [EVENTS.TEST_COMPLETED]: () => this.setStatus('idle'),
       [EVENTS.TEST_CANCELLED]: () => this.setIdleUnlessMessageVisible(),
-      [EVENTS.TEST_PLAYBACK_STOPPED]: () => this.setIdleUnlessMessageVisible(),
       [EVENTS.UI_MESSAGE]: (data) => this.showMessage(data),
       [EVENTS.UI_CLEAR_MESSAGE]: () => this.clearMessage()
     };

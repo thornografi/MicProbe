@@ -132,15 +132,23 @@ export function setupKeyboardHandlers(drawerControllers) {
 }
 
 /**
- * Test countdown event handler'larini kaydet
- * @param {HTMLElement} testCountdownEl - Countdown elementi
+ * Test countdown + analysing progress bar event handler'larini kaydet
+ * @param {HTMLElement} testCountdownEl - Countdown badge elementi (kayit fazi)
+ * @param {HTMLElement} testProgressFillEl - Analysing progress fill elementi (analiz fazi)
  * @param {Object} eventBus - EventBus referansi
  * @returns {Function} - Cleanup fonksiyonu (unsubscribe icin)
  */
-export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
+export function setupTestCountdownHandlers(testCountdownEl, testProgressFillEl, eventBus) {
   const unsubscribers = [];
 
-  // Test countdown event listener
+  // Analysing progress bar (deep analiz ilerlemesini yansitir — 0..1)
+  const setProgress = (ratio) => {
+    if (!testProgressFillEl) return;
+    const r = Math.min(1, Math.max(0, ratio || 0));
+    testProgressFillEl.style.transform = `scaleX(${r})`;
+  };
+
+  // Test countdown (kayit fazi)
   const onCountdown = ({ remainingSec }) => {
     if (testCountdownEl) {
       testCountdownEl.textContent = remainingSec > 0 ? `${remainingSec}s` : '';
@@ -148,10 +156,17 @@ export function setupTestCountdownHandlers(testCountdownEl, eventBus) {
   };
   unsubscribers.push(eventBus.on(EVENTS.TEST_COUNTDOWN, onCountdown));
 
-  // Test tamamlandiginda/iptal edildiginde countdown temizle
-  const clearCountdown = () => { if (testCountdownEl) testCountdownEl.textContent = ''; };
-  [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_PLAYBACK_STOPPED, EVENTS.TEST_RECORDING_STOPPED]
-    .forEach(event => unsubscribers.push(eventBus.on(event, clearCountdown)));
+  // Analiz fazi: gercek progress bar
+  unsubscribers.push(eventBus.on(EVENTS.TEST_ANALYSING_STARTED, () => setProgress(0)));
+  unsubscribers.push(eventBus.on(EVENTS.TEST_ANALYSING_PROGRESS, ({ ratio }) => setProgress(ratio)));
+
+  // Test tamamlandiginda/iptal edildiginde countdown + progress temizle
+  const clearTestUi = () => {
+    if (testCountdownEl) testCountdownEl.textContent = '';
+    setProgress(0);
+  };
+  [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_RECORDING_STOPPED]
+    .forEach(event => unsubscribers.push(eventBus.on(event, clearTestUi)));
 
   // Cleanup fonksiyonu dondur
   return () => unsubscribers.forEach(unsub => typeof unsub === 'function' && unsub());

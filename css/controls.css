@@ -191,8 +191,8 @@
 .btn-test .icon-stop { display: none; }
 .btn-test.recording .icon-play { display: none; }
 .btn-test.recording .icon-stop { display: block; }
-.btn-test.playback .icon-play { display: none; }
-.btn-test.playback .icon-stop { display: block; }
+.btn-test.analysing .icon-play { display: none; }
+.btn-test.analysing .icon-stop { display: block; }
 
 /* Test recording state - .btn-action.active ile ayni box-shadow */
 .btn-test.recording {
@@ -200,18 +200,18 @@
               0 0 45px rgba(var(--color-purple-rgb), 0.35);
 }
 
-/* Test playback state - pulse animasyonu */
-.btn-test.playback {
-  animation: test-playback-pulse 1s ease-in-out infinite;
+/* Test analysing state - pulse animasyonu (mor/pembe ton) */
+.btn-test.analysing {
+  animation: test-analysing-pulse 1s ease-in-out infinite;
 }
 
-@keyframes test-playback-pulse {
+@keyframes test-analysing-pulse {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(var(--color-pink-rgb), 0.4),
+    box-shadow: 0 0 15px rgba(var(--color-purple-rgb), 0.4),
                 0 0 30px rgba(var(--color-purple-rgb), 0.25);
   }
   50% {
-    box-shadow: 0 0 25px rgba(var(--color-pink-rgb), 0.6),
+    box-shadow: 0 0 25px rgba(var(--color-purple-rgb), 0.6),
                 0 0 50px rgba(var(--color-purple-rgb), 0.4);
   }
 }
@@ -243,6 +243,35 @@
 
 .btn-test.recording .test-countdown {
   display: flex;
+}
+
+/* Test analysing progress bar - butonun altinda ince determinate cubuk */
+.test-progress-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(var(--color-white-rgb), 0.18);
+  overflow: hidden;
+  display: none;
+  z-index: 1;
+}
+
+.btn-test.analysing .test-progress-bar {
+  display: block;
+}
+
+.test-progress-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--color-purple), var(--color-purple-light));
+  transition: transform 0.12s linear;
+  will-change: transform;
 }
 
 /* ========== TOGGLE SWITCH ========== */

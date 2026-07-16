@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "micprobe",
+  "main": "worker/dev.js",
+  "compatibility_date": "2026-07-08",
+  "assets": {
+    "directory": ".tmp/cloudflare-dev-assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application",
+    "html_handling": "none"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "dev": {
+      "name": "micprobe-dev",
+      "vars": {
+        "MICPROBE_FREEMIUS_MODE": "sandbox",
+        "MICPROBE_FREEMIUS_SANDBOX_PRODUCT_ID": "33850",
+        "MICPROBE_FREEMIUS_SANDBOX_PLAN_ID": "55641",
+        "MICPROBE_FREEMIUS_SANDBOX_CHECKOUT_URL": "https://checkout.freemius.com/product/33850/plan/55641/?sandbox=true",
+        "MICPROBE_FREEMIUS_SANDBOX_BILLING_CYCLE": "lifetime",
+        "MICPROBE_FREEMIUS_SANDBOX_CHECKOUT_TITLE": "MicProbe Premium"
+      },
+      "kv_namespaces": [
+        {
+          "binding": "MICPROBE_REPLAY_GUARD",
+          "id": "af900dfcebd54dd0b0b30f80650061e4"
+        }
+      ]
+    }
+  }
+}

@@ -378,6 +378,55 @@
   font-size: var(--fs-sm);
 }
 
+/* Zengin oneri kalemi: neden (head) + aksiyon (alt satir) dikey */
+.rec-item--rich {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.rec-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.rec-reason {
+  flex: 1;
+}
+
+.rec-action {
+  margin-left: calc(var(--fs-sm) + var(--space-sm));
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
+.rec-confidence {
+  flex-shrink: 0;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full, 8px);
+}
+
+.rec-confidence--high {
+  background: var(--accent-danger-muted);
+  color: var(--accent-danger);
+}
+
+.rec-confidence--medium {
+  background: rgba(var(--color-purple-rgb), 0.18);
+  color: var(--color-purple-light);
+}
+
+.rec-confidence--low {
+  background: rgba(var(--color-white-rgb), 0.1);
+  color: var(--text-muted);
+}
+
 /* --- Premium Overlay --- */
 .premium-overlay {
   position: absolute;
