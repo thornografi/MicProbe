@@ -16,7 +16,6 @@ class UIStateManager {
     // UI element referanslari
     this.elements = {
       recordToggleBtn: null,
-      monitorToggleBtn: null,
       testBtn: null,
       testCountdownEl: null,
       loopbackToggle: null,
@@ -133,7 +132,6 @@ class UIStateManager {
     const flags = {
       isIdle: currentMode === null,
       isRecording: currentMode === 'recording',
-      isMonitoring: currentMode === 'monitoring',
       isTestRecording: currentMode === 'test-recording',
       isTestAnalysing: currentMode === 'test-analysing',
       isPreparing
@@ -143,7 +141,6 @@ class UIStateManager {
     // Global UI state - CSS whitelist yaklaşımı için
     const appState = isPreparing ? 'preparing'
       : flags.isRecording ? 'recording'
-      : flags.isMonitoring ? 'monitoring'
       : flags.isTesting ? 'testing'
       : 'idle';
     document.body.dataset.appState = appState;
@@ -155,29 +152,23 @@ class UIStateManager {
   }
 
   /**
-   * Ana aksiyon butonlarini guncelle (Record, Monitor, Test)
+   * Ana aksiyon butonlarini guncelle (Record, Test)
    * @private
    */
   _updateActionButtons(flags) {
-    const { isRecording, isMonitoring, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
-    const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
+    const { isRecording, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
+    const { recordToggleBtn, testBtn } = this.elements;
 
     // Toggle butonlarin active state'leri
     recordToggleBtn?.classList.toggle(UI_CLASSES.ACTIVE, isRecording && !isPreparing);
-    monitorToggleBtn?.classList.toggle(UI_CLASSES.ACTIVE, isMonitoring && !isPreparing);
 
     // Preparing state kontrolü
     recordToggleBtn?.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isRecording);
-    monitorToggleBtn?.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isMonitoring);
 
     // Disable kontrolu
     if (recordToggleBtn) {
-      recordToggleBtn.disabled = isMonitoring || isTesting || (isPreparing && !isRecording);
+      recordToggleBtn.disabled = isTesting || (isPreparing && !isRecording);
       recordToggleBtn.setAttribute('aria-pressed', isRecording ? 'true' : 'false');
-    }
-    if (monitorToggleBtn) {
-      monitorToggleBtn.disabled = isRecording || isTesting || (isPreparing && !isMonitoring);
-      monitorToggleBtn.setAttribute('aria-pressed', isMonitoring ? 'true' : 'false');
     }
 
     // Test butonu
@@ -185,7 +176,7 @@ class UIStateManager {
       testBtn.classList.toggle(UI_CLASSES.RECORDING, isTestRecording && !isPreparing);
       testBtn.classList.toggle(UI_CLASSES.ANALYSING, isTestAnalysing);
       testBtn.classList.toggle(UI_CLASSES.PREPARING, isPreparing && isTesting);
-      testBtn.disabled = isRecording || isMonitoring || (isPreparing && !isTesting);
+      testBtn.disabled = isRecording || (isPreparing && !isTesting);
       testBtn.setAttribute('aria-pressed', isTesting ? 'true' : 'false');
     }
   }
@@ -195,7 +186,7 @@ class UIStateManager {
    * @private
    */
   _updateControlLocks(flags) {
-    const { isIdle, isRecording, isMonitoring, isTesting, isPreparing } = flags;
+    const { isIdle, isRecording, isTesting, isPreparing } = flags;
     const {
       loopbackToggle, ecCheckbox, nsCheckbox, agcCheckbox,
       pipelineContainer, encoderContainer, timesliceContainer,
@@ -204,7 +195,7 @@ class UIStateManager {
     } = this.elements;
 
     // Aktif islem sirasinda kayit tarafini kilitle
-    const disableRecordingUi = isMonitoring || isRecording || isTesting;
+    const disableRecordingUi = isRecording || isTesting;
     pipelineContainer?.classList.toggle(UI_CLASSES.DISABLED, !isIdle);
     encoderContainer?.classList.toggle(UI_CLASSES.DISABLED, !isIdle);
     timesliceContainer?.classList.toggle(UI_CLASSES.DISABLED, disableRecordingUi);
@@ -296,8 +287,8 @@ class UIStateManager {
    * @private
    */
   _updateButtonTexts(flags) {
-    const { isRecording, isMonitoring, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
-    const { recordToggleBtn, monitorToggleBtn, testBtn } = this.elements;
+    const { isRecording, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
+    const { recordToggleBtn, testBtn } = this.elements;
 
     // Test buton text
     if (testBtn) {
@@ -321,9 +312,8 @@ class UIStateManager {
       testBtn.title = testLabel;
     }
 
-    // Record/Monitor buton text
+    // Record buton text
     const recordBtnText = recordToggleBtn?.querySelector('.btn-text');
-    const monitorBtnText = monitorToggleBtn?.querySelector('.btn-text');
 
     if (recordBtnText) {
       let recordLabel = 'Record test sample';
@@ -336,18 +326,6 @@ class UIStateManager {
       }
       recordToggleBtn?.setAttribute('aria-label', recordLabel);
       if (recordToggleBtn) recordToggleBtn.title = recordLabel;
-    }
-    if (monitorBtnText) {
-      let monitorLabel = 'Start advanced live monitor';
-      if (isPreparing && isMonitoring) {
-        monitorBtnText.textContent = 'Preparing...';
-        monitorLabel = 'Preparing live monitor';
-      } else {
-        monitorBtnText.textContent = isMonitoring ? 'Stop' : 'Monitor';
-        if (isMonitoring) monitorLabel = 'Stop live monitor';
-      }
-      monitorToggleBtn?.setAttribute('aria-label', monitorLabel);
-      if (monitorToggleBtn) monitorToggleBtn.title = isMonitoring ? monitorLabel : 'Advanced live monitor';
     }
   }
 

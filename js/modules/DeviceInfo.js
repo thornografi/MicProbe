@@ -197,11 +197,12 @@ class DeviceInfo {
     return realMics;
   }
 
-  _showMicPermissionPlaceholder(message = 'Click to allow microphone access') {
+  _showMicPermissionPlaceholder(message = 'Allow microphone access') {
     if (!this.micSelector) return;
     const option = document.createElement('option');
     option.value = '';
     option.disabled = true;
+    option.selected = true;
     option.textContent = message;
     this.micSelector.replaceChildren(option);
   }
@@ -282,7 +283,7 @@ class DeviceInfo {
     const { profile, values, category } = data;
 
     // Loopback durumuna gore bitrate secimi:
-    // - loopback ON: bitrate (WebRTC Opus) - sesli gorusme/monitoring
+    // - loopback ON: bitrate (WebRTC Opus) - sesli gorusme testi
     // - loopback OFF: mediaBitrate (MediaRecorder) - kayit
     // NOT: Kategori degil, gercek loopback durumu onemli (Ham Kayit'ta dinamik degisebilir)
     let bitrate;

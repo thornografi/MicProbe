@@ -1,6 +1,6 @@
 /**
  * StreamHelper - Ortak stream islemleri
- * requestStream fonksiyonu Monitor ve Recorder tarafindan kullanilir
+ * requestStream fonksiyonu TestRecordingFlow ve Recorder tarafindan kullanilir
  */
 import eventBus from './EventBus.js';
 import { log } from './utils.js';

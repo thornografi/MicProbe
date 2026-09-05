@@ -121,7 +121,7 @@ class AudioEngine {
   }
 
   /**
-   * Stream baglantisini kes (kayit/monitor durdugunca)
+   * Stream baglantisini kes (kayit/test durdugunca)
    * AudioContext acik kalir - tekrar baslangic icin hazir
    */
   disconnect() {

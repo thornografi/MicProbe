@@ -63,10 +63,13 @@ class CustomSettingsPanelHandler {
     if (!customSettingsToggle || !customSettingsContent) return;
 
     customSettingsToggle.addEventListener('click', () => {
+      if (customSettingsToggle.getAttribute('aria-disabled') === 'true') return;
       const isCollapsed = customSettingsContent.classList.contains('collapsed');
 
       customSettingsContent.classList.toggle('collapsed');
       customSettingsToggle.classList.toggle('expanded');
+      customSettingsToggle.setAttribute('aria-expanded', String(isCollapsed));
+      customSettingsContent.inert = !isCollapsed;
 
       log.ui(isCollapsed ? 'Custom settings opened' : 'Custom settings closed', {});
     });

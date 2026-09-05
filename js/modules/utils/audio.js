@@ -14,7 +14,11 @@ export async function createAudioContext(options = {}) {
   const ctx = new AudioContextCtor(options);
 
   if (ctx.state === 'suspended') {
-    await ctx.resume();
+    try { await ctx.resume(); }
+    catch (error) {
+      await ctx.close().catch(() => {});
+      throw error;
+    }
   }
 
   return ctx;
@@ -164,7 +168,7 @@ export function calculateActualBitrate(blobSize, durationMs) {
 
 /**
  * AnalyserNode factory - VU Meter icin tutarli AnalyserNode olusturma
- * DRY: BasePipeline, Monitor, AudioEngine ayni 3 satiri kullaniyordu
+ * BasePipeline, LoopbackManager ve AudioEngine icin ortak context kurulumu
  * @param {AudioContext} audioContext - AudioContext instance
  * @returns {AnalyserNode} - Konfigüre edilmiş AnalyserNode
  */

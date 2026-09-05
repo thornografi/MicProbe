@@ -10,7 +10,7 @@
  * 4. Console'a kisa versiyon yazar
  */
 import eventBus from './EventBus.js';
-import { DELAY, ENCODER_TYPES, IS_DEV, LOG, PIPELINE_TYPES, EVENTS } from './constants.js';
+import { ENCODER_TYPES, IS_DEV, LOG, EVENTS } from './constants.js';
 
 const LOG_CATEGORIES = {
   ERROR: 'error',
@@ -199,23 +199,6 @@ class LogManager {
       });
     });
 
-    // Monitor event'leri
-    eventBus.on(EVENTS.MONITOR_STARTED, (data) => {
-      const mode = data?.mode;
-      const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
-      this.log(category, 'Monitor started', {
-        mode,
-        delaySeconds: data?.delaySeconds,
-        loopback: !!data?.loopback
-      });
-    });
-
-    eventBus.on(EVENTS.MONITOR_STOPPED, (data) => {
-      const mode = data?.mode;
-      const category = (data?.loopback || mode === PIPELINE_TYPES.DIRECT) ? 'stream' : 'webaudio';
-      this.log(category, 'Monitor stopped', { mode, loopback: !!data?.loopback });
-    });
-
     // VU Meter event'leri (sadece onemli olanlar)
     eventBus.on(EVENTS.VUMETER_STARTED, () => {
       this.log('audio', 'VU Meter started');
@@ -374,7 +357,6 @@ class LogManager {
 
     let lastWebAudioEnabled = null;
     let recordingActive = false;
-    let monitoringActive = false;
     let streamBalance = 0;
 
     for (const entry of entries) {
@@ -399,66 +381,9 @@ class LogManager {
         }
       }
 
-      // UI aksiyon loglari - detayi kontrol et
-      // NOT: MonitoringController log format: { webAudioEnabled, loopbackEnabled, pipeline, pipelineDesc }
-      if (category === 'stream' && message === 'Monitor Start button pressed') {
-        const { webAudioEnabled, loopbackEnabled, pipeline, pipelineDesc } = details;
-        // WebAudio kapaliyken pipeline 'direct' olmali
-        if (webAudioEnabled === false && pipeline && pipeline !== PIPELINE_TYPES.DIRECT) {
-          addIssue('error', 'MONITOR_MODE_MISMATCH', 'WebAudio Pipeline is INACTIVE but pipeline is not direct', {
-            webAudioEnabled,
-            pipeline,
-            loopbackEnabled
-          });
-        }
-        // Loopback aktifken pipelineDesc 'WebRTC Loopback' icermeli
-        if (loopbackEnabled === true && typeof pipelineDesc === 'string' && !pipelineDesc.includes('WebRTC Loopback')) {
-          addIssue('warn', 'PIPELINE_LABEL_MISMATCH', 'Loopback is active but pipelineDesc does not contain WebRTC Loopback', {
-            pipeline,
-            pipelineDesc
-          });
-        }
-      }
-
-      // Monitor eventleri (LogManager tarafindan olusturulan)
-      if (message === 'Monitor started') {
-        const delaySeconds = details?.delaySeconds;
-        if (!(Number.isFinite(delaySeconds) && delaySeconds > 0)) {
-          addIssue('warn', 'MONITOR_DELAY_MISSING', 'Monitor started but delaySeconds log detail is missing/invalid', {
-            delaySeconds,
-            mode: details?.mode,
-            loopback: !!details?.loopback
-          });
-        } else if (Math.abs(delaySeconds - DELAY.DEFAULT_SECONDS) > 0.01) {
-          addIssue('warn', 'MONITOR_DELAY_UNEXPECTED', `Monitor delay is not at expected value (expected: ${DELAY.DEFAULT_SECONDS}s)`, {
-            delaySeconds,
-            expected: DELAY.DEFAULT_SECONDS,
-            mode: details?.mode,
-            loopback: !!details?.loopback
-          });
-        }
-
-        if (recordingActive) {
-          addIssue('error', 'CONCURRENT_RECORD_AND_MONITOR', 'Monitor started but recording appears already active', {
-            mode: details?.mode,
-            loopback: !!details?.loopback
-          });
-        }
-        monitoringActive = true;
-      }
-
-      if (message === 'Monitor stopped') {
-        monitoringActive = false;
-      }
-
       // Tum encoder tiplerine gore kayit baslangici tespit et
       const recorderStartMessages = ['MediaRecorder started', 'WASM Opus encoder started', 'PCM/WAV encoder started'];
       if (category === 'recorder' && recorderStartMessages.includes(message)) {
-        if (monitoringActive) {
-          addIssue('error', 'CONCURRENT_MONITOR_AND_RECORD', 'Recording started but monitoring appears already active', {
-            lastWebAudioEnabled
-          });
-        }
         recordingActive = true;
       }
 
@@ -470,12 +395,9 @@ class LogManager {
     }
 
     // NOT: runSanityChecks() aktif session sirasinda cagrilabilir
-    // Bu durumda aktif kayit/monitor normal bir durumdur, hata degil
+    // Bu durumda aktif kayit normal bir durumdur, hata degil
     if (recordingActive) {
       addIssue('info', 'RECORDING_ACTIVE', 'Recording is active (still running during check)', {});
-    }
-    if (monitoringActive) {
-      addIssue('info', 'MONITORING_ACTIVE', 'Monitoring is active (still running during check)', {});
     }
     if (streamBalance !== 0) {
       addIssue('warn', 'STREAM_BALANCE_NONZERO', 'Stream start/stop balance is not zero at session end', { streamBalance });
@@ -488,7 +410,6 @@ class LogManager {
         lastWebAudioEnabled,
         streamBalance,
         recordingActive,
-        monitoringActive,
         totalEntries: entries.length
       }
     };

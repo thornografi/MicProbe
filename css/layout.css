@@ -4,67 +4,64 @@
    Bu dosya sadece app-specific layout ve component stilleri icerir.
 */
 
-/* App view - arka plan body'den miras */
+/* The document canvas supplies the shared landing and app background. */
 /* #app-view (index.html#app) icin tasarlanmistir */
 #app-view {
-  /* background body'den miras - DRY */
   position: relative;
   min-height: 100vh;
 }
 
-/* Standalone app shell - ileride ayri app sayfasi icin (opsiyonel) */
+/* Form kontrolleri (button/select/input) UA stylesheet'inden sistem fontu alir;
+   sayfanin yazi tipini miras almalari icin sifir-specificity reset. Sadece app
+   modunda (landing gizli); component kurallari ustune yazar. */
+:where(body.app-mode) :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+/* Shared header and footer enclose the scenario rail and working area. */
 .app-shell {
-  --header-height: calc(var(--navbar-height) * 1.4);
-  display: flex;
-  flex-direction: column;
+  --header-height: var(--navbar-height);
+  --rail-width: var(--sidebar-width);
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-rows: var(--header-height) 1fr auto;
   min-height: 100vh;
   position: relative;
-  /* background body'den miras - DRY */
 }
 
-/* App layout container */
 .app-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  background: transparent;
+  display: contents;
 }
 
-.app-layout::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: var(--sidebar-width);
-  width: 1px;
-  height: 100%;
-  background: linear-gradient(180deg,
-    transparent 0%,
-    rgba(var(--color-orange-rgb), 0.15) 20%,
-    rgba(var(--color-purple-rgb), 0.25) 50%,
-    rgba(var(--color-orange-rgb), 0.15) 80%,
-    transparent 100%);
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* ========== APP LAYOUT ========== */
-/* NOT: .app-layout temel stilleri yukarida tanimli (gradient background) */
-/* Burasi sadece flex layout ozellikleri */
-
-/* ========== SIDEBAR ========== */
+/* ========== SIDEBAR (rail nav) ========== */
 .sidebar {
-  width: var(--sidebar-width);
-  background: rgba(var(--color-white-rgb), 0.015);
-  backdrop-filter: blur(var(--backdrop-blur));
-  -webkit-backdrop-filter: blur(var(--backdrop-blur));
+  grid-area: 2 / 1 / 3 / 2;
+  background: rgba(var(--bg-primary-rgb), 0.22);
+  border-right: 1px solid var(--border-secondary);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   position: relative;
-  z-index: 1; /* Gradient overlay'in ustunde */
+  z-index: 1;
   font-family: var(--font-sans);
   contain: layout style;
+}
+
+.sidebar-intro {
+  padding: 28px 24px 20px;
+}
+
+.sidebar-intro h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-intro p {
+  max-width: 21ch;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
 }
 
 .sidebar-header {
@@ -110,71 +107,69 @@
 
 .sidebar-nav {
   flex: 1;
-  padding: var(--sidebar-nav-top) var(--space-md) var(--space-md) var(--space-md);
+  padding: 0 12px 24px;
   overflow-y: auto;
 }
 
 .nav-section {
-  margin-bottom: var(--space-xl);
+  margin-bottom: 24px;
 }
 
 .nav-section + .nav-section {
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border-secondary);
+  padding-top: 4px;
 }
 
-  .nav-section-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 2.2px;
-  padding: var(--space-sm) var(--space-md);
-  margin-bottom: var(--space-sm);
-  background: transparent;
-  border-left: none;
-  border-radius: 0;
-  opacity: 0.65;
-  font-family: var(--font-mono);
+.nav-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  margin-bottom: 4px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 10px;
   width: 100%;
-  padding: 10px var(--space-md);
+  min-height: 40px;
+  margin-bottom: 4px;
+  padding: 10px 12px;
   background: transparent;
   border: none;
-  border-left: 3px solid transparent; /* smooth transition icin initial state */
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   color: var(--text-secondary);
-  font-size: var(--fs-base);
-  font-weight: 450;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: background var(--transition-fast), color var(--transition-fast);
   text-align: left;
-  letter-spacing: 0.2px;
-  opacity: 0.85;
   user-select: none;
 }
 
-.nav-item svg {
-  width: 18px;
-  height: 18px;
+.nav-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
-  opacity: 0.7;
+}
+
+.nav-icon svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  opacity: 0.8;
   fill: currentColor;
 }
 
 .nav-item:hover {
-  background: rgba(var(--color-purple-rgb), 0.06);
-  border-left-color: rgba(var(--color-purple-rgb), 0.2);
+  background: rgba(var(--color-white-rgb), 0.04);
   color: var(--text-primary);
-  opacity: 1;
 }
 
 .nav-item:hover svg {
@@ -183,33 +178,18 @@
 }
 
 .nav-item.active {
-  background: rgba(var(--color-accent-text-rgb), 0.1);
-  border-left: 3px solid var(--profile-accent);
-  position: relative;
-  opacity: 1;
-  box-shadow: inset 0 0 20px rgba(var(--color-accent-text-rgb), 0.04);
-}
-
-.nav-item.active span {
+  background: rgba(var(--color-purple-rgb), 0.14);
   color: var(--profile-accent);
-  font-family: var(--font-ui-accent);
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(var(--color-accent-text-rgb), 0.05), transparent);
-  border-radius: inherit;
-  pointer-events: none;
+/* Aktif durum agirlik+renk ile; font ailesi degismez (state gecisinde genislik ziplamasi olmaz) */
+.nav-item.active span {
+  font-weight: 600;
 }
 
 .nav-item.active svg {
   opacity: 1;
-  color: var(--profile-accent);
-  filter: drop-shadow(0 0 6px var(--profile-accent-glow));
+  color: inherit;
 }
 
 .nav-item.disabled {
@@ -217,16 +197,45 @@
   cursor: not-allowed;
 }
 
-/* Tree görünümü - profiller kategori altında girintili */
+/* Kategori basliklari hiyerarsiyi kurar; profil satirlari ayni hizada kalir. */
 .nav-item-sub {
-  margin-left: var(--space-md);
-  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
-  gap: var(--space-sm);
+  margin-left: 0;
 }
 
-.nav-item-sub svg {
-  width: 16px;
-  height: 16px;
+/* Equal slots; narrower glyphs need optical compensation. */
+.nav-item[data-profile="meeting-call"] .nav-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.nav-item[data-profile="zoom-hifi"] .nav-icon svg,
+.nav-item[data-profile="raw"] .nav-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.nav-item[data-profile="whatsapp-telegram-call"] .nav-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sidebar-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 24px 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-secondary);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.sidebar-note svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
 }
 
 .sidebar-footer {
@@ -258,27 +267,21 @@
   animation: pulse 0.8s infinite;
 }
 
-.sidebar-status.monitoring .status-indicator {
-  background: var(--color-orange);
-  box-shadow: 0 0 8px rgba(var(--color-orange-rgb), 0.6);
-}
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
-/* ========== MAIN CONTENT ========== */
+/* ========== MAIN CONTENT (calisma alani) ========== */
 .main-content {
-  flex: 1;
+  grid-area: 2 / 2 / 3 / 3;
   display: flex;
   flex-direction: column;
-  overflow-x: clip;
-  overflow-y: hidden;
-  background: transparent; /* Gradient .app-layout'tan gelir */
-  min-height: 0; /* Flex overflow fix */
+  background: transparent;
+  min-width: 0;
+  min-height: 0;
   position: relative;
-  z-index: 1; /* Gradient overlay'in ustunde */
+  z-index: 1;
   contain: layout;
 }
 
@@ -286,103 +289,111 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  /* Responsive: Büyük ekranlarda geniş, küçük ekranlarda önce boşluk azalır */
-  --content-right-padding: clamp(16px, calc(20vw - 100px), 405px);
-  --panel-right-bleed: min(var(--content-right-padding), 120px);
-  padding: var(--padding-fluid);
-  padding-right: var(--content-right-padding);
-  overflow-y: auto;
-  min-height: 0; /* Flex overflow fix */
-  /* Büyük ekranlarda içeriği ortala */
   align-items: center;
+  padding: clamp(28px, 3.5vh, 44px) var(--padding-fluid) var(--padding-fluid);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The global footer spans both columns; links remain in a bounded inner row. */
+.app-shell .site-footer {
+  grid-area: 3 / 1 / 4 / -1;
+  padding: 18px var(--padding-fluid);
+  border-top: 1px solid var(--border-primary);
+  background: var(--chrome-bg);
+  text-align: left;
+  margin-top: 0;
+}
+
+.app-shell .site-footer-content {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  /* Keep the fixed diagnostics control clear of footer links and copyright. */
+  padding-right: 56px;
+}
+
+.app-shell .site-footer-brand,
+.app-shell .site-footer-links a[href="#features"],
+.app-shell .site-footer-links a[href="#how-it-works"] {
+  display: none;
+}
+
+.app-shell .site-footer-links {
+  gap: 20px;
+}
+
+.app-shell .site-footer-links a::before {
+  content: none;
+}
+
+.app-shell .site-footer-links a,
+.app-shell .site-footer-contact,
+.app-shell .site-footer-meta {
+  font-size: var(--fs-xs);
+}
+
+.app-shell .site-footer-meta {
+  order: -1;
+  margin-right: auto;
+}
+
+.app-shell .site-footer-links a,
+.app-shell .site-footer-contact {
+  color: var(--text-secondary);
+}
+
+body.production .app-shell .site-footer-content {
+  padding-right: 0;
 }
 
 /* ========== RESPONSIVE ========== */
 
-/* ========== SIDEBAR RESPONSIVE (768-1200px) ========== */
-/* Küçük ekranlı laptop'lar için kademeli daraltma
-   Varsayılan sidebar: 282px (variables.css)
-
-   Breakpoint Hesaplaması:
-   ─────────────────────────────────────────────────
-   768-1023px:  220px (~78% of 282px) - Kompakt mod
-   1024-1200px: 250px (~89% of 282px) - Orta mod
-   >1200px:     282px (varsayılan)    - Tam genişlik
-
-   NOT: CSS media query condition'larında variable kullanılamadığından
-   width değerleri hardcoded. Sidebar genişliği değişirse burası da güncellenmeli.
-*/
-
-/* 768-1023px arası: Sidebar kompakt (~78% daraltma) */
+/* Ray genislikleri variables.css'te; 768px masaustu duzenine dahildir. */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .sidebar {
-    width: var(--sidebar-width-compact);
-  }
-
-  .sidebar .nav-section-title {
-    font-size: var(--fs-xs);
-    letter-spacing: 1px; /* Daha sıkı spacing */
+  .app-shell {
+    --rail-width: var(--sidebar-width-compact);
   }
 
   .sidebar .nav-item {
-    padding: 8px 12px;  /* Varsayılan: 10px 16px */
-    font-size: 13px;    /* Varsayılan: 14px (--fs-base) */
-  }
-
-  .sidebar .nav-item svg {
-    width: 16px;  /* Varsayılan: 18px */
-    height: 16px;
-  }
-
-  /* Gradient line - sidebar genişliğiyle senkron */
-  .app-layout::before {
-    left: var(--sidebar-width-compact);
+    padding-inline: 10px;
+    gap: 8px;
   }
 }
 
-/* 1024-1200px arası: Sidebar orta (~89% daraltma) */
 @media (min-width: 1024px) and (max-width: 1200px) {
-  .sidebar {
-    width: var(--sidebar-width-medium);
-  }
-
-  .sidebar .nav-item {
-    padding: 9px 14px; /* Varsayılan: 10px 16px - hafif daraltma */
-  }
-
-  /* Gradient line - sidebar genişliğiyle senkron */
-  .app-layout::before {
-    left: var(--sidebar-width-medium);
+  .app-shell {
+    --rail-width: var(--sidebar-width-medium);
   }
 }
 
-/* Büyük tablet ve altı - sağ boşluğu kademeli azalt */
-@media (max-width: 1200px) {
-  .content-container {
-    --content-right-padding: clamp(16px, 8vw, 80px);
-  }
-}
-
-/* Tablet - sağ boşluğu minimize et */
-@media (max-width: 900px) {
-  .content-container {
-    --content-right-padding: 16px;
-    --panel-right-bleed: 0;
+/* Mobil: grid kabugu dikey akisa doner - ust bar tam genislik (hamburger + ortali marka),
+   sidebar sabit konumlu cekmece, footer tam genislik */
+@media (max-width: 767px) {
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    background: none;
   }
 
-  .panel-unified {
-    width: 100%;
-    margin-right: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .app-layout::before {
-    content: none;
+  .app-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
   }
 
-  .app-header-content {
-    padding: 0 var(--space-md);
+  .app-header {
+    height: var(--header-height);
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  .main-content {
+    flex: 1;
+    margin-left: 0;
   }
 
   .sidebar {
@@ -392,35 +403,34 @@
     height: calc(100vh - var(--header-height));
     height: calc(100dvh - var(--header-height));
     left: calc(-1 * var(--sidebar-width));
+    visibility: hidden;
     z-index: var(--z-drawer);
+    background: var(--bg-primary);
     transition: left 0.3s ease;
     box-shadow: var(--panel-shadow);
   }
 
   .sidebar.open {
     left: 0;
-  }
-
-  .main-content {
-    margin-left: 0;
+    visibility: visible;
   }
 
   .content-container {
-    padding: var(--space-md);
+    padding: 24px 20px 28px;
   }
 
-  .page-header {
-    flex-direction: column;
-    gap: var(--space-md);
+  .app-shell .site-footer-content {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-sm) var(--space-md);
+    padding-inline: 0;
   }
 
-  .header-left h1 {
-    font-size: var(--fs-2xl);
-  }
-
-  .button-row {
-    flex-direction: column;
-    align-items: stretch;
+  .app-shell .site-footer-meta {
+    order: 1;
+    flex-basis: 100%;
+    margin-inline: 0;
+    text-align: center;
   }
 
   .mic-dropdown {
@@ -443,27 +453,11 @@
 @media (max-width: 480px) {
   /* Content padding azalt - icerik alani genislesin */
   .content-container {
-    --content-right-padding: 16px;
-    padding: var(--space-sm);
+    padding-inline: 16px;
   }
 
-  /* Panel bleed kapat - overflow-x onle */
-  .panel-unified {
-    width: 100%;
-    margin-right: 0;
-    border-radius: var(--radius-lg);
-  }
-
-  /* Sabit genislikler kaldir */
-  .unified-left .button-row,
-  .unified-left .mic-selector-row,
   .vu-section {
     max-width: 100%;
-  }
-
-  /* Row gap azalt */
-  .unified-row {
-    gap: var(--space-md);
   }
 
   /* Dev console drawer tam ekran */
@@ -488,20 +482,14 @@
     font-size: var(--fs-sm);
   }
 
-  /* Header font kucult */
-  .page-header h1 {
-    font-size: var(--fs-xl);
-  }
-
   /* Mic dropdown tam genislik */
   .mic-dropdown {
     min-width: 0;
     width: 100%;
   }
 
-  /* Tips/Status daha kompakt */
-  .unified-tips .utip,
-  .unified-status .stat {
+  /* Tips daha kompakt */
+  .unified-tips .utip {
     font-size: var(--fs-sm);
   }
 

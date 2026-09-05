@@ -12,11 +12,6 @@ export const AUDIO = {
   CENTER_VALUE: 128                // 8-bit audio center point
 };
 
-// === DELAY (Echo/Feedback Onleme) ===
-export const DELAY = {
-  MAX_SECONDS: 3.0,               // DelayNode maksimum delay suresi
-  DEFAULT_SECONDS: 1.7            // Varsayilan delay suresi (feedback onleme)
-};
 
 // === BUFFER ===
 export const BUFFER = {
@@ -49,7 +44,7 @@ export const BYTES = {
 };
 
 // === ENVIRONMENT ===
-export const IS_DEV = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+export const IS_DEV = ['localhost', '127.0.0.1'].includes(globalThis.location?.hostname);
 
 // === LOG ===
 export const LOG = {
@@ -110,13 +105,7 @@ export const EVENTS = {
   RECORDING_STARTED: 'recording:started',
   RECORDING_COMPLETED: 'recording:completed',
   RECORDING_FAILED: 'recording:failed',
-  // Monitor
-  MONITOR_STARTED: 'monitor:started',
-  MONITOR_STOPPED: 'monitor:stopped',
-  MONITOR_ERROR: 'monitor:error',
   // Loopback
-  LOOPBACK_STARTED: 'loopback:started',
-  LOOPBACK_STOPPED: 'loopback:stopped',
   LOOPBACK_REMOTE_STREAM: 'loopback:remoteStream',
   LOOPBACK_STATS: 'loopback:stats',
   // Test

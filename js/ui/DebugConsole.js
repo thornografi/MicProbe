@@ -12,7 +12,6 @@ class DebugConsole {
       eventBus: null,
       logger: null,
       logManager: null,
-      monitor: null,
       audioEngine: null
     };
 
@@ -32,7 +31,7 @@ class DebugConsole {
    * Console globalleri de development icin kayit edilir
    */
   registerGlobals() {
-    const { eventBus, logger, logManager, monitor, audioEngine } = this.deps;
+    const { eventBus, logger, logManager, audioEngine } = this.deps;
 
     // --- Action handlers ---
     const clearLog = () => eventBus.emit(EVENTS.LOG_CLEAR);
@@ -136,7 +135,6 @@ class DebugConsole {
     const _registerGetter = (name, getter, label) => {
       window[name] = () => { const s = getter(); console.log(`${label}:`, s); return s; };
     };
-    _registerGetter('getMonitorState', () => monitor.getWebAudioState(), 'Monitor WebAudio State');
     _registerGetter('getAudioEngineState', () => audioEngine.getState(), 'AudioEngine State');
   }
 
@@ -153,7 +151,7 @@ class DebugConsole {
     // Global referanslari temizle
     const globals = [
       'clearLog', 'copyAllLogs', 'exportLogs', 'filterLogs',
-      'getLogStats', 'getMonitorState', 'getAudioEngineState',
+      'getLogStats', 'getAudioEngineState',
       'exportDiagnosticReport', 'runSanityChecks'
     ];
     globals.forEach(name => delete window[name]);

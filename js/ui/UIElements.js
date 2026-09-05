@@ -32,7 +32,7 @@ function queryAll(selector) {
 // BUTON ELEMENTLERI
 // ============================================
 export const recordToggleBtn = getEl('recordToggle');
-export const monitorToggleBtn = getEl('monitorToggle');
+
 export const testBtn = getEl('testBtn');
 export const profileMenuBtn = getEl('profileMenuBtn');
 export const testCountdownEl = getEl('testCountdown');

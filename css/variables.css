@@ -32,31 +32,18 @@
   --profile-accent-glow: rgba(var(--color-accent-text-rgb), 0.55);
 
   /* Background - Dark theme */
-  --bg-primary: #0a0a0f;
+  --bg-primary-rgb: 13, 12, 20;
+  --bg-primary: rgb(var(--bg-primary-rgb));
   --bg-secondary: #12121a;
   --bg-input: rgba(var(--color-white-rgb), 0.05);
   --bg-elevated: rgba(var(--color-white-rgb), 0.08);
 
-  /* Gradient backgrounds - Landing VE App icin */
-  --gradient-bg: linear-gradient(135deg,
-    #0a0a0f 0%,
-    #0a0a0f 14%,
-    #0f0f18 20%,
-    #12121a 24%,
-    #1a1028 30%,
-    #0f0f18 36%,
-    #151520 40%,
-    #0f0f18 46%,
-    #12121a 50%,
-    #0f0f18 56%,
-    #1a1028 62%,
-    #0f0f18 68%,
-    #12121a 72%,
-    #1a1028 78%,
-    #0f0f18 84%,
-    #2d1b4e 92%,
-    #2d1b4e 100%);
-  --gradient-hero: radial-gradient(ellipse at 50% 100%, rgba(var(--color-purple-rgb), 0.15) 0%, transparent 60%);
+  /* One viewport-relative canvas for landing, app and legal pages. */
+  --site-atmosphere: radial-gradient(ellipse at 50% 0%,
+    rgba(146, 117, 194, 0.18) 0%,
+    rgba(146, 117, 194, 0.06) 45%,
+    rgba(146, 117, 194, 0) 78%);
+  --chrome-bg: rgba(var(--bg-primary-rgb), 0.46);
 
   /* Primary accent gradient */
   --gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
@@ -177,7 +164,7 @@
   /* ========== TYPOGRAPHY ========== */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Bricolage Grotesque', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-ui-accent: 'Rubik', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-ui-accent: var(--font-display);
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
 
   /* Font sizes - px (fixed scale for UI components) */
@@ -193,7 +180,7 @@
   --fs-3xl: 30px;
 
   /* Button sizes */
-  --btn-action-height: 48px;
+  --btn-action-height: 44px;
 
   /* ========== SHADOWS ========== */
   --shadow-sm: 0 1px 2px rgba(var(--color-black-rgb), 0.3);
@@ -226,9 +213,9 @@
   --z-report: 1100;
 
   /* ========== LAYOUT ========== */
-  --sidebar-width: 282px;
-  --sidebar-width-compact: calc(var(--sidebar-width) * 0.78);  /* ~220px @ 768-1023px */
-  --sidebar-width-medium: calc(var(--sidebar-width) * 0.89);   /* ~250px @ 1024-1200px */
+  --sidebar-width: 248px;
+  --sidebar-width-compact: 216px;
+  --sidebar-width-medium: 232px;
   --navbar-height: 72px;
   --sidebar-nav-top: 30px;
   --player-time-width: 105px;
@@ -240,36 +227,41 @@
 
   /* ========== UI STATES ========== */
   --opacity-disabled: 0.55;
+
+  /* ========== APP SURFACE (test-console kartlari) ========== */
+  /* Translucent surfaces carry the landing palette into the workspace. */
+  --surface-card-bg: rgba(25, 23, 34, 0.72);
+  --surface-card-border: rgba(207, 198, 226, 0.13);
+  --surface-card-shadow: 0 8px 32px rgba(var(--color-black-rgb), 0.10);
+  --surface-inset: #15131d;
+
+  /* Action buttons share the landing accent. */
+  --gradient-action: var(--gradient-neon-circle);
+
+  /* App icerik kolonu ust siniri: page-header ve test-console ayni genislikte,
+     content-container icinde ortalanir (simetrik gutter) */
+  --app-content-max: 1280px;
 }
 
-/* ========== SHARED HERO OVERLAY ========== */
-#landing-view::before,
-#app-view::before,
-.app-shell::after {
-  content: '';
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--gradient-hero);
-  pointer-events: none;
-  z-index: 0;
-}
-
-#landing-view::before {
-  position: absolute;
-}
-
-#app-view::before,
-.app-shell::after {
-  position: fixed;
+/* Keep text readable while sharing the landing's brand colors. */
+body.app-mode {
+  color-scheme: dark;
+  --bg-secondary: #191422;
+  --bg-input: rgba(255, 255, 255, 0.045);
+  --bg-elevated: #2b243a;
+  --text-primary: #f3f3fa;
+  --text-secondary: #afb0c0;
+  --text-muted: #989aac;
+  --profile-accent: var(--color-purple-light);
+  --font-ui-accent: var(--font-sans);
+  --fs-btn: 15px;
 }
 
 /* ========== HEADER BASE (Ortak Şablon) ========== */
 /* Landing navbar ve app header için ortak stil template */
 .header-base {
   /* Height standardization */
-  --header-height: calc(var(--navbar-height) * 1.4); /* 100.8px */
+  --header-height: var(--navbar-height);
   height: var(--header-height);
 
   /* Layout */
@@ -277,7 +269,7 @@
   align-items: center;
 
   /* Visual */
-  background: rgba(10, 10, 15, 0.8);
+  background: var(--chrome-bg);
   backdrop-filter: blur(var(--blur-md));
   -webkit-backdrop-filter: blur(var(--blur-md));
   border-bottom: 1px solid var(--glass-border);
@@ -302,7 +294,8 @@ html, body {
 }
 
 html {
-  background: var(--gradient-bg);
+  background: var(--site-atmosphere), var(--bg-primary);
+  background-attachment: fixed;
 }
 
 body {
@@ -312,19 +305,6 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Analog noise texture - audio equipment feel */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-  pointer-events: none;
-  z-index: 1; /* noise texture - en altta */
-  mix-blend-mode: overlay;
 }
 
 /* ========== FOCUS STATES ========== */
@@ -379,10 +359,10 @@ body::after {
 .brand-wordmark {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.24em;
+  gap: 0;
   white-space: nowrap;
-  font-family: 'Poppins', var(--font-display);
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  letter-spacing: -0.045em;
 }
 
 .brand-word {
@@ -390,14 +370,10 @@ body::after {
   line-height: 1;
 }
 
-.brand-word--mic {
-  font-weight: 400;
-  color: var(--color-purple);
-}
-
+.brand-word--mic,
 .brand-word--probe {
-  font-weight: 700;
-  color: var(--color-pink);
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 /* ========== LEGAL PAGES (Privacy, Terms vb.) ========== */
@@ -405,7 +381,7 @@ body::after {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  /* background: html'den miras alınır (--gradient-bg) */
+  /* Uses the shared html canvas. */
 }
 
 .legal-content {
@@ -474,7 +450,7 @@ body::after {
 .site-footer-brand {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   color: var(--text-primary);
   text-decoration: none;
   font-weight: 600;
@@ -483,26 +459,19 @@ body::after {
   transition: all var(--transition-normal);
 }
 
-.site-footer-brand svg {
-  width: 22px;
-  height: 22px;
-  /* SVG gradient fill attribute ile yonetilir, CSS color: url() gecersiz */
-  fill: currentColor;
-  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6)); /* landing ile ayni */
-  transition: transform var(--transition-normal), filter var(--transition-normal);
-}
-
 .site-footer-brand .brand-wordmark {
   color: inherit;
 }
 
-.site-footer-brand:hover {
-  background: var(--gradient-accent-subtle);
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
 }
 
-.site-footer-brand:hover svg {
-  transform: scale(1.15);
-  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.8));
+.site-footer-brand:hover {
+  background: var(--gradient-accent-subtle);
 }
 
 .site-footer-brand.disabled {
@@ -513,11 +482,6 @@ body::after {
 
 .site-footer-brand.disabled:hover {
   background: transparent;
-}
-
-.site-footer-brand.disabled:hover svg {
-  transform: none;
-  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));
 }
 
 .site-footer-links {

@@ -27,7 +27,7 @@ let fontStylesPromise = null;
 
 startStartupDiagnostics();
 
-const FONT_STYLESHEET_HREF = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Poppins:wght@400;700&family=Rubik:wght@500;600;700;800&display=swap';
+const FONT_STYLESHEET_HREF = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
 
 const APP_STYLESHEET_HREFS = [
   'css/layout.css',

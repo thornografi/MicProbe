@@ -12,8 +12,8 @@ import { EVENTS } from '../modules/constants.js';
  * @param {Object} controllers - Controller referanslari
  */
 export function setupButtonHandlers(elements, controllers) {
-  const { recordToggleBtn, monitorToggleBtn, testBtn } = elements;
-  const { recordingController, monitoringController } = controllers;
+  const { recordToggleBtn, testBtn } = elements;
+  const { recordingController, testRecordingFlow } = controllers;
 
   // Recording toggle
   recordToggleBtn.onclick = wrapAsyncHandler(
@@ -21,16 +21,10 @@ export function setupButtonHandlers(elements, controllers) {
     'Recording toggle error'
   );
 
-  // Monitoring toggle
-  monitorToggleBtn.onclick = wrapAsyncHandler(
-    () => monitoringController.toggle(),
-    'Monitor toggle error'
-  );
-
   // Test toggle (sadece varsa)
   if (testBtn) {
     testBtn.onclick = wrapAsyncHandler(
-      () => monitoringController.toggleTest(),
+      () => testRecordingFlow.toggle(),
       'Test toggle error'
     );
   }

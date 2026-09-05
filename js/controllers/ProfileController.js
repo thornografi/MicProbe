@@ -47,9 +47,7 @@ class ProfileController {
 
     // Callbacks
     this.callbacks = {
-      stopMonitoring: async () => {},
       stopRecording: async () => {},
-      startMonitoring: async () => {},
       startRecording: async () => {},
       updateButtonStates: () => {},
       updateBufferInfo: () => {},
@@ -121,18 +119,12 @@ class ProfileController {
 
     // Aktif stream varsa restart gerekiyor mu kontrol et
     const currentMode = this.getState.currentMode();
-    const wasActive = currentMode !== null;
-    const previousMode = currentMode;
+    const wasRecording = currentMode === 'recording';
 
     // Aktif stream varsa once durdur
-    if (wasActive) {
-      log.ui(`Profile changing, ${previousMode === 'monitoring' ? 'monitor' : 'recording'} will restart...`, {});
-
-      if (previousMode === 'monitoring') {
-        await this.callbacks.stopMonitoring();
-      } else if (previousMode === 'recording') {
-        await this.callbacks.stopRecording();
-      }
+    if (wasRecording) {
+      log.ui('Profile changing, recording will restart...', {});
+      await this.callbacks.stopRecording();
     }
 
     // Ayarlari Config.js metadata'sina gore dinamik uygula
@@ -194,16 +186,10 @@ class ProfileController {
     this.callbacks.updateButtonStates();
 
     // Aktif stream vardi ise yeni ayarlarla yeniden baslat
-    if (wasActive) {
+    if (wasRecording) {
       await new Promise(resolve => setTimeout(resolve, 100));
-
-      log.ui(`Restarting ${previousMode === 'monitoring' ? 'monitor' : 'recording'} with new profile...`, {});
-
-      if (previousMode === 'monitoring') {
-        await this.callbacks.startMonitoring();
-      } else if (previousMode === 'recording') {
-        await this.callbacks.startRecording();
-      }
+      log.ui('Restarting recording with new profile...', {});
+      await this.callbacks.startRecording();
     }
   }
 

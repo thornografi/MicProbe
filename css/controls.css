@@ -2,23 +2,23 @@
 /* Layout only - sadece yerleşim */
 .button-row {
   display: flex;
-  gap: var(--space-xl);
+  gap: 12px;
   align-items: center;
 }
 
 /*
  * App-specific button defaults
  * :where() ile specificity düşürüldü (0,0,1,0)
- * Böylece .btn-monitor, .btn-record gibi variant'lar override edebilir
+ * Variant'lar temel buton stillerini override edebilir.
  */
 :where(.button-row) .btn {
-  flex: 1;
+  flex: 0 0 auto;
   padding: var(--space-sm) var(--space-lg);
   border-radius: var(--radius-md);
   font-size: var(--fs-btn);
   font-family: var(--font-ui-accent);
-  font-weight: 700;
-  letter-spacing: 0.012em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 :where(.button-row) .btn svg {
@@ -37,19 +37,18 @@
 }
 
 /* ========== ACTION BUTTONS (Base Class) ========== */
-/* Record, Test ve Monitor butonları için ortak base class - DRY prensibi */
+/* Shared base for Record and Test actions. */
 /* .btn'den miras: display, align-items, justify-content, gap */
 .btn-action {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 152px;
   /* Sabit yükseklik - ikon boyutundan bağımsız tutarlılık */
   min-height: var(--btn-action-height);
-  background: var(--gradient-neon-circle);
+  background: var(--gradient-action);
   color: white;
   position: relative;
   overflow: hidden;
-  box-shadow:
-    0 0 15px rgba(var(--color-pink-rgb), 0.25),
-    0 4px 12px rgba(var(--color-black-rgb), 0.2);
+  box-shadow: inset 0 1px 0 rgba(var(--color-white-rgb), 0.12), 0 2px 4px rgba(var(--color-black-rgb), 0.18);
   user-select: none;
 }
 
@@ -66,20 +65,9 @@
   height: var(--fs-lg);
 }
 
-.btn-action::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--gradient-shine);
-  pointer-events: none;
-}
-
 .btn-action:hover:not(:disabled):not(.active) {
-  box-shadow:
-    0 0 28px rgba(var(--color-pink-rgb), 0.45),
-    0 8px 24px rgba(var(--color-black-rgb), 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  transform: translateY(-3px);
+  filter: brightness(1.12);
+  transform: none;
 }
 
 /* Ripple efekti - tiklama pozisyonunda radial glow */
@@ -101,19 +89,16 @@
   transition: opacity 0.05s ease;
 }
 
-.btn-action.active {
-  background: var(--gradient-neon-circle);
+.btn-action.active,
+.btn-test.recording {
+  background: var(--gradient-action);
   color: white;
-  box-shadow:
-    0 0 35px rgba(var(--color-pink-rgb), 0.6),
-    0 0 60px rgba(var(--color-purple-rgb), 0.4),
-    inset 0 1px 8px rgba(255, 255, 255, 0.06);
-  filter: brightness(1.08);
+  box-shadow: 0 0 0 2px rgba(var(--color-purple-rgb), 0.25);
 }
 
 /* Preparing state - ortak (DRY) */
 .btn-action.preparing {
-  background: var(--gradient-neon-circle);
+  background: var(--gradient-action);
   color: white;
   cursor: wait;
   pointer-events: none;
@@ -123,9 +108,10 @@
 /* Preparing state spinner */
 .btn-action.preparing::after {
   content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
+  position: static;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
@@ -145,41 +131,23 @@
 .btn-record .icon-square { display: none; }
 .btn-record.active .icon-circle { display: none; }
 .btn-record.active .icon-square { display: block; }
-.btn-record.preparing .icon-circle,
-.btn-record.preparing .icon-square { display: none; }
 
-/* ========== MONITOR BUTTON (Variant) ========== */
-/* Live monitor is advanced/supporting; keep it visually secondary while idle. */
-.btn-monitor {
-  flex: 0 1 126px;
-  min-width: 112px;
-  background: var(--glass-bg-hover);
-  border: 1px solid var(--glass-border);
-  color: var(--text-secondary);
-  box-shadow: none;
+@media (max-width: 767px) {
+  .button-row {
+    gap: 10px;
+  }
+
+  .button-row .btn-action {
+    min-width: 0;
+    padding-inline: 16px;
+  }
 }
 
-.btn-monitor::before {
-  opacity: 0.25;
+@media (max-width: 380px) {
+  .button-row .btn-action {
+    padding-inline: 12px;
+  }
 }
-
-.btn-monitor:hover:not(:disabled):not(.active) {
-  background: var(--gradient-accent-muted);
-  color: var(--text-primary);
-  box-shadow:
-    0 0 14px rgba(var(--color-purple-rgb), 0.18),
-    0 6px 18px rgba(var(--color-black-rgb), 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.btn-monitor.active {
-  flex: 1;
-}
-
-/* Monitor ikonu toggle */
-.btn-monitor .icon-stop { display: none; }
-.btn-monitor.active .icon-play { display: none; }
-.btn-monitor.active .icon-stop { display: block; }
 
 /* ========== TEST BUTTON (Variant) ========== */
 /* Test butonu - 7sn loopback test */
@@ -194,12 +162,6 @@
 .btn-test.analysing .icon-play { display: none; }
 .btn-test.analysing .icon-stop { display: block; }
 
-/* Test recording state - .btn-action.active ile ayni box-shadow */
-.btn-test.recording {
-  box-shadow: 0 0 25px rgba(var(--color-pink-rgb), 0.5),
-              0 0 45px rgba(var(--color-purple-rgb), 0.35);
-}
-
 /* Test analysing state - pulse animasyonu (mor/pembe ton) */
 .btn-test.analysing {
   animation: test-analysing-pulse 1s ease-in-out infinite;
@@ -207,24 +169,21 @@
 
 @keyframes test-analysing-pulse {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(var(--color-purple-rgb), 0.4),
-                0 0 30px rgba(var(--color-purple-rgb), 0.25);
+    box-shadow: 0 0 0 2px rgba(var(--color-purple-rgb), 0.12);
   }
   50% {
-    box-shadow: 0 0 25px rgba(var(--color-purple-rgb), 0.6),
-                0 0 50px rgba(var(--color-purple-rgb), 0.4);
+    box-shadow: 0 0 0 2px rgba(var(--color-purple-rgb), 0.32);
   }
 }
 
-/* Test preparing - ikon gizle (base .btn-action.preparing'den miras) */
-.btn-test.preparing .icon-play,
-.btn-test.preparing .icon-stop { display: none; }
+/* All preparing variants use the same spinner, without a second action icon. */
+.btn-action.preparing :is(.icon-circle, .icon-square, .icon-play, .icon-stop) {
+  display: none;
+}
 
-/* Test countdown badge - sağ üst köşe */
+/* Countdown participates in layout so compact labels cannot overlap it. */
 .test-countdown {
-  position: absolute;
-  top: -6px;
-  right: -6px;
+  flex-shrink: 0;
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
@@ -238,7 +197,6 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(229, 57, 53, 0.5);
-  z-index: 1;
 }
 
 .btn-test.recording .test-countdown {
@@ -314,7 +272,7 @@
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background: var(--gradient-accent);
+  background: var(--gradient-action);
   border-color: transparent;
   box-shadow: var(--shadow-accent-lg);
 }
@@ -381,7 +339,7 @@
 }
 
 .segment-control input[type="radio"]:checked + .segment-btn {
-  background: var(--gradient-accent);
+  background: var(--gradient-action);
   color: white;
   box-shadow: var(--shadow-accent-md);
 }

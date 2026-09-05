@@ -26,7 +26,7 @@
 }
 
 .navbar.scrolled {
-  background: rgba(10, 10, 15, 0.95);
+  background: rgba(var(--bg-primary-rgb), 0.92);
 }
 
 .navbar-brand {
@@ -39,13 +39,14 @@
 }
 
 .navbar-logo {
-  width: 30px;
-  height: 30px;
-  filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.5)) drop-shadow(0 0 12px rgba(139, 92, 246, 0.4));
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 .navbar-title {
-  font-size: var(--fs-xl);
+  font-size: 22px;
   font-weight: 600;
   color: var(--brand-text-color);
 }
@@ -148,10 +149,6 @@
 
 .hero-title .gradient-text {
   color: var(--color-accent-text); /* DRY: tek kaynaktan miras */
-  text-shadow:
-    0 0 20px rgba(var(--color-purple-rgb), 0.5),
-    0 0 40px rgba(var(--color-pink-rgb), 0.3),
-    0 0 80px rgba(var(--color-purple-rgb), 0.15);
 }
 
 .hero-subtitle {
@@ -646,7 +643,7 @@ body.app-mode .navbar {
     align-items: stretch;
     gap: var(--space-sm);
     padding: var(--space-md);
-    background: rgba(10, 10, 15, 0.96);
+    background: var(--bg-primary);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--panel-shadow);

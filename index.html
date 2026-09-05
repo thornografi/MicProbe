@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mic Probe - Diagnose Microphone Issues</title>
   <meta name="description" content="Test your microphone with behavior-based call and voice-message profiles. WebRTC, codec testing, and practical audio diagnostics.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+  <link rel="icon" type="image/svg+xml" href="/assets/micprobe-mark.svg">
   <!-- Fonts are loaded post-load by js/landing.js so local first paint stays fast. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;family=Poppins:wght@400;700&amp;family=Rubik:wght@500;600;700;800&amp;display=swap"></noscript>
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap"></noscript>
   <!-- Critical landing CSS only; app CSS is loaded by js/landing.js when app view is requested. -->
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/landing.css">
@@ -45,21 +45,9 @@
   <!-- SVG Sprite (inline - CORS sorunlarını önler) -->
   <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite">
     <defs>
-      <!-- Neon brand gradient for mic icon -->
-      <linearGradient id="navbar-brand-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#ec4899"/>
-        <stop offset="25%" stop-color="#c026d3"/>
-        <stop offset="50%" stop-color="#8b5cf6"/>
-        <stop offset="75%" stop-color="#6366f1"/>
-        <stop offset="100%" stop-color="#3b82f6"/>
-      </linearGradient>
       <!-- Mikrofon şekli - tek kaynak (DRY) -->
       <path id="mic-shape" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1 1.93c-3.94-.49-7-3.85-7-7.93h2c0 3.31 2.69 6 6 6s6-2.69 6-6h2c0 4.08-3.06 7.44-7 7.93V20h4v2H8v-2h4v-4.07z"/>
     </defs>
-    <!-- Brand mic - gradient renk -->
-    <symbol id="icon-mic-brand" viewBox="0 0 24 24">
-      <use href="#mic-shape" fill="url(#navbar-brand-gradient)"/>
-    </symbol>
     <!-- Standard mic - CSS rengi -->
     <symbol id="icon-mic" viewBox="0 0 24 24">
       <use href="#mic-shape" fill="currentColor"/>
@@ -117,8 +105,8 @@
     <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <polyline points="20 6 9 17 4 12"/>
     </symbol>
-    <symbol id="icon-phone" viewBox="0 0 24 24">
-      <path d="M20 15.5c-1.25 0-2.45-.2-3.57-.57a1.02 1.02 0 00-1.02.24l-2.2 2.2a15.074 15.074 0 01-6.59-6.58l2.2-2.21c.28-.27.36-.66.25-1.01A11.36 11.36 0 018.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/>
+    <symbol id="icon-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M3 10v4m4-7v10m5-14v18m5-14v10m4-7v4"/>
     </symbol>
     <symbol id="icon-list" viewBox="0 0 24 24">
       <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
@@ -154,7 +142,7 @@
     <!-- Navbar -->
     <nav class="navbar header-base" id="navbar">
       <a href="#" class="navbar-brand">
-        <svg class="navbar-logo" viewBox="0 0 24 24"><use href="#icon-mic-brand"/></svg>
+        <img class="navbar-logo" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
         <span class="navbar-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
       </a>
       <div class="navbar-nav" id="mobileNav">
@@ -313,7 +301,7 @@
           <div class="step-number" aria-hidden="true">2</div>
           <h3 class="step-title">Test Your Mic</h3>
           <p class="step-description">
-            Run a short call test or record a voice message. Live Monitor remains available as an advanced preview.
+            Run a short call test or record a voice message using your everyday microphone setup.
           </p>
         </div>
 
@@ -332,7 +320,7 @@
       <div class="site-footer-content">
         <!-- Logo -->
         <a href="#" class="site-footer-brand" id="footerBrand">
-          <svg viewBox="0 0 24 24"><use href="#icon-mic-brand"/></svg>
+          <img class="brand-mark" src="/assets/micprobe-mark.svg" width="24" height="24" alt="">
           <span class="brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
         </a>
         <!-- Linkler -->
@@ -345,7 +333,7 @@
         <!-- Contact -->
         <a href="mailto:micprobe@gmail.com" class="site-footer-contact">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-          micprobe@gmail.com
+          Support
         </a>
         <!-- Copyright -->
         <p class="site-footer-meta">&copy; 2025 MicProbe</p>
@@ -360,36 +348,44 @@
       <header class="app-header header-base">
         <div class="app-header-content">
           <a href="#" class="navbar-brand" id="appHeaderBrand" title="Back to Home">
-            <svg class="navbar-logo" viewBox="0 0 24 24"><use href="#icon-mic-brand"/></svg>
+            <img class="navbar-logo" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
             <span class="navbar-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
           </a>
           <button class="app-profile-menu-btn" id="profileMenuBtn" aria-label="Open profile menu" aria-controls="profileSidebar" aria-expanded="false">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><use href="#icon-menu"/></svg>
           </button>
+          <div class="workspace-bar">
+            <span class="workspace-label"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-signal"/></svg>Microphone diagnostics</span>
+            <span id="statusBadge" class="status status-idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Ready to Test</span>
+          </div>
         </div>
       </header>
 
       <div class="app-layout">
       <!-- Sidebar -->
       <aside class="sidebar" id="profileSidebar" aria-label="Profile navigation">
+        <div class="sidebar-intro">
+          <h2>Test scenarios</h2>
+          <p>Choose where your voice is heard.</p>
+        </div>
         <nav class="sidebar-nav">
           <!-- Voice Calls Category -->
           <div class="nav-section">
             <span class="nav-section-title">Voice Calls</span>
             <button class="nav-item nav-item-sub active" data-profile="discord">
-              <svg><use href="#icon-discord"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-discord"/></svg></span>
               <span>Discord</span>
             </button>
-            <button class="nav-item nav-item-sub" data-profile="meeting-call">
-              <svg><use href="#icon-zoom"/></svg>
+            <button class="nav-item nav-item-sub" data-profile="meeting-call" title="Zoom · Google Meet · Microsoft Teams">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-zoom"/></svg></span>
               <span>Meeting Call</span>
             </button>
             <button class="nav-item nav-item-sub" data-profile="zoom-hifi">
-              <svg><use href="#icon-music"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-music"/></svg></span>
               <span>Zoom High Fidelity</span>
             </button>
             <button class="nav-item nav-item-sub" data-profile="whatsapp-telegram-call">
-              <svg><use href="#icon-phone"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
               <span>WhatsApp / Telegram Call</span>
             </button>
           </div>
@@ -398,20 +394,23 @@
           <div class="nav-section">
             <span class="nav-section-title">Voice Messages</span>
             <button class="nav-item nav-item-sub" data-profile="whatsapp-voice">
-              <svg><use href="#icon-whatsapp"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
               <span>WhatsApp Voice</span>
             </button>
             <button class="nav-item nav-item-sub" data-profile="telegram-voice">
-              <svg><use href="#icon-telegram"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
               <span>Telegram Voice</span>
             </button>
             <button class="nav-item nav-item-sub" data-profile="raw">
-              <svg><use href="#icon-mic"/></svg>
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-mic"/></svg></span>
               <span>Raw Recording</span>
             </button>
           </div>
         </nav>
-
+        <div class="sidebar-note">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-info"/></svg>
+          <p>Scenario settings approximate each platform’s audio processing.</p>
+        </div>
       </aside>
 
       <!-- Main Content -->
@@ -425,21 +424,25 @@
                   <use href="#icon-discord"/>
                 </svg>
                 <h1 id="pageTitle">Discord Voice Test</h1>
-                <span id="statusBadge" class="status status-idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Ready to Test</span>
               </div>
-              <p id="pageSubtitle">WebRTC Loopback + Opus 64kbps</p>
+              <p class="workspace-description">Record your voice. Hear the result. Review what to improve.</p>
               <div id="userMessage" class="user-message" role="status" aria-live="polite" hidden></div>
             </div>
           </header>
 
-          <!-- Two Column Layout: Main + Info Sidebar -->
-          <!-- Single Unified Panel -->
-          <div class="panel panel-unified">
-            <div class="panel-body unified-body">
-              <!-- Row 1: Controls + Tips + Audio Status -->
-              <div class="unified-row unified-row-main">
-                <!-- Controls Section -->
-                <div class="unified-section unified-controls">
+          <!-- Test Console: kart tabanli layout (Control+Info / Result / Settings) -->
+          <div class="test-console">
+            <div class="console-row">
+              <!-- Control & Signal: mikrofon secimi, aksiyonlar ve canli seviye -->
+              <section class="console-card console-card--primary" aria-label="Test controls and signal levels">
+                <div class="console-card-section">
+                  <div class="input-heading">
+                    <span class="input-icon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-mic"/></svg></span>
+                    <div>
+                      <h2 class="console-card-heading"><label for="micSelector">Microphone input</label></h2>
+                      <p class="console-description">Speak naturally while the test or recording is running.</p>
+                    </div>
+                  </div>
                   <div class="mic-selector-row">
                     <select id="micSelector" class="mic-dropdown" aria-label="Select microphone">
                       <option value="">Default microphone</option>
@@ -462,103 +465,123 @@
                       <span class="test-countdown" id="testCountdown"></span>
                       <span class="test-progress-bar" id="testProgressBar"><span class="test-progress-fill" id="testProgressFill"></span></span>
                     </button>
-                    <button id="monitorToggle" class="btn btn-action btn-monitor always-active" title="Advanced live monitor" aria-label="Start advanced live monitor" aria-pressed="false">
-                      <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
-                      <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                      <span class="btn-text">Monitor</span>
-                    </button>
-                  </div>
-
-                  <div id="recordingTimer" class="recording-timer" aria-live="polite" aria-atomic="true">0:00</div>
-                </div>
-
-                <!-- Tips (inline text, no boxes) -->
-                <div class="unified-tips">
-                  <span class="utip"><em>1</em><span class="utip-text">Run a short scenario test</span></span>
-                  <span class="utip"><em>2</em><span class="utip-text">Play back the captured audio</span></span>
-                  <span class="utip"><em>3</em><span class="utip-text">Review the report and fixes</span></span>
-                </div>
-
-                <!-- Audio Status -->
-                <div id="deviceInfoPanel" class="unified-status">
-                  <div class="stat"><span class="stat-l">Mic</span><span class="stat-c">:</span><span id="infoMicName" class="stat-v">--</span></div>
-                  <div class="stat"><span class="stat-l">Ch</span><span class="stat-c">:</span><span id="infoChannels" class="stat-v">--</span></div>
-                  <div class="stat"><span class="stat-l">Target</span><span class="stat-c">:</span><span id="infoTargetBitrate" class="stat-v">--</span></div>
-                  <div class="stat"><span class="stat-l">Actual</span><span class="stat-c">:</span><span id="infoActualBitrate" class="stat-v">--</span></div>
-                </div>
-              </div>
-
-              <!-- Row 2: VU Meters -->
-              <div class="unified-row unified-row-vu">
-                <div class="vu-section">
-                  <div class="vu-label">
-                    <span id="signalDot" class="signal-dot" aria-hidden="true"></span>
-                    <span>Local (Microphone)</span>
-                  </div>
-                  <div class="vu-meter" role="meter" aria-label="Local microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                    <div id="vuMeterBar" class="vu-meter-bar"></div>
-                    <div id="vuMeterPeak" class="vu-meter-peak"></div>
+                    <div id="recordingTimer" class="recording-timer" aria-live="polite" aria-atomic="true">0:00</div>
                   </div>
                 </div>
-                <div id="remoteVuContainer" class="vu-section">
-                  <div class="vu-label">
-                    <span class="signal-dot remote-dot" aria-hidden="true"></span>
-                    <span>Remote (After Codec)</span>
-                  </div>
-                  <div class="vu-meter" role="meter" aria-label="Remote codec level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                    <div id="remoteVuBar" class="vu-meter-bar remote-bar"></div>
-                    <div id="remoteVuPeak" class="vu-meter-peak"></div>
-                  </div>
-                </div>
-              </div>
 
-              <!-- Row 3: Player -->
-              <div class="unified-row unified-row-player">
-                <div id="recordingPlayer" class="recording-player">
-                  <div class="player-controls">
-                    <button id="playBtn" class="btn-play" aria-label="Play">
-                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    </button>
-                    <div class="player-info">
-                      <div id="playerFilename" class="player-filename">No recording</div>
-                      <div id="playerMeta" class="player-meta">-</div>
+                <div class="console-card-section console-card-section--meters">
+                  <div class="meter-heading">
+                    <h2 class="console-card-heading">Signal levels</h2>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-signal"/></svg>
+                  </div>
+                  <div class="vu-section">
+                    <div class="vu-label">
+                      <span id="signalDot" class="signal-dot" aria-hidden="true"></span>
+                      <span>Microphone</span>
+                    </div>
+                    <div class="vu-meter" role="meter" aria-label="Local microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                      <div id="vuMeterBar" class="vu-meter-bar"></div>
+                      <div id="vuMeterPeak" class="vu-meter-peak"></div>
                     </div>
                   </div>
-                  <div class="player-progress-row">
-                    <div class="progress-bar" id="progressBar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                      <div id="progressFill" class="progress-fill"></div>
+                  <div id="remoteVuContainer" class="vu-section">
+                    <div class="vu-label">
+                      <span class="signal-dot remote-dot" aria-hidden="true"></span>
+                      <span>After processing</span>
                     </div>
-                    <div id="playerTime" class="player-time">0:00 / 0:00</div>
-                    <a id="downloadBtn" class="btn-download" href="#" download>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                      Download
-                    </a>
+                    <div class="vu-meter" role="meter" aria-label="Remote codec level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                      <div id="remoteVuBar" class="vu-meter-bar remote-bar"></div>
+                      <div id="remoteVuPeak" class="vu-meter-peak"></div>
+                    </div>
+                  </div>
+                  <p class="meter-hint">Levels appear while capturing audio.</p>
+                </div>
+              </section>
+
+              <!-- Info: cihaz durumu + kisa rehber -->
+              <aside class="console-card console-card--secondary" aria-label="Audio status and quick guide">
+                <div class="console-card-section">
+                  <h2 class="console-card-heading">How to test</h2>
+                  <div class="unified-tips">
+                    <span class="utip"><em>1</em><span class="utip-text">Run a short scenario test</span></span>
+                    <span class="utip"><em>2</em><span class="utip-text">Play back the captured audio</span></span>
+                    <span class="utip"><em>3</em><span class="utip-text">Review the report and fixes</span></span>
                   </div>
                 </div>
-                <p id="noRecording" class="empty-state" style="display: none;">Run a test or record a sample to generate a report</p>
-                <button id="showReportBtn" class="btn-show-report" style="display:none" aria-label="Open test report">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
-                  Open Test Report
-                </button>
-              </div>
-
-              <!-- Row 4: Custom Settings (Collapsible) -->
-              <div class="unified-row unified-row-settings" id="customSettingsPanel">
-                <div class="custom-settings-toggle" id="customSettingsToggle">
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use href="#icon-settings"/></svg>
-                  <span>Custom Settings</span>
-                  <svg class="toggle-chevron" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
+                <div class="console-card-section">
+                  <h2 class="console-card-heading">Audio details</h2>
+                  <p class="capture-details-hint">Measured values appear when capture starts.</p>
+                  <div id="deviceInfoPanel" class="status-tiles">
+                    <div class="status-tile status-tile--wide">
+                      <span class="status-tile-label">Microphone</span>
+                      <span id="infoMicName" class="status-tile-value">--</span>
+                    </div>
+                    <div class="status-tile">
+                      <span class="status-tile-label">Channels</span>
+                      <span id="infoChannels" class="status-tile-value">--</span>
+                    </div>
+                    <div class="status-tile">
+                      <span class="status-tile-label">Requested bitrate</span>
+                      <span id="infoTargetBitrate" class="status-tile-value">--</span>
+                    </div>
+                    <div class="status-tile status-tile--wide">
+                      <span class="status-tile-label">Actual bitrate</span>
+                      <span id="infoActualBitrate" class="status-tile-value">--</span>
+                    </div>
+                  </div>
+                  <details class="processing-details">
+                    <summary>Processing details</summary>
+                    <p id="pageSubtitle" class="scenario-spec">WebRTC Loopback + Opus 64kbps</p>
+                  </details>
                 </div>
-                <div class="custom-settings-content collapsed" id="customSettingsContent">
-                  <div class="custom-settings-grid" id="customSettingsGrid">
-                    <!-- Dynamic content via JS -->
+              </aside>
+            </div>
+
+            <!-- Result: playback + rapor. JS kategoriye gore gizler; .unified-row-player
+                 class'i UIElements.js closest() sozlesmesi - SILINMEMELI -->
+            <section class="console-card console-card--result unified-row-player" aria-label="Playback and report">
+              <h2 class="console-card-heading">Your recording</h2>
+              <div id="recordingPlayer" class="recording-player">
+                <div class="player-controls">
+                  <button id="playBtn" class="btn-play" aria-label="Play">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  </button>
+                  <div class="player-info">
+                    <div id="playerFilename" class="player-filename">No recording</div>
+                    <div id="playerMeta" class="player-meta">-</div>
                   </div>
                 </div>
+                <div class="player-progress-row">
+                  <div class="progress-bar" id="progressBar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div id="progressFill" class="progress-fill"></div>
+                  </div>
+                  <div id="playerTime" class="player-time">0:00 / 0:00</div>
+                  <a id="downloadBtn" class="btn-download" href="#" download>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Download
+                  </a>
+                </div>
               </div>
+              <p id="noRecording" class="empty-state" style="display: none;">Your sample will appear here, ready to play back and review.</p>
+              <button id="showReportBtn" class="btn-show-report" style="display:none" aria-label="Open test report">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                Open Test Report
+              </button>
+            </section>
 
-
-
-
+            <!-- Custom Settings: dusuk oncelikli collapsible serit -->
+            <div class="settings-strip" id="customSettingsPanel">
+              <button type="button" class="custom-settings-toggle" id="customSettingsToggle" aria-expanded="false" aria-controls="customSettingsContent">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><use href="#icon-settings"/></svg>
+                <span>Custom settings</span>
+                <span class="settings-summary">Fine-tune this scenario</span>
+                <svg class="toggle-chevron" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
+              </button>
+              <div class="custom-settings-content collapsed" id="customSettingsContent" inert>
+                <div class="custom-settings-grid" id="customSettingsGrid">
+                  <!-- Dynamic content via JS -->
+                </div>
+              </div>
             </div>
           </div>
 

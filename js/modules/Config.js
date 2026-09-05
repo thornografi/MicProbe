@@ -132,7 +132,7 @@ export const SETTINGS = {
     unit: 'ms',
     ui: { type: 'radio', name: 'timeslice' }
   }
-  // NOT: delay ayari kaldirildi - monitoring'de sabit 1.7sn kullaniliyor (constants.js → DELAY.DEFAULT_SECONDS)
+
 };
 
 // Varsayilan profil degerleri
@@ -172,10 +172,8 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
   }
 
   // OCP: Profil kendi yeteneklerini biliyor
-  // call kategorisi = monitoring, record kategorisi = kayit
-  // Istisna: loopback editable ise monitoring de yapilabilir
+  // call kategorisi = kisa WebRTC testi, record kategorisi = kayit
   const isCallCategory = category === 'call';
-  const loopbackEditable = settings === 'all' || editableSettings.includes('loopback');
 
   // Detection bilgisi (opsiyonel)
   const detection = settings.detection || null;
@@ -188,7 +186,7 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
     allowedValues, // Profil bazli deger kisitlamalari
     detection, // Teknoloji tespit detaylari
     // OCP: Yetenekler profilde tanimli
-    canMonitor: isCallCategory || loopbackEditable,
+    canTest: isCallCategory,
     canRecord: !isCallCategory,
     // Geriye uyumluluk
     allowedSettings: editableSettings.length > 0 ? editableSettings : 'all'
@@ -199,7 +197,7 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
 // İKİ ANA KATEGORİ: call (sesli görüşme) ve record (kayıt)
 export const PROFILES = {
   // ═══════════════════════════════════════════════════════════════
-  // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback, Test primary + Monitor advanced
+  // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback testi ve rapor
   // ═══════════════════════════════════════════════════════════════
   // Call profilleri platform klonu degil, duyulur codec/DSP davranisi yaklasimidir.
   'discord': createProfile('discord', 'Discord Voice', 'Discord-style voice channel with Krisp-like processing and higher Opus bitrate range',

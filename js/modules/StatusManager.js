@@ -3,7 +3,7 @@
  * OCP: Yeni durumlar eklenebilir
  */
 import eventBus from './EventBus.js';
-import { PIPELINE_TYPES, EVENTS } from './constants.js';
+import { EVENTS } from './constants.js';
 
 class StatusManager {
   constructor(elementId, messageElementId = null) {
@@ -14,9 +14,6 @@ class StatusManager {
     this.statusConfig = {
       idle: { class: 'status-idle', text: 'Ready to Test' },
       recording: { class: 'status-recording', text: 'Recording Sample' },
-      monitoring: { class: 'status-monitoring', text: 'Live Monitor' },
-      webaudio: { class: 'status-webaudio', text: 'Live Monitor' },
-      loopback: { class: 'status-loopback', text: 'Live Preview' },
       testing: { class: 'status-testing', text: 'Running Test' },
       analysing: { class: 'status-analysing', text: 'Analysing Sample' },
       error: { class: 'status-error', text: 'Needs Attention' }
@@ -36,18 +33,6 @@ class StatusManager {
     this._handlers = {
       [EVENTS.RECORDER_STARTED]: () => this.setStatus('recording', { clearMessage: true }),
       [EVENTS.RECORDER_STOPPED]: () => this.setStatus('idle'),
-      [EVENTS.MONITOR_STARTED]: (data) => {
-        if (data?.loopback) {
-          this.setStatus('loopback', { clearMessage: true });
-        } else if (data?.mode === PIPELINE_TYPES.SCRIPTPROCESSOR || data?.mode === PIPELINE_TYPES.WORKLET) {
-          this.setStatus('webaudio', { clearMessage: true });
-        } else {
-          this.setStatus('monitoring', { clearMessage: true });
-        }
-      },
-      [EVENTS.MONITOR_STOPPED]: () => this.setStatus('idle'),
-      [EVENTS.LOOPBACK_STARTED]: () => this.setStatus('loopback', { clearMessage: true }),
-      [EVENTS.LOOPBACK_STOPPED]: () => this.setStatus('idle'),
       [EVENTS.TEST_RECORDING_STARTED]: () => this.setStatus('testing', { clearMessage: true }),
       [EVENTS.TEST_ANALYSING_STARTED]: () => this.setStatus('analysing', { clearMessage: true }),
       [EVENTS.TEST_COMPLETED]: () => this.setStatus('idle'),

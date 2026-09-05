@@ -27,7 +27,6 @@ export function initProfileController(profileController, callbacks, elements, st
 export function initUIStateManager(uiStateManager, elements, stateGetters, profileController, radioGroups) {
   uiStateManager.init({
     recordToggleBtn: elements.recordToggleBtn,
-    monitorToggleBtn: elements.monitorToggleBtn,
     testBtn: elements.testBtn,
     testCountdownEl: elements.testCountdownEl,
     loopbackToggle: elements.loopbackToggle,
@@ -117,14 +116,12 @@ export function updateCategoryUI(profileId, elements) {
   const profile = PROFILES[profileId];
   if (!profile) return;
 
-  const { canMonitor, canRecord, category } = profile;
+  const { canTest, canRecord, category } = profile;
   const loopbackValue = profile.values?.loopback;
 
-  toggleDisplay(elements.monitorToggleBtn, canMonitor, 'flex');
   toggleDisplay(elements.recordToggleBtn, canRecord, 'flex');
 
-  const isCallCategory = category === 'call';
-  toggleDisplay(elements.testBtn, isCallCategory && canMonitor, 'flex');
+  toggleDisplay(elements.testBtn, canTest, 'flex');
   toggleDisplay(elements.recordingPlayerPanelEl, canRecord);
 
   const remoteVuContainer = document.getElementById('remoteVuContainer');
@@ -132,7 +129,7 @@ export function updateCategoryUI(profileId, elements) {
 
   log.ui(`Kategori UI guncellendi: ${category}`, {
     category,
-    canMonitor,
+    canTest,
     canRecord,
     remoteVuVisible: loopbackValue === true
   });

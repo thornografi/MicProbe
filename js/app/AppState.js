@@ -1,16 +1,16 @@
 /**
  * Global Application State
  *
- * Kapsam: Tum uygulamadaki aktif mod (recording/monitoring/idle) ve
+ * Kapsam: Tum uygulamadaki aktif mod (recording/test/idle) ve
  * preparing durumu. Controller veya modul seviyesi state BURADA TUTULMAZ.
  *
  * Controller state icin: js/modules/utils/state.js (beginPreparing, endPreparing, resetState)
  * Modul-internal state icin: Her modulun kendi instance degiskenleri
  */
 
-// Modlar: null (idle), 'recording', 'monitoring'
+// Modlar: null (idle), 'recording', 'test-recording', 'test-analysing'
 let currentMode = null;
-// Hazirlaniyor state (kayit/monitoring baslatilirken)
+// Hazirlaniyor state (kayit/test baslatilirken)
 let isPreparing = false;
 
 export function setCurrentMode(mode) {

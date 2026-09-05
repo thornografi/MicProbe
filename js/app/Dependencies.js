@@ -9,13 +9,13 @@ import { getRadioValue } from './SettingHelpers.js';
 
 /**
  * Controller bagimliliklarini olustur
- * @param {Object} modules - recorder, monitor, player, uiStateManager
+ * @param {Object} modules - recorder, player, uiStateManager
  * @param {Object} elements - UI elementleri
  * @param {Object} deviceInfo - DeviceInfo instance
  * @returns {Object} controllerDeps
  */
 export function createControllerDeps(modules, elements, deviceInfo) {
-  const { recorder, monitor, player, uiStateManager } = modules;
+  const { recorder, player, uiStateManager } = modules;
   const stateAccessors = getStateAccessors();
 
   return {
@@ -29,7 +29,7 @@ export function createControllerDeps(modules, elements, deviceInfo) {
     getBufferSize: () => getRadioValue(SETTING_NAMES.BUFFER_SIZE, BUFFER.DEFAULT_SIZE, true),
     getMediaBitrate: () => getRadioValue(SETTING_NAMES.MEDIA_BITRATE, 0, true),
     recorder,
-    monitor,
+
     player,
     uiStateManager,
     ...stateAccessors

@@ -1,7 +1,7 @@
 /**
  * TestRecordingFlow - Loopback test kayit ve analiz akisi
- * SRP: MonitoringController'dan ayrildi, sadece test flow'undan sorumlu
- * DIP: Bagimliliklar controller uzerinden alinir
+ * Test kaydi, iptal ve kaynak yasam dongusunun tek sahibi.
+ * Bagimliliklar uygulama tarafindan dogrudan verilir.
  *
  * Akis: kayit (7sn konusma) -> stopRecording -> startAnalysing (offline deep analiz +
  * gercek progress bar) -> TEST_COMPLETED -> rapor. Playback (geri dinletme) kaldirildi;
@@ -16,10 +16,11 @@ import { requestStream } from '../modules/StreamHelper.js';
 
 class TestRecordingFlow {
   /**
-   * @param {object} controller - MonitoringController referansi (deps ve loopbackLocalStream icin)
+   * @param {object} deps - Kayit ayarlari, player ve uygulama state erisimi
    */
-  constructor(controller) {
-    this.controller = controller;
+  constructor(deps) {
+    this.deps = deps;
+    this.localStream = null;
 
     // Test state
     this.testTimerId = null;
@@ -31,10 +32,6 @@ class TestRecordingFlow {
     this.testChunks = [];
   }
 
-  /** @returns {object} Controller deps */
-  get deps() {
-    return this.controller.deps;
-  }
 
   /**
    * Test toggle (test butonuna tiklandiginda)
@@ -74,11 +71,11 @@ class TestRecordingFlow {
       beginPreparing(this.deps, 'test-recording');
 
       // Mikrofon al
-      this.controller.loopbackLocalStream = await requestStream(constraints);
+      this.localStream = await requestStream(constraints);
 
       // DRY: LoopbackManager.setup() dogrudan kullan
-      // NOT: startMonitorPlayback() CAGRILMIYOR - hoparlor muted
-      const remoteStream = await loopbackManager.setup(this.controller.loopbackLocalStream, {
+      // Test alici stream'i kaydeder; canli hoparlor cikisi yoktur.
+      const remoteStream = await loopbackManager.setup(this.localStream, {
         useWebAudio: this.deps.isWebAudioEnabled(),
         opusBitrate
       });
@@ -99,7 +96,7 @@ class TestRecordingFlow {
       endPreparing(this.deps);
 
       // VU Meter icin event'ler
-      eventBus.emit(EVENTS.STREAM_STARTED, this.controller.loopbackLocalStream);
+      eventBus.emit(EVENTS.STREAM_STARTED, this.localStream);
       eventBus.emit(EVENTS.LOOPBACK_REMOTE_STREAM, remoteStream);
 
       // Timer baslat
@@ -162,8 +159,8 @@ class TestRecordingFlow {
 
       // DRY: LoopbackManager.cleanup() dogrudan kullan
       await loopbackManager.cleanup();
-      stopStreamTracks(this.controller.loopbackLocalStream);
-      this.controller.loopbackLocalStream = null;
+      stopStreamTracks(this.localStream);
+      this.localStream = null;
 
       eventBus.emit(EVENTS.TEST_RECORDING_STOPPED);
       log.stream('Test recording complete, playback starting...');
@@ -246,8 +243,8 @@ class TestRecordingFlow {
       // DRY: Mevcut cleanup fonksiyonlari kullan
       eventBus.emit(EVENTS.STREAM_STOPPED);
       await loopbackManager.cleanup();
-      stopStreamTracks(this.controller.loopbackLocalStream);
-      this.controller.loopbackLocalStream = null;
+      stopStreamTracks(this.localStream);
+      this.localStream = null;
     } catch (err) {
       log.error('Test cancel error', { error: err.message });
     } finally {
@@ -306,14 +303,14 @@ class TestRecordingFlow {
     // Normal stopRecording yolunda zaten temizlenmis olur; tum cagrilar null-safe oldugundan tekrar zararsiz.
     // KRITIK: loopbackManager.cleanup() throw etse bile resetState() finally'de DAIMA calismali.
     // Aksi halde document.body.dataset.appState 'testing'de takilir ve helpers.css tum sayfayi kilitler
-    // (RecordingController.stop() / MonitoringController.stop() ile ayni try/catch/finally deseni).
+    // (RecordingController.stop() ile ayni try/catch/finally deseni).
     try {
       await loopbackManager.cleanup();
-      stopStreamTracks(this.controller.loopbackLocalStream);
+      stopStreamTracks(this.localStream);
     } catch (err) {
       log.error('Test cleanup error', { error: err.message });
     } finally {
-      this.controller.loopbackLocalStream = null;
+      this.localStream = null;
       this.testMediaRecorder = null;
       this.testChunks = [];
       this.testAudioBlob = null;

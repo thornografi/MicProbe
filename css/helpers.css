@@ -61,12 +61,11 @@ label.option-disabled::after {
 }
 
 /* ========== GLOBAL UI DISABLE (WHITELIST APPROACH) ========== */
-/* Recording/Monitoring sirasinda TUM interactive elementler disabled
+/* Capture sirasinda TUM interactive elementler disabled
    Sadece .always-active class'i olanlar aktif kalir (Stop butonu vb.)
    Yeni element eklendiginde OTOMATIK disabled olur - kod degisikligi GEREKMEZ */
 
 body[data-app-state="recording"],
-body[data-app-state="monitoring"],
 body[data-app-state="testing"],
 body[data-app-state="preparing"] {
   /* Tum interactive elementler disabled (whitelist haric) */
@@ -104,4 +103,15 @@ body[data-app-state="preparing"] {
   pointer-events: none !important;
   opacity: var(--opacity-disabled) !important;
   cursor: not-allowed !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app-view *,
+  #app-view *::before,
+  #app-view *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

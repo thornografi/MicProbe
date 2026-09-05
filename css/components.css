@@ -6,7 +6,8 @@
 
 .mic-dropdown {
   flex: 1;
-  min-width: min(270px, 100%);
+  min-width: 0;
+  min-height: 48px;
   padding: var(--space-sm) var(--space-md);
   font-size: var(--fs-base);
   border-radius: var(--radius-md);
@@ -16,7 +17,7 @@
   cursor: pointer;
   transition: all var(--transition-fast);
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23727272'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%239a9aa8'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
@@ -29,8 +30,10 @@
   border-color: var(--text-muted);
 }
 
-.mic-dropdown:focus {
-  outline: none;
+/* a11y: standart mor halka yalnizca klavye odaginda; border/glow ek katman */
+.mic-dropdown:focus-visible {
+  outline: 2px solid var(--color-purple);
+  outline-offset: 2px;
   border-color: rgba(var(--color-purple-rgb), 0.5);
   box-shadow: 0 0 0 3px rgba(var(--color-purple-rgb), 0.1), 0 0 20px rgba(var(--color-purple-rgb), 0.08);
 }
@@ -49,8 +52,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
   padding: 0;
   background: var(--bg-input);
   border: 1px solid var(--border-primary);
@@ -69,7 +73,6 @@
   background: var(--bg-elevated);
   color: var(--color-orange);
   border-color: var(--color-orange);
-  box-shadow: 0 0 12px rgba(var(--color-orange-rgb), 0.2);
 }
 
 .btn-icon:disabled {
@@ -84,6 +87,7 @@
   justify-content: space-between;
   padding: var(--space-md);
   background: var(--bg-input);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-md);
 }
@@ -120,7 +124,7 @@
 .mode-container {
   padding: var(--space-md);
   background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-md);
 }
@@ -170,6 +174,11 @@
 }
 
 .custom-settings-toggle {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  text-align: left;
   cursor: pointer;
   user-select: none;
   display: flex;
@@ -236,16 +245,11 @@
 }
 
 .custom-settings-content {
-  max-height: 500px;
-  overflow: hidden;
-  transition: max-height var(--transition-normal), opacity var(--transition-normal);
-  opacity: 1;
+  display: block;
 }
 
 .custom-settings-content.collapsed {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .custom-settings-hint {
@@ -258,7 +262,8 @@
 .custom-settings-grid {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xl);
+  /* Bolumler arasi bosluk: sayfa ritmindeki 24px (32 yalniz kart padding'ine ait) */
+  gap: var(--space-lg);
 }
 
 .custom-settings-section {
@@ -295,13 +300,12 @@
   background: transparent;
 }
 
-/* Checkbox grubu başlığı - tum section baslikları icin */
+/* Checkbox grubu başlığı - .console-card-heading ile ayni tipografik olcek */
 .custom-settings-section-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0;
   padding-bottom: var(--space-xs);
   margin-bottom: var(--space-sm);
   border-bottom: 1px solid var(--border-secondary);
@@ -361,12 +365,13 @@
   flex-shrink: 0;
 }
 
-.custom-setting-item select:focus {
-  outline: none;
+/* a11y: app-view'in standart klavye odak halkasi (header.css ile ayni) */
+.custom-setting-item select:focus-visible {
+  outline: 2px solid var(--color-purple);
+  outline-offset: 2px;
 }
 
 .custom-setting-item select:disabled {
-  font-size: var(--fs-md);
   cursor: not-allowed;
 }
 
@@ -379,4 +384,15 @@
 .custom-setting-item.dynamic-locked {
   opacity: var(--opacity-disabled);
   pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .custom-setting-item select {
+    width: 48%;
+    min-width: 0;
+  }
+
+  .custom-setting-item {
+    gap: 12px;
+  }
 }

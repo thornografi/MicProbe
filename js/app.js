@@ -9,14 +9,14 @@ import audioEngine from './modules/AudioEngine.js';
 import VuMeter from './modules/VuMeter.js';
 import Player from './modules/Player.js';
 import Recorder from './modules/Recorder.js';
-import Monitor from './modules/Monitor.js';
+
 import StatusManager from './modules/StatusManager.js';
 import DeviceInfo from './modules/DeviceInfo.js';
 import { log } from './modules/utils.js';
 import { IS_DEV } from './modules/constants.js';
 import { isAudioWorkletSupported } from './modules/WorkletHelper.js';
 import { isWasmOpusSupported } from './modules/OpusWorkerHelper.js';
-import loopbackManager from './modules/LoopbackManager.js';
+
 import audioMetricsCollector from './modules/AudioMetricsCollector.js';
 import systemProbeCollector from './modules/SystemProbeCollector.js';
 import diagnosticReportBuilder from './modules/DiagnosticReportBuilder.js';
@@ -25,7 +25,7 @@ import reportPanelUI from './ui/ReportPanelUI.js';
 import profileController from './controllers/ProfileController.js';
 import uiStateManager from './modules/UIStateManager.js';
 import recordingController from './controllers/RecordingController.js';
-import monitoringController from './controllers/MonitoringController.js';
+import TestRecordingFlow from './controllers/TestRecordingFlow.js';
 import debugConsole from './ui/DebugConsole.js';
 import profileUIManager from './ui/ProfileUIManager.js';
 import customSettingsPanelHandler from './ui/CustomSettingsPanelHandler.js';
@@ -117,7 +117,7 @@ const recorder = new Recorder({
   }
 });
 
-const monitor = new Monitor();
+
 const statusManager = new StatusManager('statusBadge', 'userMessage');
 const deviceInfo = new DeviceInfo();
 
@@ -189,9 +189,6 @@ async function stopRecording() {
   await recordingController.stop();
 }
 
-async function stopMonitoring() {
-  await monitoringController.stop();
-}
 
 // ============================================
 // MODUL INITIALIZATION
@@ -199,9 +196,7 @@ async function stopMonitoring() {
 initProfileController(
   profileController,
   {
-    stopMonitoring,
     stopRecording,
-    startMonitoring: () => monitoringController.start(),
     startRecording: () => recordingController.start(),
     updateButtonStates: () => uiStateManager.updateButtonStates(),
     updateBufferInfo: (val) => updateBufferInfo(val, UIElements.bufferInfoText),
@@ -273,13 +268,13 @@ uiStateManager.updateButtonStates();
 // BUG-3 fix: Controller dependency'leri applyProfile'dan ONCE set et
 // (applyProfile event emit eder → listener'lar controller'lara erisir)
 const controllerDeps = createControllerDeps(
-  { recorder, monitor, player, uiStateManager },
+  { recorder, player, uiStateManager },
   UIElements,
   deviceInfo
 );
 
 recordingController.setDependencies(controllerDeps);
-monitoringController.setDependencies(controllerDeps);
+const testRecordingFlow = new TestRecordingFlow(controllerDeps);
 
 profileController.applyProfile(initialProfile);
 profileUIManager.updateAll(initialProfile);
@@ -287,13 +282,12 @@ customSettingsPanelHandler.updatePanel(initialProfile);
 
 syncInitialUI(UIElements, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
 
-loopbackManager.workletSupported = WORKLET_SUPPORTED;
 
 initDebugConsole(debugConsole, {
   eventBus,
   logger,
   logManager,
-  monitor,
+
   audioEngine,
   diagnosticReportBuilder
 });
@@ -340,10 +334,10 @@ initProfileUIManager(
 setupButtonHandlers(
   {
     recordToggleBtn: UIElements.recordToggleBtn,
-    monitorToggleBtn: UIElements.monitorToggleBtn,
+
     testBtn: UIElements.testBtn
   },
-  { recordingController, monitoringController }
+  { recordingController, testRecordingFlow }
 );
 
 const cleanupCountdownHandlers = setupTestCountdownHandlers(UIElements.testCountdownEl, UIElements.testProgressFillEl, eventBus);

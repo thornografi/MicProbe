@@ -2,28 +2,16 @@
 /* Sadece sayac - buton gorunumu kaldirildi */
 .recording-timer {
   display: none;
-  margin-top: var(--space-md);
-  font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-size: var(--fs-base);
+  font-weight: 500;
   font-family: var(--font-mono);
-  color: var(--color-accent-text);
-  letter-spacing: 3px;
-  text-align: center;
-  text-shadow: 0 0 16px rgba(var(--color-accent-text-rgb), 0.5);
-  padding: var(--space-xs) var(--space-md);
-  background: rgba(var(--color-accent-text-rgb), 0.04);
-  border-radius: var(--radius-md);
-  width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  margin-left: 4px;
 }
 
 .recording-timer.visible {
   display: block;
-}
-
-.recording-timer.monitoring {
-  color: var(--color-accent-text);
 }
 
 /* PREPARING OVERLAY kaldırıldı - buton .preparing state yeterli */
@@ -48,7 +36,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--gradient-neon-circle);
+  background: var(--gradient-action);
   border: none;
   color: white;
   cursor: pointer;
@@ -136,7 +124,7 @@
 .progress-fill {
   height: 100%;
   width: 100%;
-  background: var(--gradient-accent);
+  background: var(--gradient-action);
   border-radius: var(--radius-full);
   transform-origin: left center;
   transform: scaleX(0);

@@ -27,6 +27,7 @@ foreach ($file in $rootFiles) {
 }
 
 $directories = @(
+  'assets',
   'css',
   'js'
 )

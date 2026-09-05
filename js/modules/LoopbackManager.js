@@ -5,8 +5,8 @@
  */
 
 import eventBus from './EventBus.js';
-import { createAudioContext, getAudioContextOptions, stopStreamTracks, createAndPlayActivatorAudio, cleanupActivatorAudio, disconnectNodes, log } from './utils.js';
-import { DELAY, BUFFER, LOOPBACK, PIPELINE_TYPES, EVENTS } from './constants.js';
+import { createAudioContext, getAudioContextOptions, stopStreamTracks, disconnectNodes, log } from './utils.js';
+import { LOOPBACK, PIPELINE_TYPES, EVENTS } from './constants.js';
 import { createPassthroughWorkletNode, ensurePassthroughWorklet } from './WorkletHelper.js';
 
 /**
@@ -21,23 +21,13 @@ class LoopbackManager {
     this.remoteStream = null;
     this.audioCtx = null;
 
-    // Monitor playback state
-    this.monitorCtx = null;
-    this.monitorSrc = null;
-    this.monitorProc = null;
-    this.monitorWorklet = null;
-    this.monitorDelay = null;
-    this.monitorMode = null;
 
     // Stats polling state
     this.statsInterval = null;
-    this.signalCheckTimeout = null;
-    this.lastBytesSent = 0;
-    this.lastStatsTimestamp = 0;
+
     this._isCleaningUp = false; // Race condition guard for async stats polling
 
-    // Worklet support flag (dısarıdan set edilir)
-    this.workletSupported = true;
+
   }
 
   /**
@@ -449,11 +439,6 @@ class LoopbackManager {
       this.statsInterval = null;
     }
 
-    // Signal check timeout durdur
-    if (this.signalCheckTimeout) {
-      clearTimeout(this.signalCheckTimeout);
-      this.signalCheckTimeout = null;
-    }
 
     // ICE handler'lari temizle - close() sonrasi gec gelen event'lerin referans tutmasini engelle
     if (this.pc1) {
@@ -487,125 +472,6 @@ class LoopbackManager {
 
     // Cleanup tamamlandı, flag'i sıfırla
     this._isCleaningUp = false;
-  }
-
-  /**
-   * Monitor playback kaynaklarini temizle
-   * DRY: disconnectNodes helper ile node disconnect
-   */
-  async cleanupMonitorPlayback() {
-    // ScriptProcessor onaudioprocess temizle (disconnect oncesi)
-    if (this.monitorProc?.onaudioprocess) {
-      this.monitorProc.onaudioprocess = null;
-    }
-
-    // DRY: disconnectNodes helper ile tum node'lari temizle
-    disconnectNodes([
-      this.monitorProc,
-      this.monitorWorklet,
-      this.monitorDelay,
-      this.monitorSrc
-    ]);
-
-    // Node referanslarini temizle
-    this.monitorProc = null;
-    this.monitorWorklet = null;
-    this.monitorDelay = null;
-    this.monitorSrc = null;
-
-    // AudioContext kapat
-    if (this.monitorCtx) {
-      try {
-        const prevState = this.monitorCtx.state;
-        await this.monitorCtx.close();
-        log.webaudio('Loopback Monitor: AudioContext closed', { previousState: prevState, newState: 'closed' });
-      } catch (err) {
-        log.error('Loopback Monitor: AudioContext close error', { error: err.message });
-      } finally {
-        this.monitorCtx = null;
-      }
-    }
-
-    // DRY: Activator audio temizle
-    cleanupActivatorAudio(window._loopbackMonitorActivatorAudio);
-    window._loopbackMonitorActivatorAudio = null;
-
-    this.monitorMode = null;
-  }
-
-  /**
-   * Monitor playback baslat
-   * @param {MediaStream} remoteStream - WebRTC remote stream
-   * @param {Object} options - Seçenekler
-   * @param {string} options.mode - Processing mode (direct, standard, scriptprocessor, worklet)
-   * @param {number} options.bufferSize - Buffer size (for scriptprocessor)
-   * @throws {Error} Remote stream yoksa
-   */
-  async startMonitorPlayback(remoteStream, options = {}) {
-    await this.cleanupMonitorPlayback();
-
-    if (!remoteStream) {
-      throw new Error('Loopback Monitor: remote stream yok');
-    }
-
-    const { mode: requestedMode = PIPELINE_TYPES.STANDARD, bufferSize = BUFFER.DEFAULT_SIZE } = options;
-
-    const safeMode = (() => {
-      // Loopback monitoring icin izin verilen modlar (ScriptProcessor YASAK - sadece record icin)
-      const allowed = new Set([PIPELINE_TYPES.DIRECT, PIPELINE_TYPES.STANDARD, PIPELINE_TYPES.WORKLET]);
-      if (!allowed.has(requestedMode)) return PIPELINE_TYPES.STANDARD;
-      if (requestedMode === PIPELINE_TYPES.WORKLET && !this.workletSupported) return PIPELINE_TYPES.STANDARD;
-      return requestedMode;
-    })();
-
-    this.monitorMode = safeMode;
-
-    // DRY: Chrome/WebRTC activator audio helper kullan
-    window._loopbackMonitorActivatorAudio = await createAndPlayActivatorAudio(remoteStream, 'Loopback Monitor');
-
-    // Remote track sample rate (varsa) ile context olustur
-    const acOptions = getAudioContextOptions(remoteStream);
-    this.monitorCtx = await createAudioContext(acOptions);
-
-    this.monitorSrc = this.monitorCtx.createMediaStreamSource(remoteStream);
-
-    // DelayNode olustur - gecikme (feedback onleme)
-    this.monitorDelay = this.monitorCtx.createDelay(DELAY.MAX_SECONDS);
-    this.monitorDelay.delayTime.value = DELAY.DEFAULT_SECONDS;
-
-    const delaySeconds = this.monitorDelay.delayTime.value;
-
-    if (safeMode === PIPELINE_TYPES.WORKLET) {
-      await ensurePassthroughWorklet(this.monitorCtx);
-      this.monitorWorklet = createPassthroughWorkletNode(this.monitorCtx);
-      this.monitorSrc.connect(this.monitorWorklet);
-      this.monitorWorklet.connect(this.monitorDelay);
-    } else {
-      // direct / standard: Source -> Delay
-      this.monitorSrc.connect(this.monitorDelay);
-    }
-
-    this.monitorDelay.connect(this.monitorCtx.destination);
-
-    const remoteTrack = remoteStream.getAudioTracks?.()?.[0];
-    const remoteSampleRate = remoteTrack?.getSettings?.()?.sampleRate;
-
-    const graphByMode = {
-      direct: `WebRTC RemoteStream -> Source -> DelayNode(${delaySeconds}s) -> Destination`,
-      standard: `WebRTC RemoteStream -> Source -> DelayNode(${delaySeconds}s) -> Destination`,
-      worklet: `WebRTC RemoteStream -> Source -> AudioWorklet(passthrough) -> DelayNode(${delaySeconds}s) -> Destination`
-    };
-
-    log.webaudio('Loopback Monitor: Playback graph complete', {
-      mode: safeMode,
-      contextSampleRate: this.monitorCtx.sampleRate,
-      remoteSampleRate: remoteSampleRate || 'N/A',
-      delaySeconds,
-      graph: graphByMode[safeMode] || graphByMode.standard
-    });
-
-    eventBus.emit(EVENTS.MONITOR_STARTED, { mode: safeMode, delaySeconds, loopback: true });
-    log.loopback(`Loopback monitor aktif (${safeMode} + ${delaySeconds.toFixed(1)}s Delay -> Speaker)`);
   }
 
   /**

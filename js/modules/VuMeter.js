@@ -126,7 +126,7 @@ class VuMeter {
     this._ensureResizeHandler();
 
     // Lazy warmup - AudioEngine henuz warmup yapilmamissa yap
-    // Bu yol sadece Loopback/Monitor modunda kullanilir (kayit modunda pipeline analyser kullanilir)
+    // Bu yol sadece loopback testinde kullanilir (kayit modunda pipeline analyser kullanilir)
     if (!audioEngine.isWarmedUp) {
       await audioEngine.warmup();
     }
