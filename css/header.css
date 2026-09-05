@@ -1,13 +1,12 @@
 /* ========== APP HEADER ========== */
-/* Header-base'den miras alir (variables.css) */
+/* Kabuk, marka blogu (.brand-lockup) ve menu butonu (.header-menu-btn) variables.css
+   HEADER BASE bolumunden gelir; burada yalniz app-shell grid yerlesimi ve workspace duzeni var. */
 /* A single full-width header connects the brand, navigation and workspace. */
 .app-header {
-  --header-height: var(--navbar-height);
   grid-area: 1 / 1 / 2 / -1;
   position: relative;
-  justify-content: flex-start;
-  box-shadow: none;
   border-bottom: 1px solid var(--border-primary);
+  /* Grid kabugunda sidebar ile ayni katman; base sticky z-index degeri burada gerekmez */
   z-index: 1;
 }
 
@@ -23,51 +22,10 @@
   background: transparent;
 }
 
-/* .navbar-brand ve .navbar-logo stilleri landing.css'ten miras alinir - DRY */
-.app-header .navbar-brand {
+/* Marka blogu rail sutununda; hover/disabled davranisi HEADER BASE bolumunde */
+.app-header .brand-lockup {
   justify-self: start;
   padding-inline: 24px;
-  transition: opacity var(--transition-fast);
-}
-
-.app-header .navbar-logo {
-  filter: none;
-}
-
-.app-header a.navbar-brand:hover {
-  opacity: 0.8;
-}
-
-.app-header a.navbar-brand.disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.app-header a.navbar-brand.disabled:hover .navbar-logo {
-  transform: none;
-  filter: none;
-  animation: none;
-}
-
-.app-profile-menu-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  background: rgba(var(--color-white-rgb), 0.04);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
-}
-
-.app-profile-menu-btn:hover {
-  background: rgba(var(--color-purple-rgb), 0.12);
-  border-color: rgba(var(--color-purple-rgb), 0.35);
-  color: var(--color-purple-light);
 }
 
 /* ========== GLOBAL FOCUS STATES (App) ========== */
@@ -247,24 +205,16 @@
     padding-inline: 12px;
   }
 
-  .app-profile-menu-btn {
-    display: flex;
+  .app-header .header-menu-btn {
     grid-area: 1 / 1;
   }
 
-  .app-header .navbar-brand {
+  .app-header .brand-lockup {
+    --brand-mark-size: 28px;
+    --brand-gap: 8px;
+    --brand-title-size: 20px;
     grid-area: 1 / 2;
     padding: 0;
-    gap: 8px;
-  }
-
-  .app-header .navbar-logo {
-    width: 28px;
-    height: 28px;
-  }
-
-  .app-header .navbar-title {
-    font-size: 20px;
   }
 
   .workspace-bar {

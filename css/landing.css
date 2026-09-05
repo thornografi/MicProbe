@@ -9,7 +9,8 @@
 }
 
 /* ========== NAVBAR ========== */
-/* Header-base'den miras alır (variables.css) */
+/* Kabuk, marka blogu (.brand-lockup) ve menu butonu (.header-menu-btn) variables.css
+   HEADER BASE bolumunden gelir; burada yalniz landing konumlamasi ve nav listesi var. */
 .navbar {
   /* Landing-specific positioning */
   position: fixed;
@@ -18,7 +19,7 @@
   right: 0;
 
   /* Landing-specific layout */
-  justify-content: space-between; /* logo sol, nav sağ */
+  justify-content: space-between; /* logo sol, nav sag */
   padding: 0 var(--space-xl);
 
   /* Scroll state transition */
@@ -27,28 +28,6 @@
 
 .navbar.scrolled {
   background: rgba(var(--bg-primary-rgb), 0.92);
-}
-
-.navbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-decoration: none;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.navbar-logo {
-  display: block;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-}
-
-.navbar-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--brand-text-color);
 }
 
 .navbar-nav {
@@ -97,20 +76,6 @@
 .navbar-cta svg {
   width: 14px;
   height: 14px;
-}
-
-/* Mobile menu button */
-.navbar-menu-btn {
-  display: none;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-sm);
-  min-width: 44px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ========== HERO SECTION ========== */
@@ -616,15 +581,9 @@ body:not(.app-mode) #app-view {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ========== APP MODE NAVBAR ========== */
-body.app-mode .navbar {
-  display: none;
-}
-
-/* Back button removed - logo now navigates to landing */
-
 /* ========== RESPONSIVE ========== */
-@media (max-width: 768px) {
+/* Mobil esigi app kabugu ile ayni (767px); hamburger gorunurlugu variables.css HEADER BASE bolumunde */
+@media (max-width: 767px) {
   .navbar {
     padding: 0 var(--space-md);
   }
@@ -653,10 +612,6 @@ body.app-mode .navbar {
   .navbar-nav.open .navbar-cta {
     width: 100%;
     justify-content: center;
-  }
-
-  .navbar-menu-btn {
-    display: flex;
   }
 
   .hero {

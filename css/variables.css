@@ -200,7 +200,6 @@
   --accent-info-muted: rgba(33, 150, 243, 0.15);
 
   /* Brand */
-  --brand-text-color: var(--text-primary);
 
   /* ========== Z-INDEX ========== */
   --z-dropdown: 100;
@@ -217,6 +216,7 @@
   --sidebar-width-compact: 216px;
   --sidebar-width-medium: 232px;
   --navbar-height: 72px;
+  --header-height: var(--navbar-height); /* .header-base, .app-shell grid satiri ve mobil sidebar top */
   --sidebar-nav-top: 30px;
   --player-time-width: 105px;
 
@@ -257,25 +257,83 @@ body.app-mode {
   --fs-btn: 15px;
 }
 
-/* ========== HEADER BASE (Ortak Şablon) ========== */
-/* Landing navbar ve app header için ortak stil template */
+/* ========== HEADER BASE (Ortak Bilesen) ========== */
+/* Landing navbar (.navbar, landing.css) ve app header (.app-header, header.css)
+   ayni bilesenden turer: kabuk (.header-base), marka blogu (.brand-lockup) ve
+   mobil menu butonu (.header-menu-btn). Konumlama ve icerik duzeni sayfaya
+   ozgudur. header.css lazy yuklendigi icin paylasilan parcalar burada durur;
+   footer ve legal sayfalari da .brand-lockup sinifini kullanir. */
 .header-base {
-  /* Height standardization */
-  --header-height: var(--navbar-height);
   height: var(--header-height);
-
-  /* Layout */
   display: flex;
   align-items: center;
-
-  /* Visual */
   background: var(--chrome-bg);
   backdrop-filter: blur(var(--blur-md));
   -webkit-backdrop-filter: blur(var(--blur-md));
   border-bottom: 1px solid var(--glass-border);
-
-  /* Layering */
   z-index: var(--z-sticky);
+}
+
+/* Marka blogu: logo + wordmark. Boyutlar degiskenle ezilir (footer 24px, mobil app 28px). */
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--brand-gap, 12px);
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  width: var(--brand-mark-size, 32px);
+  height: var(--brand-mark-size, 32px);
+}
+
+.brand-title {
+  font-size: var(--brand-title-size, 22px);
+  font-weight: 600;
+}
+
+.header-base .brand-lockup {
+  transition: opacity var(--transition-fast);
+}
+
+.header-base .brand-lockup:hover {
+  opacity: 0.8;
+}
+
+/* Aktif kayit/test kilidi: UIStateManager UI_CLASSES.DISABLED (.ui-disabled) ekler ve
+   body[data-app-state] whitelist kurali a:not(.always-active) uzerinden calisir (helpers.css).
+   Burada ayri bir .disabled kurali yoktur. */
+
+/* Mobil menu butonu: landing icin nav listesi (#mobileNav), app icin profil cekmecesi (#profileSidebar) */
+.header-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(var(--color-white-rgb), 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+}
+
+.header-menu-btn:hover {
+  background: rgba(var(--color-purple-rgb), 0.12);
+  border-color: rgba(var(--color-purple-rgb), 0.35);
+  color: var(--color-purple-light);
+}
+
+/* Mobil esigi app kabugu ile ayni: layout.css icinde 768px masaustu duzenine dahildir */
+@media (max-width: 767px) {
+  .header-menu-btn {
+    display: flex;
+  }
 }
 
 /* ========== RESET ========== */
@@ -447,12 +505,11 @@ body {
   gap: var(--space-md);
 }
 
+/* .brand-lockup (HEADER BASE) uzerine footer boyutu ve hover zemini */
 .site-footer-brand {
+  --brand-mark-size: 24px;
+  --brand-gap: 8px;
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-  text-decoration: none;
   font-weight: 600;
   padding: 6px 12px 6px 6px;
   border-radius: var(--radius-md);
@@ -463,25 +520,8 @@ body {
   color: inherit;
 }
 
-.brand-mark {
-  display: block;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-}
-
 .site-footer-brand:hover {
   background: var(--gradient-accent-subtle);
-}
-
-.site-footer-brand.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.site-footer-brand.disabled:hover {
-  background: transparent;
 }
 
 .site-footer-links {

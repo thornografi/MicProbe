@@ -20,7 +20,6 @@
 
 /* Shared header and footer enclose the scenario rail and working area. */
 .app-shell {
-  --header-height: var(--navbar-height);
   --rail-width: var(--sidebar-width);
   display: grid;
   grid-template-columns: var(--rail-width) minmax(0, 1fr);
@@ -386,11 +385,6 @@ body.production .app-shell .site-footer-content {
     min-height: 0;
   }
 
-  .app-header {
-    height: var(--header-height);
-    border-bottom: 1px solid var(--border-primary);
-  }
-
   .main-content {
     flex: 1;
     margin-left: 0;
@@ -398,7 +392,7 @@ body.production .app-shell .site-footer-content {
 
   .sidebar {
     position: fixed;
-    top: var(--header-height); /* base'den geliyor */
+    top: var(--header-height); /* variables.css :root */
     width: min(var(--sidebar-width), calc(100vw - 48px));
     height: calc(100vh - var(--header-height));
     height: calc(100dvh - var(--header-height));
