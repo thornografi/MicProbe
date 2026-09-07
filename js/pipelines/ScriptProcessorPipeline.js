@@ -50,15 +50,18 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     // ScriptProcessor -> Opus Worker (PCM gonder)
     this.nodes.processor.onaudioprocess = (e) => {
       // Guard: cleanup sonrasi veya worker yok ise event'leri yoksay
-      if (!this.opusWorker || !this.nodes.processor) {
+      if (!this.isCapturing || !this.opusWorker || !this.nodes.processor) {
         return;
       }
-
-      const pcmData = e.inputBuffer.getChannelData(0);
-      this.opusWorker.encode(pcmData.slice(), false);
-      // Passthrough (VU meter icin)
-      const output = e.outputBuffer.getChannelData(0);
-      output.set(pcmData);
+      try {
+        const channels = Array.from({ length: this._channels }, (_, channel) =>
+          e.inputBuffer.getChannelData(channel).slice());
+        this.opusWorker.encode(channels);
+        this.capturedFrames += channels[0].length;
+        channels.forEach((pcm, channel) => e.outputBuffer.getChannelData(channel).set(pcm));
+      } catch (error) {
+        this.onCaptureError?.(error);
+      }
     };
 
     // VU Meter icin AnalyserNode olustur

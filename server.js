@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { evaluatePremiumReport } = require('./server/premium-report-evaluator');
+const { evaluatePremiumReport, isDetailedReportInput } = require('./server/premium-report-evaluator');
 
 const DEFAULT_PORT = 8080;
 const basePort = (() => {
@@ -21,6 +21,7 @@ const mimeTypes = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml; charset=utf-8',
   '.wav': 'audio/wav',
@@ -35,13 +36,14 @@ const mimeTypes = {
 
 const CSP_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data:",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self'"
+  "connect-src 'self' https://accounts.google.com/gsi/",
+  "frame-src https://accounts.google.com/gsi/"
 ].join('; ');
 
 const SECURITY_HEADERS = {
@@ -74,8 +76,10 @@ function loadLocalEnvFile(filename) {
   }
 }
 
-loadLocalEnvFile('.env.local');
-loadLocalEnvFile('.env');
+if (require.main === module) {
+  loadLocalEnvFile('.env.local');
+  loadLocalEnvFile('.env');
+}
 
 function normalizeFreemiusMode(value) {
   const normalized = String(value || '').trim().toLowerCase();
@@ -110,11 +114,77 @@ function readFreemiusEnv(mode) {
     successUrl: readValue('SUCCESS_URL', ['MICPROBE_FREEMIUS_SUCCESS_URL']),
     billingCycle: readValue('BILLING_CYCLE', ['MICPROBE_FREEMIUS_BILLING_CYCLE']),
     title: readValue('CHECKOUT_TITLE', ['MICPROBE_FREEMIUS_CHECKOUT_TITLE']) || 'MicProbe Premium',
-    productSecret: readValue('PRODUCT_SECRET', ['MICPROBE_FREEMIUS_PRODUCT_SECRET', 'FREEMIUS_PRODUCT_SECRET'])
+    productSecret: readValue('PRODUCT_SECRET', ['MICPROBE_FREEMIUS_PRODUCT_SECRET', 'FREEMIUS_PRODUCT_SECRET']),
+    publicKey: readValue('PUBLIC_KEY', ['MICPROBE_FREEMIUS_PUBLIC_KEY', 'FREEMIUS_PUBLIC_KEY']),
+    sandboxToken: process.env.MICPROBE_FREEMIUS_SANDBOX_TOKEN || '',
+    sandboxCtx: process.env.MICPROBE_FREEMIUS_SANDBOX_CTX || '',
+    apiToken: readValue('API_TOKEN', ['MICPROBE_FREEMIUS_API_TOKEN', 'FREEMIUS_API_TOKEN'])
   };
 }
 
 const FREEMIUS_ENV = readFreemiusEnv(normalizeFreemiusMode(process.env.MICPROBE_FREEMIUS_MODE));
+const legacyPremium = import('./server/legacy-premium.mjs');
+
+function buildFreemiusCheckoutUrl(env) {
+  const base = env.checkoutUrl || (env.productId && env.planId
+    ? `https://checkout.freemius.com/product/${encodeURIComponent(env.productId)}/plan/${encodeURIComponent(env.planId)}/` : '');
+  if (!base || env.mode !== 'sandbox') return base;
+  try {
+    const url = new URL(base);
+    let token = env.sandboxToken;
+    let ctx = env.sandboxCtx;
+    if (!(token && ctx) && env.publicKey && env.productSecret && env.productId) {
+      ctx = Math.floor(Date.now() / 1000).toString();
+      token = crypto.createHash('md5').update(`${ctx}${env.productId}${env.productSecret}${env.publicKey}checkout`).digest('hex');
+    }
+    token ||= url.searchParams.get('sandbox');
+    ctx ||= url.searchParams.get('s_ctx_ts');
+    if (!/^[a-f0-9]{32}$/i.test(token || '') || !/^\d{9,13}$/.test(ctx || '')) return '';
+    url.searchParams.set('sandbox', token);
+    url.searchParams.set('s_ctx_ts', ctx);
+    return url.toString();
+  } catch { return ''; }
+}
+
+// Only the adapter owns Node SQLite. The actual account/billing rules also run
+// in Workers against D1; no server modules enter the public asset directory.
+let accountsRuntime;
+async function getAccountsRuntime() {
+  if (!accountsRuntime) {
+    accountsRuntime = (async () => {
+      const [{ createAccountService }, { createNodeAccountDb }, { createAccountBilling }] = await Promise.all([
+        import('./server/account-service.mjs'), import('./server/node-account-db.mjs'), import('./server/account-billing.mjs')
+      ]);
+      const googleClientId = process.env.MICPROBE_GOOGLE_CLIENT_ID || '';
+      const db = googleClientId ? createNodeAccountDb(process.env.MICPROBE_ACCOUNT_DB_PATH || path.join(__dirname, '.tmp', 'accounts.sqlite')) : null;
+      const accounts = createAccountService({ db, googleClientId, mode: FREEMIUS_ENV.mode,
+        origin: process.env.MICPROBE_PUBLIC_ORIGIN || undefined });
+      const billing = createAccountBilling({ accounts, config: FREEMIUS_ENV, checkoutUrl: () => buildFreemiusCheckoutUrl(FREEMIUS_ENV),
+        enabled: Boolean(db && googleClientId), evaluatePremiumReport });
+      return { accounts, billing, enabled: Boolean(db && googleClientId) };
+    })().catch(error => { accountsRuntime = null; throw error; });
+  }
+  return accountsRuntime;
+}
+
+async function handleAccountApi(req, res, url) {
+  const runtime = await getAccountsRuntime();
+  const options = { method: req.method, headers: req.headers };
+  if (!['GET', 'HEAD'].includes(req.method)) { options.body = req; options.duplex = 'half'; }
+  // A configured public origin is trusted deployment configuration. Forwarded
+  // headers are not trusted to select a cookie domain or checkout return URL.
+  const requestUrl = process.env.MICPROBE_PUBLIC_ORIGIN
+    ? new URL(`${url.pathname}${url.search}`, new URL(process.env.MICPROBE_PUBLIC_ORIGIN).origin) : url;
+  const request = new Request(requestUrl, options);
+  const response = await runtime.billing.handle(request) || await runtime.accounts.handle(request);
+  if (!response) return false;
+  const headers = { ...SECURITY_HEADERS, ...Object.fromEntries(response.headers) };
+  const cookies = response.headers.getSetCookie();
+  if (cookies.length) headers['set-cookie'] = cookies;
+  res.writeHead(response.status, headers);
+  res.end(Buffer.from(await response.arrayBuffer()));
+  return true;
+}
 
 function isHttpsUrl(value) {
   try {
@@ -133,6 +203,9 @@ function normalizeBillingCycle(value) {
 
 function getFreemiusConfigIssues(env) {
   const issues = [];
+  if (!env.productId) issues.push('missing_product_id');
+  if (!env.apiToken) issues.push('missing_api_token');
+  if (env.mode === 'sandbox' && !buildFreemiusCheckoutUrl(env)) issues.push('sandbox_token_unavailable');
   if (!env.checkoutUrl && (!env.productId || !env.planId)) {
     issues.push('missing_checkout_target');
   }
@@ -178,20 +251,30 @@ function buildHeaders(contentType) {
   return headers;
 }
 
-function safeJoin(baseDir, requestPathname) {
-  const normalized = path
-    .normalize(requestPathname)
-    .replace(/^(\.\.[/\\])+/, '')
-    .replace(/^[/\\]+/, '');
+const PUBLIC_FILES = new Set(['index.html', 'micprobe.html', 'privacy.html', 'terms.html']);
+const PUBLIC_DIRECTORIES = new Set(['assets', 'css', 'js']);
 
-  const joined = path.join(baseDir, normalized);
-  const resolvedBase = path.resolve(baseDir);
-  const resolvedJoined = path.resolve(joined);
-  if (!resolvedJoined.startsWith(resolvedBase)) {
+function resolveStaticPath(requestPathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(requestPathname);
+  } catch {
     return null;
   }
+  // Backslashes and drive/stream syntax must not become Windows filesystem paths.
+  if (/[\\:\u0000]/.test(decoded)) return null;
+  const segments = decoded.split('/').filter(Boolean);
+  if (segments.some(segment => segment.startsWith('.'))) return null;
 
-  return resolvedJoined;
+  if (!PUBLIC_FILES.has(segments.join('/')) && !PUBLIC_DIRECTORIES.has(segments[0])) {
+    // SPA routes resolve directly to the entry point, never to a private repo file.
+    return path.extname(segments.at(-1) || '') ? null : path.join(__dirname, 'index.html');
+  }
+
+  const resolved = path.resolve(__dirname, ...segments);
+  const relative = path.relative(__dirname, resolved);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  return resolved;
 }
 
 // ============================================
@@ -362,67 +445,6 @@ function readJsonBody(req, maxBytes = 1024 * 1024) {
   });
 }
 
-function base64UrlEncode(value) {
-  return Buffer.from(value).toString('base64url');
-}
-
-function base64UrlDecode(value) {
-  return Buffer.from(value, 'base64url').toString('utf8');
-}
-
-function signValue(value) {
-  return crypto
-    .createHmac('sha256', FREEMIUS_ENV.productSecret)
-    .update(value)
-    .digest('base64url');
-}
-
-function createEntitlementToken(entitlement) {
-  const payload = {
-    v: 1,
-    mode: entitlement.mode,
-    planId: entitlement.planId,
-    pricingId: entitlement.pricingId,
-    billingCycle: entitlement.billingCycle,
-    expiresAt: entitlement.expiration || entitlement.trialEndsAt || '',
-    iat: Date.now()
-  };
-  const encoded = base64UrlEncode(JSON.stringify(payload));
-  return `${encoded}.${signValue(encoded)}`;
-}
-
-function verifyEntitlementToken(token) {
-  if (!FREEMIUS_ENV.productSecret || !token || typeof token !== 'string') return null;
-  const [encoded, signature] = token.split('.');
-  if (!encoded || !signature) return null;
-
-  const expected = signValue(encoded);
-  const expectedBuffer = Buffer.from(expected);
-  const signatureBuffer = Buffer.from(signature);
-  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
-    return null;
-  }
-
-  let payload;
-  try {
-    payload = JSON.parse(base64UrlDecode(encoded));
-  } catch {
-    return null;
-  }
-
-  if (payload.v !== 1) return null;
-  if (payload.mode !== FREEMIUS_ENV.mode) return null;
-  if (FREEMIUS_ENV.planId && payload.planId !== FREEMIUS_ENV.planId) return null;
-  if (FREEMIUS_ENV.pricingId && payload.pricingId !== FREEMIUS_ENV.pricingId) return null;
-  // billing_cycle bilerek dogrulanmiyor (bkz. validateFreemiusRedirectParams notu).
-
-  if (payload.expiresAt) {
-    const expiresAt = Date.parse(String(payload.expiresAt).replace(' ', 'T'));
-    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
-  }
-
-  return payload;
-}
 
 function stripSignatureParam(rawUrl) {
   const hashIndex = rawUrl.indexOf('#');
@@ -447,18 +469,20 @@ function handleFreemiusConfig(res) {
   writeJson(res, 200, {
     configured: issues.length === 0,
     mode: FREEMIUS_ENV.mode,
+    sandboxActive: FREEMIUS_ENV.mode === 'sandbox' ? Boolean(buildFreemiusCheckoutUrl(FREEMIUS_ENV)) : null,
     productId: FREEMIUS_ENV.productId,
     planId: FREEMIUS_ENV.planId,
     pricingId: FREEMIUS_ENV.pricingId,
-    checkoutUrl: FREEMIUS_ENV.checkoutUrl,
+    checkoutUrl: buildFreemiusCheckoutUrl(FREEMIUS_ENV),
     successUrl: FREEMIUS_ENV.successUrl,
     billingCycle: FREEMIUS_ENV.billingCycle,
     title: FREEMIUS_ENV.title,
+    accountConfigured: Boolean(process.env.MICPROBE_GOOGLE_CLIENT_ID),
     issues
   });
 }
 
-function handleFreemiusVerify(req, res, url) {
+async function handleFreemiusVerify(req, res, url) {
   if (!FREEMIUS_ENV.productSecret) {
     writeJson(res, 503, { ok: false, error: 'missing_product_secret' });
     return;
@@ -504,23 +528,10 @@ function handleFreemiusVerify(req, res, url) {
     return;
   }
 
-  const entitlement = {
-    mode: FREEMIUS_ENV.mode,
-    action: params.get('action') || '',
-    planId: params.get('plan_id') || '',
-    pricingId: params.get('pricing_id') || '',
-    billingCycle: params.get('billing_cycle') || '',
-    expiration: params.get('expiration') || '',
-    trialEndsAt: params.get('trial_ends_at') || ''
-  };
-
-  writeJson(res, 200, {
-    ok: true,
-    entitlement: {
-      ...entitlement,
-      accessToken: createEntitlementToken(entitlement)
-    }
-  });
+  try {
+    const entitlement = await (await legacyPremium).createLegacyPremium(FREEMIUS_ENV).verifyPurchase(params);
+    writeJson(res, 200, { ok: true, entitlement });
+  } catch (error) { writeJson(res, error.status || 503, { ok: false, error: error.code || 'license_check_failed' }); }
 }
 
 async function handleDetailedReport(req, res) {
@@ -539,28 +550,54 @@ async function handleDetailedReport(req, res) {
 
   const authHeader = req.headers.authorization || '';
   const headerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
-  const entitlement = verifyEntitlementToken(headerToken || payload.entitlementToken);
-  if (!entitlement) {
-    writeJson(res, 403, { ok: false, error: 'invalid_entitlement' });
-    return;
-  }
+  let entitlement;
+  try { entitlement = await (await legacyPremium).createLegacyPremium(FREEMIUS_ENV).authorize(headerToken || payload.entitlementToken); }
+  catch (error) { writeJson(res, error.status || 503, { ok: false, error: error.code || 'invalid_entitlement' }); return; }
 
-  if (!payload.report?.audioMetrics) {
+  if (!isDetailedReportInput(payload.report)) {
     writeJson(res, 400, { ok: false, error: 'missing_report' });
     return;
   }
 
   writeJson(res, 200, {
     ok: true,
+    entitlement,
     detailed: evaluatePremiumReport(payload.report)
   });
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   let pathname;
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     pathname = url.pathname;
+    if (pathname === '/api/freemius/restore' && req.method === 'POST') {
+      if (process.env.MICPROBE_GOOGLE_CLIENT_ID) { writeJson(res, 403, { ok: false, error: 'account_sign_in_required' }); return; }
+      const { isAccountMutationAllowed } = await import('./server/account-service.mjs');
+      if (!isAccountMutationAllowed(new Request(url, { headers: req.headers }), process.env.MICPROBE_PUBLIC_ORIGIN || url.origin)) {
+        writeJson(res, 403, { ok: false, error: 'invalid_origin' }); return;
+      }
+      try {
+        const { licenseKey } = await readJsonBody(req, 16384);
+        const entitlement = await (await legacyPremium).createLegacyPremium(FREEMIUS_ENV).restore(licenseKey);
+        writeJson(res, 200, { ok: true, entitlement });
+      } catch (error) { writeJson(res, error.status || 400, { ok: false, error: error.code || 'invalid_license_key' }); }
+      return;
+    }
+
+    if (pathname.startsWith('/api/account/') || pathname === '/api/freemius/webhook'
+      || (pathname === '/api/report/detailed' && process.env.MICPROBE_GOOGLE_CLIENT_ID)) {
+      try {
+        if (await handleAccountApi(req, res, url)) return;
+      } catch {
+        writeJson(res, 503, { ok: false, error: 'account_service_unavailable' });
+        return;
+      }
+      if (pathname.startsWith('/api/account/')) {
+        writeJson(res, 404, { ok: false, error: 'not_found' });
+        return;
+      }
+    }
 
     if (req.method === 'GET' && pathname === '/api/freemius/config') {
       handleFreemiusConfig(res);
@@ -600,7 +637,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const filePath = safeJoin(__dirname, pathname);
+  const filePath = resolveStaticPath(pathname);
   if (!filePath) {
     res.writeHead(403, buildHeaders('text/plain; charset=utf-8'));
     res.end('403 Forbidden');
@@ -650,4 +687,6 @@ function listenWithFallback(startPort, maxAttempts = 20) {
   tryListen();
 }
 
-listenWithFallback(basePort);
+if (require.main === module) listenWithFallback(basePort);
+
+module.exports = { server };

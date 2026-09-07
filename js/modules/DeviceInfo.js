@@ -12,6 +12,10 @@ import { EVENTS } from './constants.js';
 // Storage key for persisting mic selection
 const MIC_STORAGE_KEY = 'micprobe_selectedMic';
 
+// 'denied' durumunda tiklama getUserMedia'yi tetiklese de tarayici yeniden izin
+// SORMAZ (sessiz dongu) - bu yuzden dogru-eylemli yonlendirme gosterilir
+const MIC_PERMISSION_DENIED_MESSAGE = 'Microphone blocked. Allow access in browser site settings, then click Refresh.';
+
 class DeviceInfo {
   constructor() {
     // UI elementleri - Cihaz bolumu
@@ -27,22 +31,29 @@ class DeviceInfo {
     this.micSelector = null;
     this.refreshMicsBtn = null;
 
-    // Mikrofon state
+    // Bos secim sistem varsayilanini izler; yalniz kullanicinin cihaz secimi saklanir.
     this.selectedDeviceId = localStorage.getItem(MIC_STORAGE_KEY) || '';
+    this._defaultDeviceId = '';
     this.hasMicPermission = false;
+    this.accessState = 'checking';
 
-    // Panel her zaman gorunur
-    this.showPanel();
+    // Permissions API durumu (destekleniyorsa): 'granted' | 'denied' | 'prompt' | null
+    this._permissionStatus = null;
+    this._micPermissionState = null;
 
     // Event listener referansları (memory leak önleme - VuMeter pattern)
     this._onStreamStarted = (stream) => this.updateStreamInfo(stream);
     this._onProfileChanged = (data) => this.updateTargetBitrate(data);
     this._onLoopbackStats = (stats) => this.updateActualBitrate(stats);
+    this._onOpusBitrateChanged = ({ value }) => this.updateTargetBitrate({ values: { loopback: true, bitrate: value } });
+    this._onMediaBitrateChanged = ({ value }) => this.updateTargetBitrate({ values: { loopback: false, mediaBitrate: value } });
 
     // Event dinleyiciler
     eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.on(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.on('setting:Opus Bitrate:changed', this._onOpusBitrateChanged);
+    eventBus.on('setting:Media Bitrate:changed', this._onMediaBitrateChanged);
   }
 
   /**
@@ -77,6 +88,11 @@ class DeviceInfo {
       this.micSelector.addEventListener('mousedown', async (e) => {
         if (!this.hasMicPermission) {
           e.preventDefault();
+          // denied: getUserMedia izin diyalogu ACMAZ - tekrar denemek anlamsiz
+          if (this._micPermissionState === 'denied') {
+            eventBus.emit(EVENTS.UI_MESSAGE, { message: MIC_PERMISSION_DENIED_MESSAGE, tone: 'error' });
+            return;
+          }
           try {
             await this.enumerateMicrophones();
           } catch (err) {
@@ -103,14 +119,10 @@ class DeviceInfo {
 
     // Cihaz degisikligi dinle - named handler (memory leak onleme icin destroy()'da kaldirilir)
     this._onDeviceChange = async () => {
-      if (this.hasMicPermission) {
-        log.stream('Device change detected, updating list...', {});
-        try {
-          await this.enumerateMicrophones(true);
-        } catch (err) {
-          log.error('Cihaz degisikligi sonrasi liste guncellenemedi', { error: err.message });
-        }
-      }
+      // Listeyi guncellemek mikrofon acmamali veya aktif kaydi yeniden baslatmamali.
+      // Izin/cihaz geri geldiginde de toparlanabilmek icin eski permission state'e baglanma.
+      log.stream('Device change detected, updating list...', {});
+      await this.tryEnumerateWithoutPermission();
     };
 
     if (navigator.mediaDevices?.addEventListener) {
@@ -129,12 +141,15 @@ class DeviceInfo {
 
     if (!this.micSelector) return [];
 
-    // Windows virtual entries'i filtrele
+    // Tarayicinin varsayilan/iletisim alias'larini sabit cihaz listesinde yineleme.
     const virtualIds = ['default', 'communications'];
     const realMics = allMics.filter(m => !virtualIds.includes(m.deviceId));
 
     // Varsayilan cihazi bul
     const defaultEntry = allMics.find(m => m.deviceId === 'default');
+    // Chromium'un dinamik alias'ini yalniz tarayici sunuyorsa capture'a ilet.
+    // Fiziksel ID'ye cevirmek varsayilan secimini o cihaza sabitler.
+    this._defaultDeviceId = defaultEntry?.deviceId || '';
     let defaultRealDeviceId = null;
 
     if (defaultEntry) {
@@ -156,10 +171,6 @@ class DeviceInfo {
       }
     }
 
-    if (!defaultRealDeviceId && realMics.length > 0) {
-      defaultRealDeviceId = realMics[0].deviceId;
-    }
-
     // Dropdown temizle
     this.micSelector.replaceChildren();
 
@@ -173,7 +184,15 @@ class DeviceInfo {
       localStorage.removeItem(MIC_STORAGE_KEY);
     }
 
-    // Dropdown doldur
+    const defaultMic = realMics.find(m => m.deviceId === defaultRealDeviceId);
+    const systemOption = document.createElement('option');
+    systemOption.value = '';
+    systemOption.textContent = defaultMic?.label
+      ? `System default (${defaultMic.label})`
+      : 'System default';
+    this.micSelector.appendChild(systemOption);
+
+    // Sabit cihaz secenekleri; sistem varsayilani ayri bir tercih olarak kalir.
     realMics.forEach((mic, index) => {
       const option = document.createElement('option');
       option.value = mic.deviceId;
@@ -184,15 +203,9 @@ class DeviceInfo {
       }
       option.textContent = label;
 
-      if (mic.deviceId === this.selectedDeviceId) {
-        option.selected = true;
-      } else if (!this.selectedDeviceId && mic.deviceId === defaultRealDeviceId) {
-        option.selected = true;
-        this.selectedDeviceId = mic.deviceId;
-      }
-
       this.micSelector.appendChild(option);
     });
+    this.micSelector.value = this.selectedDeviceId;
 
     return realMics;
   }
@@ -205,6 +218,11 @@ class DeviceInfo {
     option.selected = true;
     option.textContent = message;
     this.micSelector.replaceChildren(option);
+  }
+
+  _publishAccess(state) {
+    this.accessState = state;
+    eventBus.emit(EVENTS.MICROPHONE_ACCESS_CHANGED, { state });
   }
 
   /**
@@ -222,6 +240,8 @@ class DeviceInfo {
       const allMics = devices.filter(d => d.kind === 'audioinput');
 
       const realMics = this.buildMicrophoneDropdown(allMics, { logWarnings: true });
+      // Bazi platformlar ayri cihazlar yerine yalniz varsayilan girisi sunar.
+      this._publishAccess(allMics.length ? 'ready' : 'unavailable');
 
       if (!silent) {
         log.stream(`${realMics.length} microphone(s) found`, { devices: realMics.map(m => m.label || m.deviceId.slice(0, 8)) });
@@ -234,6 +254,7 @@ class DeviceInfo {
         : 'Allow microphone access in the browser, then click Refresh.';
 
       this.hasMicPermission = false;
+      this._publishAccess(err.name === 'NotAllowedError' ? 'denied' : 'unavailable');
       log.error('Failed to enumerate microphones', { category: 'stream', error: err.message });
       this._showMicPermissionPlaceholder(userMessage);
       eventBus.emit(EVENTS.UI_MESSAGE, {
@@ -244,10 +265,38 @@ class DeviceInfo {
   }
 
   /**
+   * Tarayici mikrofon izin durumunu Permissions API'den senkronize et.
+   * onchange ile izin degisiminde (site ayarlarindan Allow/Block) dropdown
+   * reload beklemeden guncellenir. Desteklenmeyen tarayicida sessizce atlanir.
+   */
+  async _syncMicPermissionState() {
+    if (this._permissionStatus || !navigator.permissions?.query) return;
+    try {
+      const status = await navigator.permissions.query({ name: 'microphone' });
+      this._permissionStatus = status;
+      this._micPermissionState = status.state;
+      status.onchange = () => {
+        this._micPermissionState = status.state;
+        if (status.state === 'denied') {
+          this.hasMicPermission = false;
+          this._showMicPermissionPlaceholder(MIC_PERMISSION_DENIED_MESSAGE);
+          this._publishAccess('denied');
+        } else {
+          this.tryEnumerateWithoutPermission();
+        }
+      };
+    } catch {
+      this._micPermissionState = null;   // Orn. Firefox 'microphone' query'yi desteklemez
+    }
+  }
+
+  /**
    * Izinsiz mikrofon listele (label'lar bos olabilir)
    */
   async tryEnumerateWithoutPermission() {
     if (!this.micSelector) return;
+
+    await this._syncMicPermissionState();
 
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -258,20 +307,32 @@ class DeviceInfo {
 
       if (hasLabels) {
         this.buildMicrophoneDropdown(allMics, { logWarnings: false });
+        this._publishAccess('ready');
+      } else if (this._micPermissionState === 'denied') {
+        this._showMicPermissionPlaceholder(MIC_PERMISSION_DENIED_MESSAGE);
+        this._publishAccess('denied');
+      } else if (!allMics.length && this._micPermissionState === 'granted') {
+        this.buildMicrophoneDropdown([], { logWarnings: false });
+        this._publishAccess('unavailable');
       } else {
         this._showMicPermissionPlaceholder();
+        this._publishAccess('prompt');
       }
     } catch (err) {
       this._showMicPermissionPlaceholder();
+      this._publishAccess('unavailable');
     }
   }
 
   /**
    * Secili mikrofon deviceId'sini dondur
-   * @returns {string} deviceId veya ''
+   * @returns {string} Sabit deviceId, desteklenen 'default' alias'i veya ''
    */
   getSelectedDeviceId() {
-    return this.micSelector?.value || '';
+    // Izin placeholder'i DOM secimini gizlese de kullanicinin tercihi korunur.
+    // Sistem modunda fiziksel ID yerine alias kullanilir; alias sunmayan
+    // tarayicida bos deger Dependencies'in deviceId kisiti koymamasini saglar.
+    return this.selectedDeviceId || this._defaultDeviceId;
   }
 
   /**
@@ -295,9 +356,9 @@ class DeviceInfo {
 
     if (bitrate && bitrate > 0) {
       const kbps = Math.round(bitrate / 1000);
-      this.targetBitrateEl.textContent = `${kbps} kbps`;
+      this.targetBitrateEl.textContent = values?.loopback ? `Max ${kbps} kbps` : `${kbps} kbps`;
     } else {
-      this.targetBitrateEl.textContent = 'N/A';
+      this.targetBitrateEl.textContent = values?.encoder === 'pcm-wav' ? 'PCM' : bitrate === 0 ? 'Auto' : 'N/A';
     }
   }
 
@@ -307,17 +368,11 @@ class DeviceInfo {
   updateActualBitrate(stats) {
     if (!this.actualBitrateEl) return;
 
-    if (stats && stats.actualBitrate !== undefined) {
+    if (Number.isFinite(stats?.actualBitrate)) {
       const kbps = Math.round(stats.actualBitrate / 1000);
       this.actualBitrateEl.textContent = `${kbps} kbps`;
     } else {
       this.actualBitrateEl.textContent = '--';
-    }
-  }
-
-  showPanel() {
-    if (this.panelEl) {
-      this.panelEl.classList.add('visible');
     }
   }
 
@@ -326,6 +381,11 @@ class DeviceInfo {
 
     const track = stream.getAudioTracks()[0];
     if (!track) return;
+
+    // A successful capture also grants access when the user starts with Run Test.
+    this.hasMicPermission = true;
+    this._publishAccess('ready');
+    void this.tryEnumerateWithoutPermission();
 
     const settings = track.getSettings();
 
@@ -376,10 +436,18 @@ class DeviceInfo {
     eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.off(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.off('setting:Opus Bitrate:changed', this._onOpusBitrateChanged);
+    eventBus.off('setting:Media Bitrate:changed', this._onMediaBitrateChanged);
 
     // devicechange listener cleanup
     if (navigator.mediaDevices?.removeEventListener && this._onDeviceChange) {
       navigator.mediaDevices.removeEventListener('devicechange', this._onDeviceChange);
+    }
+
+    // Permissions API onchange cleanup
+    if (this._permissionStatus) {
+      this._permissionStatus.onchange = null;
+      this._permissionStatus = null;
     }
   }
 }

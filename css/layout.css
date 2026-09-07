@@ -11,13 +11,6 @@
   min-height: 100vh;
 }
 
-/* Form kontrolleri (button/select/input) UA stylesheet'inden sistem fontu alir;
-   sayfanin yazi tipini miras almalari icin sifir-specificity reset. Sadece app
-   modunda (landing gizli); component kurallari ustune yazar. */
-:where(body.app-mode) :where(button, input, select, textarea) {
-  font-family: inherit;
-}
-
 /* Shared header and footer enclose the scenario rail and working area. */
 .app-shell {
   --rail-width: var(--sidebar-width);
@@ -43,70 +36,32 @@
   z-index: 1;
   font-family: var(--font-sans);
   contain: layout style;
+  /* Reserve room for the console trigger sharing this grid cell. */
+  padding-bottom: calc(var(--control-h-m) + var(--space-lg));
 }
 
+/* Ust bosluk .content-container ile ayni akiskan deger: rail basligi ile sayfa basligi ayni y'de baslar */
 .sidebar-intro {
-  padding: 28px 24px 20px;
+  padding: var(--padding-fluid) var(--space-lg) var(--space-lg);
 }
 
-.sidebar-intro h2 {
-  margin: 0 0 6px;
-  font-size: 14px;
+.sidebar-intro-title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.sidebar-intro p {
-  max-width: 21ch;
-  font-size: 12px;
+.sidebar-intro-text {
+  max-width: 28ch;
+  font-size: var(--fs-xs);
   line-height: 1.6;
   color: var(--text-muted);
 }
 
-.sidebar-header {
-  padding: var(--space-lg);
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  border-bottom: 1px solid var(--glass-border);
-  background: var(--gradient-accent-subtle);
-  text-decoration: none;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.sidebar-header:hover {
-  background: var(--gradient-accent-hover);
-}
-
-.sidebar-header:hover .sidebar-logo {
-  filter: var(--glow-accent-xl);
-  transform: scale(1.05);
-}
-
-.sidebar-header:hover .sidebar-title {
-  color: var(--color-orange);
-}
-
-.sidebar-logo {
-  width: 32px;
-  height: 32px;
-  color: var(--color-orange);
-  filter: var(--glow-accent-lg);
-  transition: all var(--transition-normal);
-}
-
-.sidebar-title {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-  transition: color var(--transition-normal);
-}
-
 .sidebar-nav {
   flex: 1;
-  padding: 0 12px 24px;
+  padding: 0 var(--space-ms) var(--space-lg);
   overflow-y: auto;
 }
 
@@ -132,18 +87,18 @@
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-ms);
   width: 100%;
-  min-height: 40px;
-  margin-bottom: 4px;
-  padding: 10px 12px;
+  min-height: var(--control-h-m);
+  margin-bottom: var(--space-xs);
+  padding: var(--space-sm) var(--space-ms);
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 500;
-  line-height: 1.45;
+  line-height: 1.2;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
   text-align: left;
@@ -191,43 +146,23 @@
   color: inherit;
 }
 
-.nav-item.disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
 /* Kategori basliklari hiyerarsiyi kurar; profil satirlari ayni hizada kalir. */
 .nav-item-sub {
   margin-left: 0;
 }
 
-/* Equal slots; narrower glyphs need optical compensation. */
-.nav-item[data-profile="meeting-call"] .nav-icon svg {
-  width: 26px;
-  height: 26px;
-}
-
-.nav-item[data-profile="zoom-hifi"] .nav-icon svg,
-.nav-item[data-profile="raw"] .nav-icon svg {
-  width: 24px;
-  height: 24px;
-}
-
-.nav-item[data-profile="whatsapp-telegram-call"] .nav-icon svg {
-  width: 22px;
-  height: 22px;
-}
-
+/* Tum nav ikonlari 20px; glif basina optik dengeleme sprite viewBox'unda (index.html sembolleri)
+   ve #icon-mic icin <use width/height> ile yapilir - CSS'te ikon bazli boyut istisnasi yok. */
 .sidebar-note {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin: 0 24px 24px;
-  padding-top: 16px;
+  gap: var(--space-sm);
+  margin: 0 var(--space-lg) var(--space-lg);
+  padding-top: var(--space-md);
   border-top: 1px solid var(--border-secondary);
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.65;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
 }
 
 .sidebar-note svg {
@@ -235,40 +170,6 @@
   width: 14px;
   height: 14px;
   margin-top: 2px;
-}
-
-.sidebar-footer {
-  padding: var(--space-md);
-  border-top: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-}
-
-.sidebar-status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  letter-spacing: 0.3px;
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.sidebar-status.recording .status-indicator {
-  background: var(--accent-danger);
-  animation: pulse 0.8s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 
 /* ========== MAIN CONTENT (calisma alani) ========== */
@@ -289,90 +190,200 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(28px, 3.5vh, 44px) var(--padding-fluid) var(--padding-fluid);
+  padding: var(--padding-fluid) var(--workspace-gutter);
   min-width: 0;
   min-height: 0;
 }
 
-/* The global footer spans both columns; links remain in a bounded inner row. */
+/* Only placement belongs to the app shell; footer content uses shared.css everywhere. */
 .app-shell .site-footer {
   grid-area: 3 / 1 / 4 / -1;
-  padding: 18px var(--padding-fluid);
-  border-top: 1px solid var(--border-primary);
-  background: var(--chrome-bg);
-  text-align: left;
   margin-top: 0;
-}
-
-.app-shell .site-footer-content {
-  width: 100%;
-  max-width: 1600px;
-  margin-inline: auto;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 24px;
-  /* Keep the fixed diagnostics control clear of footer links and copyright. */
-  padding-right: 56px;
-}
-
-.app-shell .site-footer-brand,
-.app-shell .site-footer-links a[href="#features"],
-.app-shell .site-footer-links a[href="#how-it-works"] {
-  display: none;
-}
-
-.app-shell .site-footer-links {
-  gap: 20px;
-}
-
-.app-shell .site-footer-links a::before {
-  content: none;
-}
-
-.app-shell .site-footer-links a,
-.app-shell .site-footer-contact,
-.app-shell .site-footer-meta {
-  font-size: var(--fs-xs);
-}
-
-.app-shell .site-footer-meta {
-  order: -1;
-  margin-right: auto;
-}
-
-.app-shell .site-footer-links a,
-.app-shell .site-footer-contact {
-  color: var(--text-secondary);
-}
-
-body.production .app-shell .site-footer-content {
-  padding-right: 0;
 }
 
 /* ========== RESPONSIVE ========== */
 
-/* Ray genislikleri variables.css'te; 768px masaustu duzenine dahildir. */
+/* First use has one clear destination; the scenario rail returns with the test. */
+.app-shell:has(#scenarioPicker:not([hidden])) {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.scenario-workspace {
+  width: 100%;
+  max-width: var(--app-content-max);
+}
+
+.scenario-picker {
+  width: 100%;
+  max-width: 1040px;
+  margin: var(--space-lg) auto;
+}
+
+.scenario-picker-header {
+  max-width: 64ch;
+  margin-bottom: var(--space-2xl);
+}
+
+.scenario-picker-header h1 {
+  margin: 0 0 var(--space-md);
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 600;
+  letter-spacing: var(--heading-tracking);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.scenario-picker-header p {
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  line-height: 1.7;
+}
+
+.scenario-choices {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-xl) var(--space-2xl);
+}
+
+.scenario-group:first-child {
+  grid-row: span 2;
+}
+
+.scenario-group {
+  min-width: 0;
+}
+
+.scenario-group h2 {
+  margin: 0 0 var(--space-ms);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.scenario-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.scenario-choice .nav-icon {
+  color: var(--color-purple-light);
+  margin-top: var(--space-2xs);
+}
+
+.scenario-choice-copy {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.scenario-choice-copy strong {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.scenario-choice-copy > span {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.scenario-choice:hover,
+.scenario-choice.active {
+  background: rgba(var(--color-purple-rgb), 0.08);
+  border-color: var(--color-purple);
+}
+
+.scenario-choice:focus-visible,
+.scenario-change:focus-visible {
+  outline: 2px solid var(--color-purple-light);
+  outline-offset: 3px;
+}
+
+.scenario-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-ms);
+  max-width: 85ch;
+  margin-top: var(--space-xl);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+}
+
+.scenario-scope svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: var(--space-2xs);
+}
+
+.scenario-change {
+  min-height: var(--control-h-m);
+  padding: var(--space-sm) 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-purple-light);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.scenario-change:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Breakpoint seti variables.css basliginda (xs 479 · sm 767 · md 768-1023 · lg 768-1199 · xl 1200+).
+   Rail 768-1023'te 216px; daha genis ekranlarda 264-320px arasinda olceklenir.
+   Konsol 1199'a kadar tek kolon kalir (panels.css). */
 @media (min-width: 768px) and (max-width: 1023px) {
   .app-shell {
     --rail-width: var(--sidebar-width-compact);
   }
 
+  /* Compact rail: nav metni intro/note ile ayni 24px hattinda kalir (12 + 12) */
   .sidebar .nav-item {
-    padding-inline: 10px;
-    gap: 8px;
-  }
-}
-
-@media (min-width: 1024px) and (max-width: 1200px) {
-  .app-shell {
-    --rail-width: var(--sidebar-width-medium);
+    gap: var(--space-sm);
   }
 }
 
 /* Mobil: grid kabugu dikey akisa doner - ust bar tam genislik (hamburger + ortali marka),
    sidebar sabit konumlu cekmece, footer tam genislik */
 @media (max-width: 767px) {
+  .scenario-picker {
+    margin: var(--space-sm) auto;
+  }
+
+  .scenario-picker-header {
+    margin-bottom: var(--space-xl);
+  }
+
+  .scenario-choices {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .scenario-group:first-child {
+    grid-row: auto;
+  }
+
   .app-shell {
     display: flex;
     flex-direction: column;
@@ -392,6 +403,7 @@ body.production .app-shell .site-footer-content {
 
   .sidebar {
     position: fixed;
+    padding-bottom: 0;
     top: var(--header-height); /* variables.css :root */
     width: min(var(--sidebar-width), calc(100vw - 48px));
     height: calc(100vh - var(--header-height));
@@ -399,9 +411,9 @@ body.production .app-shell .site-footer-content {
     left: calc(-1 * var(--sidebar-width));
     visibility: hidden;
     z-index: var(--z-drawer);
-    background: var(--bg-primary);
-    transition: left 0.3s ease;
-    box-shadow: var(--panel-shadow);
+    background: var(--overlay-bg);
+    transition: left var(--transition-slow), visibility var(--transition-slow);
+    box-shadow: var(--drawer-shadow);
   }
 
   .sidebar.open {
@@ -409,100 +421,11 @@ body.production .app-shell .site-footer-content {
     visibility: visible;
   }
 
+  /* Mobil gutter tek deger: header, icerik ve footer 16px */
   .content-container {
-    padding: 24px 20px 28px;
+    padding: var(--space-lg) var(--space-md);
   }
 
-  .app-shell .site-footer-content {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--space-sm) var(--space-md);
-    padding-inline: 0;
-  }
-
-  .app-shell .site-footer-meta {
-    order: 1;
-    flex-basis: 100%;
-    margin-inline: 0;
-    text-align: center;
-  }
-
-  .mic-dropdown {
-    min-width: 140px;
-    font-size: var(--fs-md);
-    padding-right: 28px;
-    background-position: right 8px center;
-  }
-
-  .settings-drawer {
-    width: 100%;
-    right: -100%;
-  }
 }
 
-/* Scrollbar styles are in variables.css - DRY */
-
-/* ========== MOBILE SMALL (480px) RESPONSIVE ========== */
-/* Kucuk mobil cihazlar icin ozel optimizasyonlar */
-@media (max-width: 480px) {
-  /* Content padding azalt - icerik alani genislesin */
-  .content-container {
-    padding-inline: 16px;
-  }
-
-  .vu-section {
-    max-width: 100%;
-  }
-
-  /* Dev console drawer tam ekran */
-  .dev-console-drawer {
-    width: 100%;
-    right: -100%;
-  }
-
-  .dev-console-drawer.open {
-    right: 0;
-  }
-
-  /* VU meter biraz kucult */
-  .vu-meter {
-    height: 21px;
-  }
-
-  /* Buton min-width kaldir, padding azalt */
-  .btn-action {
-    min-width: 0;
-    padding: var(--space-sm) var(--space-md);
-    font-size: var(--fs-sm);
-  }
-
-  /* Mic dropdown tam genislik */
-  .mic-dropdown {
-    min-width: 0;
-    width: 100%;
-  }
-
-  /* Tips daha kompakt */
-  .unified-tips .utip {
-    font-size: var(--fs-sm);
-  }
-
-  /* Player kompakt */
-  .player-filename {
-    font-size: var(--fs-sm);
-  }
-
-  .player-time {
-    font-size: var(--fs-xs);
-  }
-
-  /* Settings drawer tam ekran */
-  .settings-drawer {
-    width: 100%;
-    right: -100%;
-  }
-
-  .settings-drawer.open {
-    right: 0;
-  }
-}
+/* Bilesen media kurallari kendi dosyalarindadir (components/controls/vu-meter/player/drawers). */

@@ -4,50 +4,41 @@
 
 /* --- Show Report Button --- */
 .btn-show-report {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
   width: 100%;
-  padding: 10px var(--space-md);
+  min-height: var(--control-h-m);
+  padding: 0 var(--space-md);
   margin-top: var(--space-sm);
   background: var(--gradient-accent-muted);
   border: 1px solid rgba(var(--color-purple-rgb), 0.35);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-size: var(--fs-sm);
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
-  box-shadow: 0 0 14px rgba(var(--color-purple-rgb), 0.12);
-  transition: all var(--transition-normal);
+  box-shadow: none;
+  transition: background var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .btn-show-report:hover {
   background: var(--gradient-accent-strong);
   border-color: rgba(var(--color-purple-rgb), 0.5);
-  box-shadow: 0 0 18px rgba(var(--color-purple-rgb), 0.2);
 }
 
 .btn-show-report svg {
   flex-shrink: 0;
 }
 
-/* --- Backdrop --- */
-.report-popup-backdrop {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-report);
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  align-items: center;
-  justify-content: center;
-  animation: reportFadeIn 0.2s ease;
-}
-
-.report-popup-backdrop.open {
-  display: flex;
+/* --- Backdrop (native dialog ::backdrop) --- */
+.report-popup::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  animation: reportFadeIn var(--transition-slow);
 }
 
 @keyframes reportFadeIn {
@@ -60,36 +51,61 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* --- Popup Container --- */
+/* --- Popup Container (native <dialog>, top layer) --- */
+/* Modal yuzeyi app kart ailesiyle ayni dilde (surface-card tokenlari);
+   modal oldugu icin zemin opaklastirildi ve buyuk ambient golge korundu.
+   UA dialog stilleri (padding, color, max-width/height, kenar) burada sifirlanir. */
 .report-popup {
-  width: min(520px, 90vw);
-  max-height: 85vh;
-  display: flex;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  color: inherit;
+  width: min(var(--overlay-w-sm), calc(100% - 2 * var(--space-md)));
+  max-width: none;
+  max-height: calc(100vh - 2 * var(--space-2xl));
+  max-height: calc(100dvh - 2 * var(--space-2xl));
   flex-direction: column;
-  background: var(--panel-body-bg, rgba(18, 18, 26, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  animation: reportSlideUp 0.25s ease;
+  background-color: var(--overlay-bg);
+  border: 1px solid var(--overlay-border);
+  border-radius: var(--overlay-radius);
+  box-shadow: var(--overlay-shadow);
   overflow: hidden;
+  z-index: var(--z-report);
+}
+
+.report-popup[open] {
+  display: flex;
+  animation: reportSlideUp var(--transition-slow);
 }
 
 /* --- Header --- */
+/* Overlay header sozlesmesi: 16/24 dolgu, min 64px, baslik 16/600 (account ve dev console ile ayni) */
 .report-popup-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md) var(--space-lg);
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-height: var(--overlay-header-h);
+  padding: var(--overlay-header-pad);
   border-bottom: 1px solid var(--glass-border);
 }
 
 .report-popup-title {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-sm);
-  font-size: var(--fs-base);
+  font-size: var(--fs-lg);
   font-weight: 600;
+  line-height: 1.3;
   color: var(--text-primary);
+}
+
+.report-popup-actions {
+  margin-left: auto;
 }
 
 .report-popup-title svg {
@@ -97,28 +113,18 @@
   flex-shrink: 0;
 }
 
-.report-popup-close {
+.report-popup-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  gap: var(--space-xs);
 }
 
-.report-popup-close:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-primary);
-}
+/* Kapat/indir ikon butonlari: .btn-overlay-close (variables.css) */
 
 /* --- Body (scrollable) --- */
 .report-popup-body {
   overflow-y: auto;
+  min-height: 0;
   padding: var(--space-lg);
   flex: 1;
 }
@@ -127,12 +133,19 @@
 .report-score-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 10px;
+  gap: var(--space-xs);
+  min-height: var(--control-h-xs);
+  padding: 0 var(--space-sm);
   border-radius: var(--radius-full);
   font-size: var(--fs-xs);
   font-weight: 700;
-  letter-spacing: 0.3px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+/* Skor yokken bos rozet yer kaplamasin (fantom genislik) */
+.report-score-badge:empty {
+  display: none;
 }
 
 .report-score-badge[data-color="success"] {
@@ -158,23 +171,23 @@
 /* --- Overall Score --- */
 .report-overall {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-md);
   padding: var(--space-md);
   margin-bottom: var(--space-md);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-input);
   border-radius: var(--radius-lg);
   border: 1px solid var(--glass-border);
 }
 
 .report-overall-indicator {
-  width: 48px;
-  height: 48px;
+  width: var(--control-h-s);
+  height: var(--control-h-s);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: var(--fs-xl);
   flex-shrink: 0;
 }
 
@@ -197,6 +210,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .report-overall-label {
@@ -208,13 +223,36 @@
 .report-overall-stars {
   color: var(--accent-warning);
   font-size: var(--fs-sm);
-  letter-spacing: 2px;
+  letter-spacing: 0.15em;
+}
+
+.report-overall-stars:empty {
+  display: none;
 }
 
 .report-overall-summary {
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.report-scope,
+.report-evidence {
+  margin-top: var(--space-md);
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.5;
+}
+
+.report-scope summary,
+.report-evidence summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.report-scope p,
+.report-evidence > .report-findings {
+  margin-top: var(--space-sm);
 }
 
 /* --- Findings List --- */
@@ -230,8 +268,8 @@
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
-  line-height: 1.4;
+  font-size: var(--fs-base);
+  line-height: 1.6;
 }
 
 .finding-icon {
@@ -283,26 +321,23 @@
   margin-top: var(--space-lg);
   border-top: 1px solid var(--glass-border);
   padding-top: var(--space-md);
-  min-height: 200px;
 }
 
-.report-detailed {
-  transition: filter 0.3s ease;
-}
-
-.report-detailed.blurred {
-  filter: blur(4px);
-  pointer-events: none;
-  user-select: none;
-}
-
-.report-section-title {
-  font-size: 11px;
-  font-weight: 600;
+/* Yukleme durumu (ReportPanelUI._setDetailedState): account panelindeki "Loading your reports…" ile ayni dil */
+.report-detailed-wrapper[data-state="loading"]::before {
+  content: 'Loading instructions…';
+  display: block;
+  margin-bottom: var(--space-md);
+  font-size: var(--fs-sm);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  margin-bottom: var(--space-sm);
+}
+
+/* .console-card-heading ile ayni tipografik olcek */
+.report-section-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
   margin-top: var(--space-md);
 }
 
@@ -318,7 +353,8 @@
 }
 
 .metric-card {
-  background: rgba(255, 255, 255, 0.02);
+  /* .status-tile ile ayni bilgi-cipi yuzeyi */
+  background: var(--bg-input);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
@@ -329,9 +365,8 @@
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  margin-bottom: 4px;
+  line-height: 1.4;
+  margin-bottom: var(--space-xs);
 }
 
 .metric-card-value {
@@ -342,7 +377,7 @@
 }
 
 .metric-card-unit {
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-xs);
   color: var(--text-muted);
   margin-left: 2px;
 }
@@ -366,9 +401,9 @@
   padding: var(--space-sm) var(--space-md);
   background: rgba(152, 85, 247, 0.05);
   border-radius: var(--radius-md);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
   color: var(--text-primary);
-  line-height: 1.4;
+  line-height: 1.6;
 }
 
 .rec-icon {
@@ -387,6 +422,7 @@
 
 .rec-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
 }
@@ -404,17 +440,20 @@
 
 .rec-confidence {
   flex-shrink: 0;
-  text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
-  letter-spacing: 0.5px;
-  padding: 1px 6px;
-  border-radius: var(--radius-full, 8px);
+  padding: 0 var(--space-sm);
+  min-height: var(--control-h-xs);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
 }
 
+/* Yuksek guven olumlu bir sinyal - kirmizi yalniz gercek hata/danger'a ayrildi;
+   guven olcegi mor ailesinin yogunluk adimlariyla kodlanir (medium 0.18 -> high 0.28) */
 .rec-confidence--high {
-  background: var(--accent-danger-muted);
-  color: var(--accent-danger);
+  background: rgba(var(--color-purple-rgb), 0.28);
+  color: var(--color-purple-light);
 }
 
 .rec-confidence--medium {
@@ -429,61 +468,56 @@
 
 /* --- Premium Overlay --- */
 .premium-overlay {
-  position: absolute;
-  inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-md);
-  background: rgba(10, 10, 15, 0.6);
-  backdrop-filter: blur(2px);
-  border-radius: var(--radius-lg);
+  align-items: flex-start;
+  gap: var(--space-ms);
+  background: transparent;
+  padding: var(--space-md) 0 0;
   z-index: 2;
 }
 
-.premium-overlay.hidden {
-  display: none;
+.premium-lock-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
 }
 
-.premium-lock-icon {
-  color: var(--color-accent-text);
-  opacity: 0.8;
+.premium-lock-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .premium-text {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
+  max-width: 55ch;
   color: var(--text-secondary);
-  text-align: center;
+  text-align: left;
 }
 
-.btn-premium {
-  padding: var(--space-sm) var(--space-lg);
-  background: linear-gradient(135deg, var(--color-purple), var(--color-orange));
-  border: none;
-  border-radius: var(--radius-full);
-  color: white;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  box-shadow: 0 4px 12px rgba(152, 85, 247, 0.3);
-}
-
-.btn-premium:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(152, 85, 247, 0.4);
-}
-
-.btn-premium:disabled {
+/* Premium uses the shared action style. Access and checkout behavior are unchanged. */
+#premiumCta:disabled {
   cursor: wait;
-  opacity: 0.75;
-  transform: none;
 }
 
 .premium-status {
   margin: 0;
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-align: center;
+  text-align: left;
+}
+
+@media (max-width: 767px) {
+  .report-popup-header,
+  .report-popup-body {
+    padding: var(--space-md);
+  }
+}
+
+@media (max-width: 479px) {
+  .report-overall {
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
 }

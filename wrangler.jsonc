@@ -19,11 +19,19 @@
       "vars": {
         "MICPROBE_FREEMIUS_MODE": "sandbox",
         "MICPROBE_FREEMIUS_SANDBOX_PRODUCT_ID": "33850",
+        "MICPROBE_FREEMIUS_SANDBOX_PUBLIC_KEY": "pk_65160128b78ff12cd8db536007592",
         "MICPROBE_FREEMIUS_SANDBOX_PLAN_ID": "55641",
         "MICPROBE_FREEMIUS_SANDBOX_CHECKOUT_URL": "https://checkout.freemius.com/product/33850/plan/55641/?sandbox=true",
         "MICPROBE_FREEMIUS_SANDBOX_BILLING_CYCLE": "lifetime",
         "MICPROBE_FREEMIUS_SANDBOX_CHECKOUT_TITLE": "MicProbe Premium"
       },
+      "d1_databases": [
+        {
+          "binding": "MICPROBE_ACCOUNTS",
+          "database_name": "micprobe-dev-accounts",
+          "migrations_dir": "migrations"
+        }
+      ],
       "kv_namespaces": [
         {
           "binding": "MICPROBE_REPLAY_GUARD",

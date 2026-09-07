@@ -3,12 +3,12 @@
  * OCP: Farkli format destekleri eklenebilir
  */
 import eventBus from './EventBus.js';
-import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log, toggleDisplay } from './utils.js';
+import { formatTime, formatTimestampYYMMDDHHMMSS, isValidDuration, log, setVisible } from './utils.js';
 import { BYTES, EVENTS } from './constants.js';
 import { convertToMp3 } from './Mp3Converter.js';
 
 // Clean Code: Tekrarlayan SVG iconlari constant olarak
-const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-play"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
 const REPLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>';
 
@@ -25,8 +25,13 @@ class Player {
     this.timeEl = document.getElementById(config.timeId);
     this.filenameEl = document.getElementById(config.filenameId);
     this.metaEl = document.getElementById(config.metaId);
+    this.fileDetailsEl = document.getElementById('playerFileDetails');
     this.downloadBtnEl = document.getElementById(config.downloadBtnId);
+    this.mp3DownloadBtnEl = config.mp3DownloadBtnId ? document.getElementById(config.mp3DownloadBtnId) : null;
     this.noRecordingEl = document.getElementById(config.noRecordingId);
+    // Playback kartini saran panel (resolved element) - call kategorisinde display:none
+    // baslar, load() ile gorunur yapilir. Verilmezse davranis degismez.
+    this.panelEl = config.panelEl || null;
 
     this.audio = new Audio();
     this.isPlaying = false;
@@ -65,7 +70,8 @@ class Player {
   }
 
   load(data) {
-    const { blob, mimeType, filename, durationMs } = data;
+    const { blob, mimeType, filename, durationMs, runSnapshot } = data;
+    this.recordedAt = runSnapshot?.startedAt || new Date().toISOString();
 
     // Playback state sifirla
     this.stopProgressLoop();
@@ -91,13 +97,18 @@ class Player {
     }
 
     if (this.filenameEl) {
-      this.filenameEl.textContent = filename;
+      this.filenameEl.textContent = runSnapshot?.profileLabel || 'Microphone sample';
     }
 
     if (this.metaEl) {
       const durationText = this.knownDurationSeconds ? formatTime(this.knownDurationSeconds) : UNKNOWN_DURATION;
-      this.metaEl.textContent = `${(blob.size / BYTES.PER_KB).toFixed(1)} KB - ${mimeType} - Duration: ${durationText}`;
+      const date = new Date(this.recordedAt);
+      const recordedTime = Number.isFinite(date.getTime())
+        ? date.toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Time unavailable';
+      this.metaEl.textContent = `${recordedTime} · ${durationText}`;
     }
+    if (this.fileDetailsEl) this.fileDetailsEl.textContent = `${(blob.size / BYTES.PER_KB).toFixed(1)} KB · ${mimeType}`;
+    if (this.downloadBtnEl) this.downloadBtnEl.title = filename;
 
     if (this.timeEl && this.knownDurationSeconds) {
       this.timeEl.textContent = `0:00 / ${formatTime(this.knownDurationSeconds)}`;
@@ -106,14 +117,25 @@ class Player {
     this.syncPlayButtonIcon();
 
     if (this.downloadBtnEl) {
-      this._setupMp3Download(blob, filename);
+      this.downloadBtnEl.href = this.currentUrl;
+      this.downloadBtnEl.download = filename;
+      this.downloadBtnEl.onclick = (event) => {
+        if (!this._canDownload(blob)) event.preventDefault();
+      };
     }
+    if (this.mp3DownloadBtnEl) this._setupMp3Download(blob, filename);
 
     if (this.containerEl) {
       this.containerEl.classList.add('visible');
     }
 
-    toggleDisplay(this.noRecordingEl, false);
+    // Kart profil nedeniyle gizliyse (call kategorisi) kayit yuklenince gorunur yap
+    if (this.panelEl) {
+      this.panelEl.dataset.runId = runSnapshot?.runId || '';
+      setVisible(this.panelEl, true);
+    }
+
+    setVisible(this.noRecordingEl, false);
 
     // Duration bazen metadata ile gec gelir (webm/opus). Play'e basmadan sureyi gostermek icin probe et.
     this.probeDuration(blob, mimeType).catch((err) => {
@@ -124,6 +146,10 @@ class Player {
   }
 
   reset() {
+    if (this.panelEl) {
+      delete this.panelEl.dataset.runId;
+      setVisible(this.panelEl, false);
+    }
     // Oynatmayi durdur
     this.audio.pause();
     this.audio.src = '';
@@ -137,6 +163,12 @@ class Player {
       this.currentUrl = null;
     }
     this.currentBlob = null;
+    this.downloadBtnEl?.removeAttribute('href');
+    this.mp3DownloadBtnEl?.removeAttribute('href');
+    if (this._mp3Url) {
+      URL.revokeObjectURL(this._mp3Url);
+      this._mp3Url = null;
+    }
 
     // UI sifirla
     if (this.containerEl) {
@@ -153,7 +185,7 @@ class Player {
 
     this.syncPlayButtonIcon();
 
-    toggleDisplay(this.noRecordingEl, true);
+    setVisible(this.noRecordingEl, true);
 
     eventBus.emit(EVENTS.PLAYER_RESET);
   }
@@ -477,10 +509,17 @@ class Player {
   }
 
   /**
-   * Download butonunu MP3 donusumu ile ayarla
-   * Tiklandiginda blob -> MP3 donusumu yapilir
+   * Downloads share the playback lock, including keyboard activation.
+   */
+  _canDownload(blob) {
+    return this.currentBlob === blob && this.downloadBtnEl?.getAttribute('aria-disabled') !== 'true';
+  }
+
+  /**
+   * Optional MP3 export; the primary download keeps the measured original file.
    */
   _setupMp3Download(blob, filename) {
+    const button = this.mp3DownloadBtnEl;
     // Onceki mp3 URL'i temizle
     if (this._mp3Url) {
       URL.revokeObjectURL(this._mp3Url);
@@ -493,23 +532,23 @@ class Player {
     const mp3Filename = `${baseName}.mp3`;
 
     // href'i temizle (tiklaninca JS handle edecek)
-    this.downloadBtnEl.removeAttribute('href');
-    this.downloadBtnEl.download = mp3Filename;
+    button.href = '#';
+    button.download = mp3Filename;
+    button.textContent = 'MP3';
 
-    this.downloadBtnEl.onclick = async (e) => {
+    button.onclick = async (e) => {
       e.preventDefault();
-      if (this._isConverting) return;
+      if (this._isConverting || !this._canDownload(blob)) return;
 
       this._isConverting = true;
-      // Text node'u bul (SVG'yi koruyarak)
-      const textNode = [...this.downloadBtnEl.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
-      const originalText = textNode?.textContent;
-      if (textNode) textNode.textContent = ' Converting...';
+      button.textContent = 'Converting...';
 
       try {
         const mp3Blob = await convertToMp3(blob, {
-          onProgress: (p) => { if (textNode) textNode.textContent = ` Converting... ${p}%`; }
+          onProgress: (p) => { if (this.currentBlob === blob) button.textContent = `Converting... ${p}%`; }
         });
+        // A late conversion must not download or relabel a newer recording.
+        if (!this._canDownload(blob)) return;
         this._mp3Url = URL.createObjectURL(mp3Blob);
 
         const a = document.createElement('a');
@@ -520,9 +559,12 @@ class Player {
         log.player(`MP3 indirildi: ${mp3Filename} (${(mp3Blob.size / BYTES.PER_KB).toFixed(1)} KB)`);
       } catch (err) {
         log.error('MP3 conversion error', { error: err.message });
+        if (this._canDownload(blob)) eventBus.emit(EVENTS.UI_MESSAGE, {
+          message: 'MP3 conversion failed. Try again or download the original recording.', tone: 'error'
+        });
       } finally {
         this._isConverting = false;
-        if (textNode) textNode.textContent = originalText;
+        if (this.currentBlob === blob) button.textContent = 'MP3';
       }
     };
   }
@@ -531,6 +573,7 @@ class Player {
    * Cleanup - EventBus listener'larini kaldir (memory leak onleme)
    */
   destroy() {
+    this.currentBlob = null;
     this.stopProgressLoop();
     this.audio.pause();
     this.audio.src = '';

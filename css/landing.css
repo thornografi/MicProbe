@@ -3,13 +3,13 @@
 /* ========== LANDING VIEW ========== */
 #landing-view {
   min-height: 100vh;
-  /* background body'den miras - DRY */
+  /* The shared html canvas paints the background, as it does for app-view. */
   position: relative;
   overflow-x: hidden;
 }
 
 /* ========== NAVBAR ========== */
-/* Kabuk, marka blogu (.brand-lockup) ve menu butonu (.header-menu-btn) variables.css
+/* Kabuk, marka blogu (.brand-lockup) ve menu butonu (.header-menu-btn) shared.css
    HEADER BASE bolumunden gelir; burada yalniz landing konumlamasi ve nav listesi var. */
 .navbar {
   /* Landing-specific positioning */
@@ -18,9 +18,10 @@
   left: 0;
   right: 0;
 
-  /* Landing-specific layout */
+  /* Landing-specific layout: marka ve nav, icerik kolonunun (--max-width) kenarlarina oturur */
   justify-content: space-between; /* logo sol, nav sag */
-  padding: 0 var(--space-xl);
+  gap: var(--space-xl);
+  padding-inline: max(var(--page-gutter), calc((100% - var(--max-width)) / 2));
 
   /* Scroll state transition */
   transition: background var(--transition-normal);
@@ -36,14 +37,24 @@
   gap: var(--space-xl);
 }
 
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  padding-right: var(--space-xl);
+  border-right: 1px solid var(--border-primary);
+}
+
 .navbar-link {
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: var(--fs-base);
+  font-size: var(--fs-md);
   font-weight: 500;
   transition: color var(--transition-normal);
   position: relative;
-  padding-bottom: 2px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-l);
 }
 
 .navbar-link::after {
@@ -52,10 +63,10 @@
   bottom: -2px;
   left: 50%;
   width: 0;
-  height: 1.5px;
-  background: linear-gradient(90deg, var(--color-pink), var(--color-purple));
-  transition: width 0.3s ease, left 0.3s ease;
-  border-radius: 1px;
+  height: 2px;
+  background: var(--color-purple-light);
+  transition: width var(--transition-slow), left var(--transition-slow);
+  border-radius: var(--radius-full);
 }
 
 .navbar-link:hover {
@@ -67,44 +78,50 @@
   left: 0;
 }
 
-/* Navbar CTA - .btn--primary'den miras, sadece boyut farkı */
+/* Navbar CTA: restrained emphasis, matching the 48px navigation targets. */
 .navbar-cta {
-  padding: var(--space-sm) var(--space-lg);
+  min-height: var(--control-h-l);
+  padding: 0 var(--space-lg);
   font-size: var(--fs-base);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
 }
 
 .navbar-cta svg {
-  width: 14px;
-  height: 14px;
+  width: 12.57px;
+  height: 16px;
 }
 
 /* ========== HERO SECTION ========== */
 .hero {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: calc(var(--navbar-height) + var(--space-3xl)) var(--space-xl) var(--space-4xl);
+  width: calc(100% - 2 * var(--page-gutter));
+  max-width: var(--max-width);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.37fr) minmax(0, 0.75fr);
+  align-items: start;
+  text-align: left;
+  gap: clamp(32px, 4vw, 64px);
+  padding-block: calc(var(--navbar-height) + var(--space-2xl)) var(--section-space);
   position: relative;
 }
 
 .hero-content {
-  transform: translateY(-2px);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  min-width: 0;
 }
 
 .hero-title {
-  font-size: clamp(2.2rem, 5.5vw, 3.5rem);
-  font-weight: 800;
+  font-size: clamp(2.2rem, 3.6vw, 4rem);
+  font-weight: 500;
   font-family: var(--font-ui-accent);
-  line-height: 1.12;
-  letter-spacing: -0.025em;
+  line-height: 1.15;
+  letter-spacing: var(--heading-tracking);
+  word-spacing: 0.06em;
   margin-bottom: var(--space-lg);
-  max-width: 780px;
+  max-width: 920px;
   text-wrap: balance;
 }
 
@@ -112,47 +129,33 @@
   display: block;
 }
 
-.hero-title .gradient-text {
-  color: var(--color-accent-text); /* DRY: tek kaynaktan miras */
-}
-
 .hero-subtitle {
-  font-size: clamp(1rem, 2.1vw, 1.2rem);
+  font-size: clamp(16px, 2vw, 20px);
   color: var(--text-secondary);
   max-width: 640px;
-  margin-bottom: var(--space-2xl);
-  line-height: 1.7;
+  margin-bottom: var(--space-lg);
+  line-height: 1.6;
   text-wrap: pretty;
 }
 
 .hero-buttons {
   display: flex;
-  gap: var(--space-lg);
-  margin-bottom: clamp(32px, 5vw, 56px);
+  flex-wrap: wrap;
+  gap: var(--space-ms);
 }
 
 .hero-buttons .btn {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-weight: 600;
-  letter-spacing: 0.01em;
+  border-radius: var(--radius-lg);
 }
 
+/* Hero cifti: ikisi de L48 (.btn), ayni min-width ve ikon boyutu; yalnizca yuzey farkli */
 .hero-buttons .btn--primary {
-  padding: 16px 38px;
-  box-shadow:
-    0 12px 32px rgba(var(--color-black-rgb), 0.35),
-    0 0 30px rgba(var(--color-pink-rgb), 0.4),
-    0 0 60px rgba(var(--color-purple-rgb), 0.2);
+  padding: 0 var(--space-xl);
   white-space: nowrap;
-  min-width: 170px;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  min-width: 176px;
   font-size: var(--fs-lg);
-}
-
-/* Mikrofon hover olunca buton da hover gibi görünsün */
-.hero-buttons .btn--primary.mic-hover-active {
-  transform: translateY(-2.4px);
-  box-shadow: var(--shadow-glow-orange);
 }
 
 .hero-buttons .btn--primary svg {
@@ -161,404 +164,355 @@
 }
 
 .hero-buttons .btn--secondary {
-  border: 1px solid rgba(var(--color-white-rgb), 0.18);
-  background: rgba(var(--color-white-rgb), 0.04);
-  padding: 12px 24px;
-  border-radius: var(--radius-full);
+  border: 1px solid var(--border-primary);
+  background: var(--glass-bg);
+  padding: 0 var(--space-xl);
   color: var(--text-primary);
-  opacity: 0.85;
-  min-width: 160px;
+  min-width: 176px;
   justify-content: center;
-}
-
-.hero-buttons .btn--secondary:hover {
-  opacity: 1;
-  text-shadow: 0 0 18px rgba(var(--color-white-rgb), 0.2);
 }
 
 .hero-buttons .btn--secondary svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
-/* Hero Visual - mikrofon ikonu ve dalga efektinin merkezi */
-.hero-visual {
+.hero-scope-note {
+  max-width: 580px;
+  margin-top: var(--space-md);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.hero-audio-signature {
+  --hero-mic-size: clamp(48px, 4vw, 64px);
   position: relative;
-  width: clamp(74.2px, 7.33vw, 99.2px);
-  height: clamp(74.2px, 7.33vw, 99.2px);
-  overflow: visible;
-  isolation: isolate;
+  width: 100%;
+  height: 176px;
+  flex-shrink: 0;
+  margin-top: var(--space-xl);
 }
 
-/* Ses dalgasi SVG - vertical bars visualizer */
 .hero-soundwave {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 100vw;
-  height: clamp(200px, 25vw, 320px);
+  display: block;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  z-index: 0;
-  overflow: visible;
 }
 
-.hero-mic-icon {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  z-index: 2; /* Dalgaların üstünde */
-  cursor: pointer;
-  transition: transform 0.3s ease;
-  transform: scale(0.9);
-}
-
-.hero-mic-icon:hover {
-  transform: scale(0.9864);
-}
-
-.hero-mic-circle {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--gradient-neon-circle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  box-shadow: 0 0 20px rgba(var(--color-purple-rgb), 0.3), 0 0 40px rgba(var(--color-pink-rgb), 0.15);
-  transition: box-shadow 0.3s ease;
-}
-
-.hero-mic-icon:hover .hero-mic-circle {
-  box-shadow: 0 0 30px rgba(var(--color-purple-rgb), 0.5), 0 0 60px rgba(var(--color-orange-rgb), 0.3);
-}
-
-.hero-mic-circle::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 1px solid rgba(var(--color-purple-rgb), 0.25);
-  box-shadow: 0 0 15px rgba(var(--color-purple-rgb), 0.2);
-  opacity: 0.5;
-}
-
-.hero-mic-circle svg {
-  width: 51.75%;
-  height: 51.75%;
-  color: white;
-  opacity: 0.95;
-}
-
-/* Audio Waves Animation (circular ripples) */
+/* The microphone is the landing's single animated focal point. */
 .hero-waves {
   position: absolute;
-  top: 50%;
   left: 50%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  width: 225%;
-  height: 225%;
+  width: var(--hero-mic-size);
+  aspect-ratio: 1;
   pointer-events: none;
-  /* opacity parent'ta değil, child'larda kontrol edilmeli - animasyon çalışsın */
-  z-index: 1;
 }
 
 .hero-wave {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: 2.55px solid;
-  border-radius: 50%;
+  inset: 0;
+  border: 1px solid rgba(var(--color-purple-rgb), 0.6);
+  border-radius: var(--radius-full);
   opacity: 0;
-  animation: wave-expand 6.25s ease-out infinite;
+  animation: hero-wave-expand 6.25s ease-out infinite;
 }
 
-.hero-wave:nth-child(1) {
-  border-color: rgba(var(--color-rose-rgb), 0.85);
-  animation-delay: 0s;
+.hero-wave:nth-child(2) { animation-delay: -2s; }
+.hero-wave:nth-child(3) { animation-delay: -4s; }
+
+@keyframes hero-wave-expand {
+  from { transform: scale(1); opacity: 0.65; }
+  to { transform: scale(2.3); opacity: 0; }
 }
 
-.hero-wave:nth-child(2) {
-  border-color: rgba(var(--color-purple-rgb), 0.75);
-  animation-delay: 1s;
+.hero-audio-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: var(--hero-mic-size);
+  aspect-ratio: 1;
+  border: 0;
+  padding: 0;
+  border-radius: var(--radius-full);
+  background: var(--action-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-normal), transform var(--transition-normal), box-shadow var(--transition-normal);
 }
 
-.hero-wave:nth-child(3) {
-  border-color: rgba(59, 130, 246, 0.65);
-  animation-delay: 2s;
+.hero-audio-mark:is(:hover, :focus-visible) {
+  background: var(--action-hover-bg);
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 0 0 6px rgba(var(--color-purple-rgb), 0.08), 0 0 24px rgba(var(--color-purple-rgb), 0.2);
 }
 
-@keyframes wave-expand {
-  0% {
-    width: 90px;
-    height: 90px;
-    opacity: 0.71;
+.hero-audio-mark:active {
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+.hero-audio-mark:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 5px;
+}
+
+.hero-audio-mark svg {
+  width: 50%;
+  height: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-wave { animation: none; }
+  .hero-audio-mark { transition: none; }
+  .hero-audio-mark:is(:hover, :focus-visible, :active) {
+    transform: translate(-50%, -50%);
   }
-  100% {
-    width: 205.5px;
-    height: 205.5px;
-    opacity: 0;
-  }
+}
+
+/* Photo and report share one frame; both stay in flow as the text wraps. */
+.hero-visual {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+  background: var(--bg-secondary);
+}
+
+.hero-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  max-height: 300px;
+  object-fit: cover;
+  object-position: center top;
+  background: var(--bg-secondary);
+}
+
+.hero-report {
+  margin: 0;
+  padding: var(--space-lg);
+  border-top: 1px solid var(--border-primary);
+}
+
+.hero-report-header {
+  margin-bottom: var(--space-md);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.hero-report-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.hero-report p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  max-width: 65ch;
+  text-wrap: pretty;
+}
+
+.hero-report .hero-report-scope {
+  margin-top: var(--space-ms);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.hero-report .hero-report-included {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-primary);
 }
 
 /* ========== ANCHOR SCROLL OFFSET ========== */
 /* Fixed navbar için scroll offset */
 .features,
 .how-it-works {
-  scroll-margin-top: calc(var(--navbar-height) * 1.4 + var(--space-xl));
+  scroll-margin-top: calc(var(--navbar-height) + var(--space-xl));
 }
 
 /* ========== FEATURES SECTION ========== */
 .features {
-  padding: var(--space-4xl) var(--space-xl);
+  padding: var(--section-space) var(--page-gutter);
   position: relative;
 }
 
 .section-header {
-  text-align: center;
-  margin-bottom: var(--space-3xl);
-}
-
-.section-badge {
-  display: inline-block;
-  padding: var(--space-xs) var(--space-md);
-  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.1), rgba(var(--color-pink-rgb), 0.06));
-  border: 1px solid rgba(var(--color-purple-rgb), 0.2);
-  border-radius: var(--label-radius);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--color-purple-light);
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  margin-bottom: var(--space-lg);
-  font-family: var(--font-mono);
+  max-width: var(--max-width);
+  margin: 0 auto var(--space-xl);
+  text-align: left;
 }
 
 .section-title {
-  font-size: clamp(2.1rem, 4.2vw, 2.8rem);
-  font-weight: 800;
-  margin-bottom: var(--space-lg);
-  letter-spacing: -0.025em;
+  font-size: var(--fs-h1);
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: var(--space-ms);
+  letter-spacing: var(--heading-tracking);
   color: var(--text-primary);
   text-wrap: balance;
 }
 
 .section-subtitle {
-  font-size: var(--fs-btn);
+  font-size: var(--fs-lg);
   color: var(--text-secondary);
-  max-width: 640px;
-  margin: 0 auto;
-  line-height: 1.65;
-  opacity: 0.85;
+  max-width: 65ch;
+  margin: 0;
+  line-height: 1.6;
   text-wrap: pretty;
 }
 
-.features-grid {
+/* Shared section bounds; feature pairs and ordered steps have distinct layouts. */
+.features-grid,
+.steps-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-xl);
   max-width: var(--max-width);
   margin: 0 auto;
 }
 
-/* Landing Card Base - DRY: feature-card ve step-card ortak stilleri */
+.features-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.steps-container {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  padding: 0;
+}
+
+/* Informational cards have no hover affordance: they are not clickable. */
 .landing-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-2xl);
-  transition: all var(--transition-normal);
-}
-
-.landing-card:hover {
-  background: var(--glass-bg-hover);
-  border-color: rgba(var(--color-purple-rgb), 0.25);
-  box-shadow:
-    0 8px 32px rgba(var(--color-black-rgb), 0.3),
-    0 0 24px rgba(var(--color-purple-rgb), 0.12);
+  border-radius: var(--radius-xl);
+  padding: var(--space-xl);
 }
 
 .feature-card {
-  position: relative;
+  display: grid;
+  grid-template-columns: var(--control-h-l) minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-sm) var(--space-lg);
+}
+
+/* The two recording scenarios lead; report and settings describe the next step. */
+.feature-card--support {
+  background: transparent;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  padding: var(--space-lg) var(--space-xl) 0;
 }
 
 .feature-icon {
-  width: 44px;
-  height: 44px;
+  width: var(--control-h-l);
+  height: var(--control-h-l);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.12), rgba(var(--color-pink-rgb), 0.08));
-  border: 1px solid rgba(var(--color-purple-rgb), 0.15);
+  background: rgba(var(--color-purple-rgb), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: var(--space-xl);
-  transition: all var(--transition-slow);
+  grid-row: 1 / span 2;
 }
 
 .feature-icon svg {
   width: 24px;
   height: 24px;
   color: var(--color-purple-light);
-  transition: all var(--transition-slow);
 }
 
-.feature-title {
+.feature-card--support .feature-icon {
+  background: transparent;
+}
+
+.feature-card--support .feature-icon svg {
+  color: var(--text-secondary);
+  width: 22px;
+  height: 22px;
+}
+
+.feature-title,
+.step-title {
   font-size: var(--fs-xl);
   font-weight: 600;
-  margin-bottom: var(--space-md);
+  line-height: 1.3;
+  margin-bottom: var(--space-ms);
   color: var(--text-primary);
   letter-spacing: -0.01em;
   text-wrap: balance;
 }
 
+.feature-title {
+  align-self: center;
+  min-height: var(--control-h-l);
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
 .feature-description {
+  grid-column: 2;
+}
+
+.feature-description,
+.step-description {
   font-size: var(--fs-lg);
   color: var(--text-secondary);
-  line-height: 1.65;
-  opacity: 0.85;
+  line-height: 1.6;
+  max-width: 65ch;
 }
 
 /* ========== HOW IT WORKS SECTION ========== */
 .how-it-works {
-  padding: var(--space-4xl) var(--space-xl);
+  padding: var(--section-space) var(--page-gutter);
   background: transparent;
-}
-
-.steps-container {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-2xl);
-  max-width: var(--max-width);
-  margin: 0 auto;
-  flex-wrap: wrap;
+  position: relative;
 }
 
 .step-card {
-  flex: 1;
-  min-width: 280px;
-  max-width: 360px;
   text-align: left;
+  min-width: 0;
+  padding: 0 0 var(--space-lg);
 }
 
 .step-number {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: var(--gradient-neon-circle);
+  width: var(--control-h-s);
+  height: var(--control-h-s);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  color: white;
-  margin-bottom: var(--space-lg);
-  border: none;
-  box-shadow: 0 0 15px rgba(var(--color-purple-rgb), 0.3);
-}
-
-.step-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-base);
   font-weight: 600;
-  margin-bottom: var(--space-md);
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-
-.step-description {
-  font-size: var(--fs-lg);
   color: var(--text-secondary);
-  line-height: 1.65;
-  opacity: 0.85;
+  margin-bottom: var(--space-md);
 }
 
-/* Step connector line - removed for cleaner look */
-
-/* ========== SCROLL REVEAL ANIMATIONS ========== */
-.reveal {
-  opacity: 0;
-  transform: translateY(30px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* Staggered children - CSS variable ile delay kontrolu */
-.reveal-stagger > .reveal {
-  transition-delay: calc(var(--reveal-index, 0) * 0.12s);
-}
-
-/* ========== FEATURE CARD HOVER EFFECTS ========== */
-.feature-card {
-  position: relative;
-  overflow: hidden;
-}
-
-/* Gradient border on hover */
-.feature-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg,
-    rgba(var(--color-purple-rgb), 0.4),
-    rgba(var(--color-pink-rgb), 0.3));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity var(--transition-slow);
-  pointer-events: none;
-}
-
-.feature-card:hover::before {
-  opacity: 1;
-}
-
-/* Icon glow on hover - sadece renk/glow, pozisyon değişikliği yok */
-.feature-card:hover .feature-icon {
-  background: linear-gradient(135deg, rgba(var(--color-purple-rgb), 0.22), rgba(var(--color-pink-rgb), 0.15));
-  border-color: rgba(var(--color-purple-rgb), 0.35);
-  box-shadow: 0 0 20px rgba(var(--color-purple-rgb), 0.2);
-}
-
-.feature-card:hover .feature-icon svg {
-  filter: var(--glow-accent-md);
-  color: white;
-}
-
-/* Hero mic hover - floating animasyon kaldırıldı, sadece hover scale */
-
-/* ========== SECTION SEPARATOR GRADIENTS ========== */
-.features::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 10%;
-  right: 10%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
-  pointer-events: none;
-}
-
-.how-it-works {
-  position: relative;
-}
-
+/* Section rules follow the content bounds. */
+.features::before,
 .how-it-works::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 10%;
-  right: 10%;
+  left: max(var(--page-gutter), calc((100% - var(--max-width)) / 2));
+  right: max(var(--page-gutter), calc((100% - var(--max-width)) / 2));
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+  background: var(--border-primary);
   pointer-events: none;
 }
 
@@ -582,7 +536,47 @@ body:not(.app-mode) #app-view {
 }
 
 /* ========== RESPONSIVE ========== */
-/* Mobil esigi app kabugu ile ayni (767px); hamburger gorunurlugu variables.css HEADER BASE bolumunde */
+/* Tablet: hero remains on the same outer grid as the sections below it. */
+@media (max-width: 1199px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-xl);
+  }
+
+  .hero-title {
+    font-size: clamp(2.4rem, 5vw, 3.5rem);
+  }
+
+  .hero-audio-signature {
+    height: 144px;
+  }
+
+  .hero-visual {
+    display: grid;
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  }
+
+  .hero-photo {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .hero-report {
+    border-top: 0;
+    border-left: 1px solid var(--border-primary);
+  }
+
+  .feature-icon {
+    grid-row: 1;
+  }
+
+  .feature-description {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Mobil esigi app kabugu ile ayni (767px); hamburger gorunurlugu shared.css HEADER BASE bolumunde */
 @media (max-width: 767px) {
   .navbar {
     padding: 0 var(--space-md);
@@ -614,34 +608,81 @@ body:not(.app-mode) #app-view {
     justify-content: center;
   }
 
+  .navbar-links {
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: 0 0 var(--space-sm);
+    border-right: 0;
+    border-bottom: 1px solid var(--border-primary);
+  }
+
   .hero {
-    padding: calc(var(--navbar-height) + var(--space-2xl)) var(--space-md) var(--space-3xl);
+    width: calc(100% - 2 * var(--space-md));
+    padding-block: calc(var(--navbar-height) + var(--space-xl)) var(--space-2xl);
+  }
+
+  .hero-title {
+    font-size: clamp(2rem, 6vw, 2.8rem);
+  }
+
+  .hero-visual {
+    display: block;
+  }
+
+  .hero-photo {
+    height: auto;
+    max-height: 240px;
+  }
+
+  .hero-report {
+    padding: var(--space-md);
+    border-left: 0;
+    border-top: 1px solid var(--border-primary);
+  }
+
+  .hero-audio-signature {
+    height: 112px;
+    margin-top: var(--space-lg);
   }
 
   .hero-buttons {
     flex-direction: column;
+    gap: var(--space-md);
     width: 100%;
-    max-width: 300px;
   }
 
-  .btn--primary,
-  .btn--secondary {
+  .hero-buttons .btn--primary,
+  .hero-buttons .btn--secondary {
     width: 100%;
     justify-content: center;
   }
 
-  .hero-visual {
-    width: 140px;
-    height: 140px;
-  }
-
   .features,
   .how-it-works {
-    padding: var(--space-3xl) var(--space-md);
+    padding: var(--section-space) var(--space-md);
   }
 
+  .features-grid,
   .steps-container {
-    flex-direction: column;
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .landing-card {
+    padding: var(--space-lg);
+  }
+
+  .feature-card {
+    column-gap: var(--space-md);
+  }
+
+  .feature-card--support {
+    padding-bottom: 0;
+  }
+
+  .features::before,
+  .how-it-works::before {
+    left: var(--space-md);
+    right: var(--space-md);
   }
 }

@@ -1,12 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
   <title>MicProbe</title>
-  <defs>
-    <linearGradient id="micprobe" x1="3" y1="29" x2="29" y2="3" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7948DB"/>
-      <stop offset="1" stop-color="#D946A8"/>
-    </linearGradient>
-  </defs>
-  <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="url(#micprobe)" stroke="white" stroke-opacity=".14"/>
-  <path d="M8.5 22V10L16 18L23.5 10V17.5" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M23.5 20.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" fill="white"/>
+  <g stroke="#B892F4" stroke-linecap="round">
+    <path d="M6.5 6a13.4 13.4 0 0 1 19 0" stroke-width="1.8" opacity=".65"/>
+    <path d="M10 9.5a8.5 8.5 0 0 1 12 0" stroke-width="1.8" opacity=".85"/>
+    <rect x="12" y="12" width="8" height="11" rx="4" fill="#B892F4" stroke="none"/>
+    <path d="M9 20v1a7 7 0 0 0 14 0v-1M16 28v2.5M12 30.5h8" stroke-width="2.4"/>
+  </g>
 </svg>

@@ -1,227 +1,184 @@
-/**
- * DeepAnalysisEngine - Offline derin ses analizi orkestratoru
- *
- * Kayit bittiginde blob'u decode eder, mono downmix yapar, tam-clip integrated LUFS'u
- * (ana thread, hizli) hesaplar ve agir spektral pass'i (yuksek cozunurluklu FFT) bir
- * Web Worker'a devreder. Worker progress'i EventBus'a koprulenerek "Analysing" progress
- * bar'ini besler. Ses hicbir zaman tarayicidan cikmaz — tum hesaplama client-side.
- *
- * Kullanim (TestRecordingFlow):
- *   await deepAnalysisEngine.analyze(blob, { source: 'test', onProgress: r => ... });
- *   const result = deepAnalysisEngine.getResults();  // DiagnosticReportBuilder da event ile yakalar
- */
+/** Decode the saved file, preserve channels, and compute report metrics off-thread. */
 import eventBus from './EventBus.js';
 import { EVENTS, DEEP_ANALYSIS, QUALITY } from './constants.js';
-import { log } from './utils.js';
-import { LUFSCalculator } from './utils/lufs.js';
+import { log } from './utils/log.js';
 
 const WORKER_URL = new URL('../workers/spectral-analysis-worker.js', import.meta.url).href;
 
-class DeepAnalysisEngine {
+export class DeepAnalysisEngine {
   constructor() {
     this._lastResults = null;
-    this._worker = null;
+    this._job = null;
+    this._runCounter = 0;
   }
 
-  /** @returns {Object|null} Son analiz sonucu (DiagnosticReportBuilder build aninda da okur) */
-  getResults() {
+  getResults() { return this._lastResults; }
+
+  reset() {
+    this.cancel();
+    this._lastResults = null;
+  }
+
+  /** Cancel only the matching owner, or all work when no runId is supplied. */
+  cancel(runId = null) {
+    const job = this._job;
+    if (!job || (runId !== null && job.runId !== runId)) return false;
+    this._interrupt(job, 'cancelled', 'analysis-cancelled');
+    return true;
+  }
+
+  _interrupt(job, status, reason) {
+    if (!this._isCurrent(job)) return;
+    job.cancelled = true;
+    this._job = null;
+    clearTimeout(job.timeoutId);
+    const result = { runId: job.runId, status, reason, audioMetrics: null };
+    if (status === 'failed') this._lastResults = result;
+    job.resolveCancelled(result);
+    job.rejectWorker?.(new Error(reason));
+    this._terminateWorker(job);
+    if (job.context) {
+      job.context.close().catch(() => {});
+      job.context = null;
+    }
+    if (status === 'failed') eventBus.emit(EVENTS.DEEP_ANALYSIS_FAILED, result);
+  }
+
+  /** @param {Object} options {source:'test'|'record', runId, onProgress} */
+  async analyze(blob, { source = 'test', runId = null, onProgress = null, guidedSegments = null } = {}) {
+    this.cancel();
+    this._lastResults = null;
+    const job = { runId: runId ?? `analysis-${++this._runCounter}`, guidedSegments: guidedSegments ? structuredClone(guidedSegments) : null, cancelled: false, worker: null, context: null };
+    const cancelled = new Promise(resolve => { job.resolveCancelled = resolve; });
+    this._job = job;
+    job.timeoutId = setTimeout(() => this._interrupt(job, 'failed', 'analysis-timeout'), DEEP_ANALYSIS.MAX_WAIT_MS);
+    eventBus.emit(EVENTS.DEEP_ANALYSIS_STARTED, { source, runId: job.runId });
+    // decodeAudioData cannot be aborted reliably. The public promise still settles
+    // immediately on cancel, and identity checks discard any later decode result.
+    return Promise.race([this._performAnalysis(blob, source, onProgress, job), cancelled]);
+  }
+
+  _isCurrent(job) { return this._job === job && !job.cancelled; }
+
+  _publish(job, result) {
+    if (!this._isCurrent(job)) return { runId: job.runId, status: 'cancelled', audioMetrics: null };
+    clearTimeout(job.timeoutId);
+    this._lastResults = { runId: job.runId, ...result };
+    this._job = null;
+    eventBus.emit(result.status === 'failed' ? EVENTS.DEEP_ANALYSIS_FAILED : EVENTS.DEEP_ANALYSIS_READY, this._lastResults);
     return this._lastResults;
   }
 
-  reset() {
-    this._lastResults = null;
-    this._terminateWorker();
-  }
-
-  /**
-   * Blob'u derinlemesine analiz et.
-   * @param {Blob} blob - Kayit blob'u (webm/opus)
-   * @param {Object} options - { source: 'test'|'record', onProgress: (ratio)=>void }
-   * @returns {Promise<Object>} deepAnalysis payload ({ status, ... })
-   */
-  async analyze(blob, options = {}) {
-    const { source = 'test', onProgress = null } = options;
-    this._lastResults = null;
-
-    if (!blob || blob.size === 0) {
-      this._lastResults = { status: 'skipped', reason: 'empty-blob' };
-      return this._lastResults;
-    }
-
-    eventBus.emit(EVENTS.DEEP_ANALYSIS_STARTED, { source });
+  async _performAnalysis(blob, kind, onProgress, job) {
     const started = performance.now();
-
     try {
-      const { mono, sampleRate, numberOfChannels, durationSec, truncated } = await this._decode(blob);
-
-      if (mono.length < DEEP_ANALYSIS.MIN_SAMPLES) {
-        this._lastResults = {
-          status: 'skipped',
-          reason: 'clip-too-short',
-          source: { blobSize: blob.size, mimeType: blob.type, sampleRate, numberOfChannels, durationSec }
-        };
-        eventBus.emit(EVENTS.DEEP_ANALYSIS_READY, this._lastResults);
-        return this._lastResults;
+      if (!blob?.size) return this._publish(job, { status: 'skipped', reason: 'empty-blob', audioMetrics: null });
+      // decodeAudioData decodes the whole container before we can select a prefix.
+      // Bound encoded input as well as the subsequent PCM/FFT workload.
+      if (blob.size > DEEP_ANALYSIS.MAX_BLOB_BYTES) {
+        return this._publish(job, { status: 'skipped', reason: 'file-too-large-for-analysis', audioMetrics: null });
       }
-
-      // LUFS: ana thread (tam PCM tek seferde — 7s @48k ~ birkac ms, bloklamaz)
-      const lufs = this._computeLufs(mono, sampleRate);
-
-      // Agir spektral pass: Worker (mono.buffer transfer edilir)
-      const spectral = await this._runWorker(mono, sampleRate, onProgress);
-
-      const durationMs = Math.round(performance.now() - started);
-      this._lastResults = {
-        status: 'ready',
-        version: '1.0',
-        durationMs,
-        source: { blobSize: blob.size, mimeType: blob.type, sampleRate, numberOfChannels, durationSec, truncated },
+      const decoded = await this._decode(blob, job);
+      if (!this._isCurrent(job)) return { runId: job.runId, status: 'cancelled', audioMetrics: null };
+      const { channels, sampleRate, numberOfChannels, durationSec, analyzedDurationSec, truncated } = decoded;
+      const source = { kind, blobSize: blob.size, mimeType: blob.type, sampleRate, numberOfChannels,
+        durationSec, analyzedDurationSec, truncated, sampleRateBasis: 'decoded-pcm' };
+      if (channels[0].length < DEEP_ANALYSIS.MIN_SAMPLES) {
+        return this._publish(job, { status: 'skipped', reason: 'clip-too-short', source, audioMetrics: null });
+      }
+      const spectral = await this._runWorker(channels, sampleRate, onProgress, job);
+      if (!this._isCurrent(job)) return { runId: job.runId, status: 'cancelled', audioMetrics: null };
+      const audioMetrics = {
+        ...spectral.audioMetrics, runId: job.runId,
+        coverage: { sampleRate, sampleRateBasis: 'decoded-pcm', numberOfChannels, durationSec, analyzedDurationSec, truncated },
         frequencyResponse: spectral.frequencyResponse,
-        bands: spectral.bands,
-        spectralFlatness: spectral.spectralFlatness,
-        noiseFloorDb: spectral.noiseFloorDb,
-        peakDb: spectral.peakDb,
-        rmsDb: spectral.rmsDb,
-        lufsIntegratedExact: lufs.integrated
+        frequencyProfile: { ...spectral.bands, unit: 'dB-relative-to-spectrum-mean',
+          method: 'welch-channel-power-average', snapshotCount: spectral.frequencyResponse.frameCount }
       };
-      eventBus.emit(EVENTS.DEEP_ANALYSIS_READY, this._lastResults);
-      log.system('Deep analysis ready', {
-        durationMs,
-        frames: spectral.frequencyResponse?.frameCount,
-        lufs: lufs.integrated
+      const result = this._publish(job, {
+        status: 'ready', version: '2.0', durationMs: Math.round(performance.now() - started), source,
+        frequencyResponse: spectral.frequencyResponse, bands: spectral.bands,
+        spectralFlatness: spectral.spectralFlatness, lowLevelPercentileDb: spectral.lowLevelPercentileDb,
+        peakDb: spectral.peakDb, rmsDb: spectral.rmsDb,
+        lufsIntegrated: audioMetrics.lufs.integrated, audioMetrics
       });
-      return this._lastResults;
+      log.system('Decoded file analysis ready', { runId: job.runId, durationMs: result.durationMs, truncated });
+      return result;
     } catch (err) {
-      // Analiz hatasi FATAL DEGIL — rapor deepAnalysis:null ile devam eder
-      log.error('Deep analysis failed', { error: err.message });
-      this._lastResults = { status: 'failed', reason: err.message };
-      eventBus.emit(EVENTS.DEEP_ANALYSIS_FAILED, { reason: err.message });
-      return this._lastResults;
+      if (!this._isCurrent(job)) return { runId: job.runId, status: 'cancelled', audioMetrics: null };
+      log.error('Decoded file analysis failed', { error: err.message });
+      return this._publish(job, { status: 'failed', reason: err.message, audioMetrics: null });
+    } finally {
+      this._terminateWorker(job);
     }
   }
 
-  /**
-   * Blob -> AudioBuffer -> mono Float32 (kanal ortalamasi), MAX_DURATION_SEC ile kirpilir.
-   * @private
-   */
-  async _decode(blob) {
+  async _decode(blob, job) {
     const arrayBuffer = await blob.arrayBuffer();
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-
+    if (!this._isCurrent(job)) throw new Error('analysis-cancelled');
+    const AudioCtx = globalThis.AudioContext || globalThis.webkitAudioContext;
+    const context = new AudioCtx();
+    job.context = context;
     let audioBuffer;
     try {
-      audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      audioBuffer = await context.decodeAudioData(arrayBuffer);
     } finally {
-      await ctx.close().catch(() => {});
+      if (job.context === context) job.context = null;
+      await context.close().catch(() => {});
     }
-
-    const sampleRate = audioBuffer.sampleRate;
-    const numberOfChannels = audioBuffer.numberOfChannels;
-    const maxSamples = Math.floor(DEEP_ANALYSIS.MAX_DURATION_SEC * sampleRate);
-    const frames = Math.min(audioBuffer.length, maxSamples);
-    const truncated = audioBuffer.length > maxSamples;
-
-    // Mono downmix (kanal toplami / kanal sayisi)
-    const mono = new Float32Array(frames);
-    for (let ch = 0; ch < numberOfChannels; ch++) {
-      const data = audioBuffer.getChannelData(ch);
-      for (let i = 0; i < frames; i++) mono[i] += data[i];
-    }
-    if (numberOfChannels > 1) {
-      const inv = 1 / numberOfChannels;
-      for (let i = 0; i < frames; i++) mono[i] *= inv;
-    }
-
-    return { mono, sampleRate, numberOfChannels, durationSec: +audioBuffer.duration.toFixed(2), truncated };
+    if (!this._isCurrent(job)) throw new Error('analysis-cancelled');
+    const { sampleRate, numberOfChannels } = audioBuffer;
+    const frames = Math.min(audioBuffer.length, Math.floor(DEEP_ANALYSIS.MAX_DURATION_SEC * sampleRate));
+    const channels = Array.from({ length: numberOfChannels }, (_, index) => audioBuffer.getChannelData(index).slice(0, frames));
+    return { channels, sampleRate, numberOfChannels,
+      durationSec: audioBuffer.length / sampleRate, analyzedDurationSec: frames / sampleRate,
+      truncated: audioBuffer.length > frames };
   }
 
-  /**
-   * Tam-clip integrated LUFS (LUFSCalculator reuse — DRY).
-   * @private
-   */
-  _computeLufs(mono, sampleRate) {
-    const calc = new LUFSCalculator(sampleRate);
-    calc.process(mono);
-    return calc.getResults();
-  }
-
-  /**
-   * fftSize'i clip uzunluguna sigdir (en buyuk 2^k <= n, tavan DEEP_ANALYSIS.FFT_SIZE).
-   * @private
-   */
-  _fitFftSize(n) {
-    let size = DEEP_ANALYSIS.FFT_SIZE;
-    while (size > n) size >>= 1;
-    return size;
-  }
-
-  /**
-   * Spektral pass'i Worker'da calistir; progress'i koprule.
-   * @private
-   */
-  _runWorker(mono, sampleRate, onProgress) {
+  _runWorker(channels, sampleRate, onProgress, job) {
     return new Promise((resolve, reject) => {
-      this._terminateWorker();
-
-      const fftSize = this._fitFftSize(mono.length);
-      const hopSize = Math.max(1, Math.min(DEEP_ANALYSIS.HOP_SIZE, fftSize >> 1));
-
-      const worker = new Worker(WORKER_URL);
-      this._worker = worker;
-
-      worker.onmessage = (e) => {
-        const m = e.data;
-        if (m.type === 'progress') {
-          if (onProgress) onProgress(m.ratio);
-          eventBus.emit(EVENTS.DEEP_ANALYSIS_PROGRESS, { ratio: m.ratio, stage: 'spectral' });
-        } else if (m.type === 'done') {
-          this._terminateWorker();
-          resolve(m.result);
-        } else if (m.type === 'error') {
-          this._terminateWorker();
-          reject(new Error(m.reason || 'spectral worker error'));
+      job.rejectWorker = reject;
+      let fftSize = DEEP_ANALYSIS.FFT_SIZE;
+      while (fftSize > channels[0].length) fftSize >>= 1;
+      const worker = new Worker(WORKER_URL, { type: 'module' });
+      job.worker = worker;
+      worker.onmessage = ({ data: message }) => {
+        if (!this._isCurrent(job) || message.runId !== job.runId) return;
+        if (message.type === 'progress') {
+          if (onProgress) onProgress(message.ratio);
+          eventBus.emit(EVENTS.DEEP_ANALYSIS_PROGRESS, { runId: job.runId, ratio: message.ratio, stage: 'pcm-and-spectral' });
+        } else if (message.type === 'done') {
+          this._terminateWorker(job);
+          resolve(message.result);
+        } else if (message.type === 'error') {
+          this._terminateWorker(job);
+          reject(new Error(message.reason || 'PCM analysis worker error'));
         }
       };
-
-      worker.onerror = (err) => {
-        this._terminateWorker();
-        reject(new Error('Spectral worker error: ' + (err.message || 'unknown')));
+      worker.onerror = error => {
+        this._terminateWorker(job);
+        reject(new Error(error.message || 'PCM analysis worker error'));
       };
-
-      const pcm = mono.buffer; // LUFS zaten hesaplandi; mono artik transfer edilebilir
-      worker.postMessage({
-        type: 'analyze',
-        pcm,
-        sampleRate,
-        fftSize,
-        hopSize,
-        outputBins: DEEP_ANALYSIS.OUTPUT_BINS,
-        progressInterval: DEEP_ANALYSIS.PROGRESS_FRAME_INTERVAL,
-        bands: {
-          subBass: QUALITY.FREQUENCY_BANDS.SUB_BASS,
-          lowMid: QUALITY.FREQUENCY_BANDS.LOW_MID,
-          highMid: QUALITY.FREQUENCY_BANDS.HIGH_MID,
-          presence: QUALITY.FREQUENCY_BANDS.PRESENCE
-        }
-      }, [pcm]);
+      const buffers = channels.map(channel => channel.buffer);
+      worker.postMessage({ type: 'analyze', runId: job.runId, channels: buffers, sampleRate, fftSize,
+        guidedSegments: job.guidedSegments,
+        hopSize: Math.max(1, Math.min(DEEP_ANALYSIS.HOP_SIZE, fftSize >> 1)),
+        outputBins: DEEP_ANALYSIS.OUTPUT_BINS, progressInterval: DEEP_ANALYSIS.PROGRESS_FRAME_INTERVAL,
+        bands: { subBass: QUALITY.FREQUENCY_BANDS.SUB_BASS, lowMid: QUALITY.FREQUENCY_BANDS.LOW_MID,
+          highMid: QUALITY.FREQUENCY_BANDS.HIGH_MID, presence: QUALITY.FREQUENCY_BANDS.PRESENCE }
+      }, buffers);
     });
   }
 
-  /** @private */
-  _terminateWorker() {
-    if (this._worker) {
-      this._worker.terminate();
-      this._worker = null;
+  _terminateWorker(job) {
+    if (job.worker) {
+      job.worker.onmessage = null; job.worker.onerror = null;
+      job.worker.terminate(); job.worker = null;
     }
+    job.rejectWorker = null;
   }
 
-  destroy() {
-    this._terminateWorker();
-    this._lastResults = null;
-  }
+  destroy() { this.reset(); }
 }
 
-// Singleton
-const deepAnalysisEngine = new DeepAnalysisEngine();
-export default deepAnalysisEngine;
+export default new DeepAnalysisEngine();

@@ -36,8 +36,9 @@ class DebugConsole {
     // --- Action handlers ---
     const clearLog = () => eventBus.emit(EVENTS.LOG_CLEAR);
 
+    const elements = this.deps.elements || {};
     const copyAllLogs = async () => {
-      const btn = document.getElementById('copyLogsBtn');
+      const btn = elements.copyLogsBtn;
       const success = await logger.copyAll();
       if (success && btn) {
         btn.classList.add('copied');
@@ -100,20 +101,19 @@ class DebugConsole {
       return report;
     };
 
-    // --- DOM event binding (replaces inline onclick) ---
-    const _bind = (id, handler) => {
-      const el = document.getElementById(id);
+    // --- DOM event binding (elemanlar UIElements'ten DI ile gelir; ham getElementById yok) ---
+    const _bind = (el, handler) => {
       if (el) { el.addEventListener('click', handler); this._handlers.push({ el, handler }); }
     };
 
-    _bind('clearLogBtn', clearLog);
-    _bind('copyLogsBtn', copyAllLogs);
-    _bind('exportLogsBtn', exportLogs);
-    _bind('logStatsBtn', getLogStats);
-    _bind('sanityCheckBtn', runSanityChecks);
+    _bind(elements.clearLogBtn, clearLog);
+    _bind(elements.copyLogsBtn, copyAllLogs);
+    _bind(elements.exportLogsBtn, exportLogs);
+    _bind(elements.logStatsBtn, getLogStats);
+    _bind(elements.sanityCheckBtn, runSanityChecks);
 
     // Filter buttons (event delegation via data-category)
-    const filterContainer = document.querySelector('.filter-buttons');
+    const filterContainer = elements.logFilterButtonsEl;
     if (filterContainer) {
       const filterHandler = (e) => {
         const btn = e.target.closest('[data-category]');

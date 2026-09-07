@@ -6,19 +6,18 @@
 import eventBus from '../modules/EventBus.js';
 import profileController from '../controllers/ProfileController.js';
 import { PROFILES } from '../modules/Config.js';
-import { log } from '../modules/utils.js';
+import { log, setVisible } from '../modules/utils.js';
+import { EVENTS } from '../modules/constants.js';
+import { rememberScenario } from '../modules/ScenarioPreference.js';
 
 class ProfileUIManager {
   constructor() {
     // UI element referanslari
     this.elements = {
-      scenarioCards: [],
       navItems: [],
       pageTitle: null,
       pageTitleIcon: null,
       pageSubtitle: null,
-      scenarioBadge: null,
-      scenarioTech: null,
       customSettingsPanel: null
     };
 
@@ -40,7 +39,56 @@ class ProfileUIManager {
    */
   init(elements) {
     Object.assign(this.elements, elements);
+    this._renderScenarioChoices();
     this._bindEvents();
+  }
+
+  // The rail owns scenario names, grouping, icons and descriptions. The first-use
+  // view renders that same catalogue, so the two entry points cannot drift.
+  _renderScenarioChoices() {
+    const { profileSidebar, scenarioChoices } = this.elements;
+    if (!profileSidebar || !scenarioChoices) return;
+    scenarioChoices.replaceChildren();
+    profileSidebar.querySelectorAll('.nav-section').forEach(group => {
+      const section = document.createElement('section');
+      section.className = 'scenario-group';
+      const heading = document.createElement('h2');
+      heading.textContent = group.querySelector('.nav-section-title').textContent;
+      section.append(heading);
+      group.querySelectorAll('[data-profile]').forEach(item => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'scenario-choice';
+        button.dataset.profile = item.dataset.profile;
+        button.append(item.querySelector('.nav-icon').cloneNode(true));
+        const copy = document.createElement('span');
+        copy.className = 'scenario-choice-copy';
+        const name = document.createElement('strong');
+        name.textContent = item.textContent.trim();
+        const description = document.createElement('span');
+        description.textContent = item.dataset.description;
+        copy.append(name, description);
+        button.append(copy);
+        section.append(button);
+      });
+      scenarioChoices.append(section);
+    });
+  }
+
+  _isBusy() {
+    return this.getState.currentMode() !== null || this.getState.isPreparing()
+      || !!this.getState.isReportPending?.();
+  }
+
+  _showWorkspace(show, focus = false) {
+    const { scenarioPicker, scenarioWorkspace, profileSidebar, profileMenuBtn, devConsoleToggle } = this.elements;
+    setVisible(scenarioPicker, !show);
+    [scenarioWorkspace, profileSidebar, profileMenuBtn, devConsoleToggle].forEach(el => setVisible(el, show));
+    if (focus) {
+      const heading = show ? this.elements.pageTitle : scenarioPicker?.querySelector('h1');
+      heading?.focus({ preventScroll: true });
+      heading?.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   /**
@@ -62,56 +110,65 @@ class ProfileUIManager {
    * Memory leak fix: Handler referanslari saklanir, destroy()'da kaldirilir
    */
   _bindEvents() {
-    const { scenarioCards, navItems } = this.elements;
+    const { navItems, scenarioChoices, changeScenarioBtn } = this.elements;
 
     // Handler referanslarini sakla (cleanup icin)
-    this._cardHandlers = [];
     this._navHandlers = [];
 
-    // Senaryo kartlarina tiklama
-    scenarioCards.forEach(card => {
-      const handler = () => this.handleProfileSelect(card.dataset.profile);
-      card.addEventListener('click', handler);
-      this._cardHandlers.push({ el: card, handler });
-    });
-
     // Sidebar nav-item tiklama
-    navItems.forEach(item => {
-      const handler = () => this.handleProfileSelect(item.dataset.profile);
+    const choices = [...(scenarioChoices?.querySelectorAll('[data-profile]') || [])];
+    this._choiceItems = choices;
+    [...navItems, ...choices].forEach(item => {
+      const handler = () => this.handleProfileSelect(item.dataset.profile, choices.includes(item));
       item.addEventListener('click', handler);
       this._navHandlers.push({ el: item, handler });
     });
+    if (changeScenarioBtn) {
+      const handler = () => {
+        if (this._isBusy()) return;
+        this.callbacks.pausePlayback?.();
+        this._showWorkspace(false, true);
+      };
+      changeScenarioBtn.addEventListener('click', handler);
+      this._navHandlers.push({ el: changeScenarioBtn, handler });
+    }
+    const syncLocks = () => {
+      if (changeScenarioBtn) changeScenarioBtn.disabled = this._isBusy();
+      choices.forEach(item => { item.disabled = this._isBusy(); });
+    };
+    this._unsubscribers = [EVENTS.UI_STATE_CHANGED, EVENTS.DIAGNOSTIC_REPORT_READY]
+      .map(event => eventBus.on(event, syncLocks));
   }
 
   /**
    * Cleanup - Event listener'larini kaldir (memory leak onleme)
    */
   destroy() {
-    this._cardHandlers?.forEach(({ el, handler }) => el.removeEventListener('click', handler));
     this._navHandlers?.forEach(({ el, handler }) => el.removeEventListener('click', handler));
-    this._cardHandlers = [];
     this._navHandlers = [];
+    this._unsubscribers?.forEach(unsubscribe => unsubscribe());
   }
 
   /**
-   * Profil secim handler - DRY: scenarioCards ve navItems icin ortak
+   * Profil secim handler (sidebar nav-item)
    * @param {string} profileId - Secilen profil ID'si
    */
-  async handleProfileSelect(profileId) {
-    const currentMode = this.getState.currentMode();
-    const isPreparing = this.getState.isPreparing();
-
-    // Aktif islem VEYA preparing varken profil degisikligine izin verme
-    if (currentMode !== null || isPreparing) {
+  async handleProfileSelect(profileId, focus = false) {
+    if (!Object.hasOwn(PROFILES, profileId)) return;
+    if (this._isBusy()) {
       log.ui('Stop current operation before changing profile', {});
       return;
     }
 
     try {
-      await profileController.applyProfile(profileId);
-      this.updateScenarioCardSelection(profileId);
-      this.updateNavItemSelection(profileId);
-      this.callbacks.updateCustomSettingsPanel(profileId);
+      // Returning from the chooser to the same scenario preserves its sample,
+      // report and edited settings. Only a different scenario resets the capture.
+      if (profileController.getCurrentProfileId() !== profileId) {
+        await profileController.applyProfile(profileId);
+        this.callbacks.updateCustomSettingsPanel(profileId);
+      }
+      this.updateAll(profileId, focus);
+      rememberScenario(profileId);
 
       log.ui(`Scenario changed: ${PROFILES[profileId]?.label || profileId}`, {});
     } catch (err) {
@@ -125,6 +182,8 @@ class ProfileUIManager {
     elements.forEach(el => {
       const isActive = el.dataset.profile === profileId;
       el.classList.toggle(className, isActive);
+      if (isActive) el.setAttribute('aria-current', 'true');
+      else el.removeAttribute('aria-current');
       if (isActive) activeElement = el;
     });
     return activeElement;
@@ -138,28 +197,6 @@ class ProfileUIManager {
       element.title = tooltip;
       element.style.cursor = 'help';
     }
-  }
-
-  /**
-   * Senaryo kart secimini guncelle
-   */
-  updateScenarioCardSelection(profileId) {
-    this._updateSelectionState(this.elements.scenarioCards, profileId, 'selected');
-    this.updateScenarioTechInfo(profileId);
-  }
-
-  /**
-   * Senaryo teknik bilgisini guncelle (badge ve tech text)
-   */
-  updateScenarioTechInfo(profileId) {
-    const { scenarioTech, scenarioBadge } = this.elements;
-    if (!scenarioTech || !scenarioBadge) return;
-
-    const profile = PROFILES[profileId];
-    if (!profile) return;
-
-    scenarioBadge.textContent = profile.label;
-    this._applyTechTooltip(scenarioTech, profileId);
   }
 
   /**
@@ -181,9 +218,9 @@ class ProfileUIManager {
 
       if (iconHref && targetUse) {
         targetUse.setAttribute('href', iconHref);
-        pageTitleIcon.classList.remove('hidden');
+        setVisible(pageTitleIcon, true);
       } else {
-        pageTitleIcon.classList.add('hidden');
+        setVisible(pageTitleIcon, false);
       }
     }
 
@@ -203,9 +240,10 @@ class ProfileUIManager {
    * Tum profil UI'ini guncelle (tek cagri ile)
    * @param {string} profileId - Profil ID'si
    */
-  updateAll(profileId) {
-    this.updateScenarioCardSelection(profileId);
+  updateAll(profileId, focus = false) {
     this.updateNavItemSelection(profileId);
+    this._updateSelectionState(this._choiceItems || [], profileId, 'active');
+    this._showWorkspace(Object.hasOwn(PROFILES, profileId), focus);
   }
 }
 

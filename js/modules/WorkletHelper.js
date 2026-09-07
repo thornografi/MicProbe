@@ -29,6 +29,7 @@ export async function ensurePassthroughWorklet(audioContext) {
   loadedContexts.add(audioContext);
 }
 
-export function createPassthroughWorkletNode(audioContext) {
-  return new AudioWorkletNode(audioContext, PASSTHROUGH_PROCESSOR_NAME);
+export function createPassthroughWorkletNode(audioContext, channelCount = null) {
+  const options = channelCount ? { channelCount, channelCountMode: 'explicit', outputChannelCount: [channelCount] } : {};
+  return new AudioWorkletNode(audioContext, PASSTHROUGH_PROCESSOR_NAME, options);
 }

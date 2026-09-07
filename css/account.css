@@ -1,0 +1,71 @@
+/* Account and saved measurements share the existing application palette. */
+.account-menu-button { margin-left: auto; white-space: nowrap; }
+/* Hesap butonlari: M40 basamagi (header/dialog), rapor popup'indaki gecmis butonu S32 (ikon butonlarla ayni satir) */
+.workspace-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-ms); flex-shrink: 0; }
+.account-button, .account-menu-button, .report-history-button {
+  display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-h-m);
+  border: 1px solid var(--border-primary); background: var(--bg-elevated); color: var(--text-primary);
+  border-radius: var(--radius-md); padding: 0 var(--space-md); font-size: var(--fs-sm); line-height: 1.2; cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.report-history-button { min-height: var(--control-h-s); padding: 0 var(--space-ms); }
+.account-button:hover:not(:disabled), .account-menu-button:hover:not(:disabled), .report-history-button:hover:not(:disabled) { background: var(--gradient-accent-muted); border-color: var(--color-accent-text); }
+.account-button:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; }
+/* Overlay sozlesmesi (variables.css --overlay-*): rapor popup'i ile ayni yuzey/kenar/radius/golge/scrim */
+.account-dialog { color: var(--text-primary); background: var(--overlay-bg); border: 1px solid var(--overlay-border); border-radius: var(--overlay-radius); box-shadow: var(--overlay-shadow); width: min(var(--overlay-w-lg), calc(100% - 2 * var(--space-md))); max-height: calc(100vh - 2 * var(--space-2xl)); max-height: calc(100dvh - 2 * var(--space-2xl)); padding: 0; margin: auto; }
+.account-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(var(--scrim-blur)); -webkit-backdrop-filter: blur(var(--scrim-blur)); }
+.account-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.account-dialog-header { flex-shrink: 0; }
+.account-dialog-body { min-height: 0; overflow-y: auto; }
+.account-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); min-height: var(--overlay-header-h); padding: var(--overlay-header-pad); border-bottom: 1px solid var(--glass-border); }
+.account-dialog-header h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+.account-dialog-body { padding: var(--space-lg); }
+.account-dialog h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 var(--space-sm); }
+.account-dialog h4 { font-size: var(--fs-md); font-weight: 600; margin: 0; }
+.account-muted { color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; max-width: 75ch; margin: var(--space-sm) 0 var(--space-ms); overflow-wrap: anywhere; }
+.account-entitlement { color: var(--color-purple-light); font-size: var(--fs-base); }
+.account-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-ms); }
+.account-restore { margin-top: var(--space-md); font-size: var(--fs-sm); }
+.account-restore summary { cursor: pointer; color: var(--text-secondary); }
+.account-field { display: flex; flex-direction: column; gap: var(--space-sm); flex: 1; font-size: var(--fs-xs); color: var(--text-secondary); min-width: 0; }
+.account-field input { width: 100%; box-sizing: border-box; min-height: var(--control-h-m); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-input); padding: 0 var(--space-ms); font-size: var(--fs-sm); line-height: 1.2; }
+.account-google { min-height: var(--control-h-m); margin: var(--space-md) 0; }
+.account-history { border-top: 1px solid var(--border-primary); margin-top: var(--space-lg); padding-top: var(--space-lg); }
+.account-history-list { display: grid; gap: var(--space-ms); list-style: none; padding: 0; margin: var(--space-md) 0 0; }
+/* Ic konteyner seviyesi: radius 12, dolgu 16 (report-overall ile ayni) */
+.account-report { background: var(--glass-bg); padding: var(--space-md); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); }
+.account-report-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); }
+.account-select { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-xs); flex-shrink: 0; padding: var(--space-xs) 0; }
+.account-select input { width: 16px; height: 16px; accent-color: var(--color-accent-text); }
+.account-status, .account-error { font-size: var(--fs-sm); line-height: 1.5; color: var(--text-secondary); margin-top: var(--space-ms); }
+.account-status:empty { display: none; }
+.account-error { color: #ffba83; }
+.account-empty { padding: var(--space-lg) 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
+.account-comparison { overflow-x: auto; margin-top: var(--space-lg); }
+.account-comparison-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.account-comparison-table caption { text-align: left; padding: var(--space-ms) 0; color: var(--text-secondary); }
+.account-comparison-table th, .account-comparison-table td { border-bottom: 1px solid var(--border-primary); text-align: left; padding: var(--space-sm); overflow-wrap: anywhere; min-width: 110px; }
+.account-comparison-table thead th { color: var(--color-purple-light); }
+.account-comparison-table tbody th { font-weight: 500; color: var(--text-secondary); }
+.account-delete-confirm { width: 100%; font-size: var(--fs-xs); color: var(--text-secondary); }
+.account-delete-confirm button { margin: var(--space-sm) var(--space-xs); }
+@media (max-width: 767px) {
+  /* Mobil hesap butonu ikon-only (40x40); erisilebilir adi korunur. */
+  .workspace-account-actions { gap: var(--space-sm); }
+  .account-menu-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; font-size: 0; }
+  .account-menu-button::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .account-dialog-body { padding: var(--space-md); }
+  .account-report { padding: var(--space-ms); }
+  .account-report-heading { gap: var(--space-sm); }
+}
+.account-comparison-summary { margin-block: var(--space-md); }
+.account-comparison-summary h4 { font-size: var(--fs-sm); margin-bottom: var(--space-sm); }
+.account-comparison-summary ul { padding-left: var(--space-lg); color: var(--text-secondary); font-size: var(--fs-sm); }
+.account-comparison-summary li { margin-block: var(--space-xs); overflow-wrap: anywhere; }

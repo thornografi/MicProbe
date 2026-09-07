@@ -5,16 +5,16 @@
      .test-console
        .console-row              Control&Signal + Info kartlari (2 kolon grid)
          .console-card--primary
-         .console-card--secondary
-       .console-card--result     Playback karti (.unified-row-player class'i
+           .settings-strip      #customSettingsPanel collapsible settings
+         .console-card--result   Playback karti (.unified-row-player class'i
                                  UIElements.js closest() sozlesmesi - SILME)
-       .settings-strip           #customSettingsPanel collapsible serit
+         .console-card--secondary
    App kartlari burada tanimlanir. Renk/token: variables.css.
    .unified-tips icerigi ProfileController.updateTips() tarafindan innerHTML ile
-   yeniden uretilir (.utip / .utip-text / em) - bu class isimleri JS sozlesmesidir.
+   yeniden uretilir (li.utip / .utip-step / .utip-text).
    ========================================================================== */
 
-/* Shared, centered column for the page title, console and footer. */
+/* The console shares the page title's centered workspace bounds. */
 .test-console {
   display: flex;
   flex-direction: column;
@@ -29,9 +29,46 @@
    zorla esitleyip karta olu bosluk sokuyordu; fazla alan hic olusmamali. */
 .console-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
-  gap: var(--space-lg);
+  /* Both columns fill the bounded workspace; no unused percentage remains
+     beyond the guide. The guide width stays readable on larger screens. */
+  grid-template-columns: minmax(0, 1fr) clamp(272px, 24vw, 416px);
+  grid-template-areas: 'controls info' 'result info';
+  gap: clamp(32px, 3vw, 64px);
   align-items: start;
+}
+
+.console-card--primary { grid-area: controls; }
+.console-card--result { grid-area: result; min-width: 0; scroll-margin-top: 90px; }
+.console-card--secondary { grid-area: info; }
+.console-row:not(:has(.recording-player.visible)) { grid-template-areas: 'controls info'; }
+
+.capture-hint { margin: var(--space-ms) 0 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
+.inline-result { margin-bottom: var(--space-lg); padding-bottom: var(--space-lg); border-bottom: 1px solid var(--border-secondary); }
+.inline-result h3 { margin: 0 0 var(--space-sm); font-size: var(--fs-lg); font-weight: 600; }
+.inline-result p { margin: 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
+.result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-ms); margin-top: var(--space-lg); }
+.result-actions .btn-show-report { width: auto; margin: 0; }
+/* Ikincil sonuc butonlari: M40 basamagi, ghost yuzey */
+.result-button { display: inline-flex; align-items: center; min-height: var(--control-h-m); font-size: var(--fs-sm); line-height: 1.2; color: var(--text-secondary); background: transparent; border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 0 var(--space-md); cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast); }
+.result-button:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-elevated); }
+.result-button:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; }
+.result-button[hidden], .inline-result[hidden], .settings-modified[hidden] { display: none; }
+.settings-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-ms); padding: var(--space-sm) 0 var(--space-lg); }
+.settings-toolbar .result-button { flex-shrink: 0; }
+.settings-toolbar p { flex: 1 1 200px; margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.settings-modified { font-size: var(--fs-xs); font-weight: 500; color: var(--brand-accent-color); }
+.setting-modified .setting-name { color: var(--brand-accent-color); }
+.profile-specifications { grid-column: 1 / -1; border-top: 1px solid var(--border-secondary); padding-top: 16px; }
+.profile-specifications summary { cursor: pointer; color: var(--text-secondary); font-size: var(--fs-sm); padding-block: var(--space-sm); }
+.profile-specifications[open] summary { margin-bottom: var(--space-sm); }
+.profile-specifications p { color: var(--text-muted); font-size: var(--fs-xs); }
+.profile-specifications dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px 24px; }
+.profile-specifications dt { color: var(--text-muted); font-size: var(--fs-xs); }
+.profile-specifications dd { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm); }
+
+@media (max-width: 1199px) {
+  .console-row { grid-template-areas: 'controls' 'result' 'info'; }
+  .console-row:not(:has(.recording-player.visible)) { grid-template-areas: 'controls' 'info'; }
 }
 
 /* ---------- Kart ---------- */
@@ -44,20 +81,19 @@
   box-shadow: var(--surface-card-shadow);
 }
 
-.console-card--primary {
-  border-top-color: rgba(var(--color-purple-rgb), 0.24);
-}
-
+/* The guide follows the control column, with matching heading height and no
+   second card surface. Its readable width stays fixed as the workspace grows. */
 .console-card--secondary {
-  padding: var(--space-lg);
+  padding: var(--space-lg) 0 0;
   background: transparent;
-  border-color: transparent;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
 }
 
 /* Kart ici bolumler - adjacent sibling ayrac deseni */
 .console-card-section {
-  padding: 20px 0;
+  padding: var(--space-lg) 0;
 }
 
 /* Bilgi karti daha siki ritimde (icerik listesi, aksiyon alani degil).
@@ -75,75 +111,56 @@
 }
 
 .console-card-section + .console-card-section {
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid var(--border-secondary);
 }
 
 .console-card-heading {
   margin: 0 0 var(--space-md);
-  font-size: var(--fs-md);
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
 /* ---------- Control & Signal karti ---------- */
-.input-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-md);
-}
-
-.input-heading .console-card-heading {
+/* Baslik + aciklama cifti: baslik altindaki bosluk 4, aciklama altindaki 16 (h2'lerde ikon yok) */
+.console-card-heading:has(+ .console-description) {
   margin-bottom: var(--space-xs);
-  font-size: var(--fs-lg);
 }
 
-.input-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  color: var(--color-purple-light);
-  background: rgba(var(--color-purple-rgb), 0.12);
-}
-
-.input-icon svg {
-  width: 22px;
-  height: 22px;
-}
-
-.console-description,
-.meter-hint {
-  font-size: var(--fs-sm);
+.console-description {
+  margin: 0 0 var(--space-md);
+  font-size: var(--fs-base);
   line-height: 1.5;
   color: var(--text-muted);
 }
 
-.console-card .mic-selector-row {
-  margin-bottom: var(--space-md);
+/* Input and action share a row when they fit, and wrap together on narrow cards. */
+.capture-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.capture-controls .mic-selector-row {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.capture-controls .button-row {
+  flex-shrink: 0;
 }
 
 .console-card .button-row {
   flex-wrap: wrap;
 }
 
-/* .vu-section base stili (vu-meter.css) eski satir duzenine ait ust bosluk/cizgi
-   tasir; kart bolumu ayraci zaten sagliyor. #remoteVuContainer kendi margin-top'unu
-   id specificity ile korur (local ile arasindaki bosluk). */
-.console-card .vu-section {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-}
-
 /* The meter section shares the input's alignment, with one quiet divider. */
 .console-card-section--meters,
 .console-card-section + .console-card-section--meters {
-  padding: 20px 0 0;
+  padding: var(--space-lg) 0 0;
   background: none;
   border: 0;
   border-top: 1px solid var(--border-secondary);
@@ -154,56 +171,51 @@
   padding-bottom: 0;
 }
 
-.meter-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-md);
-}
-
-.meter-heading .console-card-heading {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-
-.meter-heading svg {
-  width: 20px;
-  height: 20px;
-  color: var(--text-muted);
-}
-
 .meter-hint {
   margin-top: var(--space-md);
   font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.audio-details > summary {
+  display: list-item;
+  width: fit-content;
+  padding-block: var(--space-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.audio-details > summary:hover {
+  color: var(--text-primary);
+}
+
+.audio-details-content {
+  padding-top: var(--space-md);
 }
 
 /* ---------- Info karti: status satirlari ---------- */
-/* Degerler kisa teknik metinler ("Stereo", "64 kbps") - dikey KPI-tile yerine
-   yatay liste satiri (label sol, value sag): bilgi listesi semantigi + yaridan
-   az dikey alan. Tek kolon liste; .status-tile--wide tek kolonda no-op kalir. */
+/* A description list: spacing groups each label with its value. */
 .status-tiles {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
 }
 
 .status-tile {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-md);
   min-width: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-secondary);
-}
-
-.status-tile--wide {
-  grid-column: 1 / -1;
 }
 
 .status-tile-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
   font-weight: 400;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -211,14 +223,19 @@
 
 .status-tile-value {
   min-width: 0;
-  font-size: var(--fs-sm);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  margin: 0;
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
   color: var(--text-primary);
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-tile-value--numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .scenario-spec {
@@ -230,7 +247,6 @@
 }
 
 #infoMicName {
-  font-family: var(--font-sans);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -239,7 +255,7 @@
   color: var(--text-muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .processing-details {
@@ -251,6 +267,7 @@
 .processing-details summary {
   cursor: pointer;
   width: fit-content;
+  padding-block: var(--space-sm);
 }
 
 .processing-details summary:hover {
@@ -262,18 +279,21 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .unified-tips .utip {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
   color: var(--text-secondary);
   line-height: 1.5;
 }
 
-.unified-tips .utip em {
+.unified-tips .utip-step {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -285,7 +305,6 @@
   border-radius: 50%;
   font-size: var(--fs-xs);
   font-weight: 500;
-  font-style: normal;
   color: var(--color-purple-light);
 }
 
@@ -295,26 +314,16 @@
 }
 
 /* ---------- Playback (Result) karti ---------- */
-/* JS (ModuleInit/toggleDisplay) karti kategoriye gore display:block/none yapar;
-   ic duzen block akisina uygun tutulur (flex/gap kullanma) */
-.console-card--result .empty-state {
-  padding: var(--space-md) 0;
-  text-align: left;
-  font-style: normal;
-  opacity: 1;
-  color: var(--text-muted);
-}
+/* JS karti kategoriye gore gizler/gosterir; ic duzen block akisina uygun tutulur
+   (flex/gap kullanma). .empty-state temel stili player.css'te. */
 
-.console-card--result .btn-show-report {
-  margin-top: var(--space-md);
-}
 
 /* ---------- Settings serit ---------- */
 .settings-strip {
   background: transparent;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-xs);
+  margin-top: var(--space-lg);
+  border-top: 1px solid var(--border-secondary);
+  padding-top: var(--space-sm);
 }
 
 .settings-summary {
@@ -325,12 +334,12 @@
 }
 
 .settings-strip .custom-settings-grid {
-  padding: var(--space-sm) var(--space-md) var(--space-md);
+  padding: var(--space-sm) 0 0;
 }
 
 /* ---------- Responsive ---------- */
-/* Kartlar tek kolona iner */
-@media (min-width: 768px) and (max-width: 1100px) {
+/* Cards use one column through the tablet range (768-1199). */
+@media (min-width: 768px) and (max-width: 1199px) {
   .console-row {
     grid-template-columns: 1fr;
   }
@@ -345,18 +354,27 @@
     padding: 0;
     border: 0;
   }
+
+  /* Iki kolonda ayrac dikeye doner (tek kolonda border-top geri gelir) */
+  .console-card--secondary .console-card-section + .console-card-section {
+    border-left: 1px solid var(--border-secondary);
+    padding-left: var(--space-lg);
+  }
 }
 
-/* Mobil: kart padding'leri sikilasir */
+/* Mobil: kart padding'leri 16 (mobil gutter ile ayni), ghost Info sutunu yatayda 0 */
 @media (max-width: 767px) {
   .console-row {
     grid-template-columns: 1fr;
     gap: var(--space-md);
   }
 
-  .console-card,
+  .console-card {
+    padding: var(--space-md);
+  }
+
   .console-card--secondary {
-    padding: 20px;
+    padding: var(--space-md) 0 0;
   }
 
   .console-card-section {
@@ -365,21 +383,5 @@
 
   .settings-summary {
     display: none;
-  }
-}
-
-@media (max-width: 380px) {
-  .console-card,
-  .console-card--secondary {
-    padding: var(--space-md);
-  }
-
-  .input-heading {
-    gap: 12px;
-  }
-
-  .input-icon {
-    width: 36px;
-    height: 36px;
   }
 }

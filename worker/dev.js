@@ -1,14 +1,20 @@
-import { evaluatePremiumReport } from './premium-report-evaluator.js';
+import { evaluatePremiumReport, isDetailedReportInput } from './premium-report-evaluator.js';
+import { createAccountService } from '../server/account-service.mjs';
+import { createAccountBilling } from '../server/account-billing.mjs';
+import { createLegacyPremium } from '../server/legacy-premium.mjs';
+import { hasSandboxCheckoutProof, readBoundedBillingJson } from '../server/freemius-license.mjs';
+import { isAccountMutationAllowed } from '../server/account-service.mjs';
 
 const CSP_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data:",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self'"
+  "connect-src 'self' https://accounts.google.com/gsi/",
+  "frame-src https://accounts.google.com/gsi/"
 ].join('; ');
 
 const SECURITY_HEADERS = {
@@ -59,9 +65,8 @@ function readFreemiusEnv(env, requestUrl) {
     // Opsiyonel: hazir sandbox token/ctx cifti (public key yerine dogrudan verilebilir).
     sandboxToken: env.MICPROBE_FREEMIUS_SANDBOX_TOKEN || '',
     sandboxCtx: env.MICPROBE_FREEMIUS_SANDBOX_CTX || '',
-    // Opsiyonel: Freemius REST API ile lisans capraz-dogrulamasi icin Bearer token (secret).
-    apiToken: readValue('API_TOKEN', ['MICPROBE_FREEMIUS_API_TOKEN', 'FREEMIUS_API_TOKEN']),
-    apiBase: readValue('API_BASE', ['MICPROBE_FREEMIUS_API_BASE']) || 'https://api.freemius.com'
+    // Canonical license verification is required before granting premium access.
+    apiToken: readValue('API_TOKEN', ['MICPROBE_FREEMIUS_API_TOKEN', 'FREEMIUS_API_TOKEN'])
   };
 }
 
@@ -129,8 +134,7 @@ function buildFreemiusCheckoutUrl(freemiusEnv) {
   }
   if (!base) return '';
 
-  // Yalnizca gecerli sandbox parametreleri uretebiliyorsak URL'yi degistir. Aksi
-  // halde mevcut checkoutUrl'i AYNEN birak (davranisi kotulestirmemek icin).
+  // Sandbox mode must never fall back to an ordinary checkout URL.
   if (freemiusEnv.mode === 'sandbox') {
     const sandbox = resolveSandboxParams(freemiusEnv);
     if (sandbox) {
@@ -142,9 +146,10 @@ function buildFreemiusCheckoutUrl(freemiusEnv) {
         url.searchParams.set('s_ctx_ts', sandbox.ctx);
         return url.toString();
       } catch {
-        return base;
+        return '';
       }
     }
+    return hasSandboxCheckoutProof(base) ? base : '';
   }
   return base;
 }
@@ -172,29 +177,6 @@ async function consumeReplayGuard(env, signature) {
   }
 }
 
-// Freemius REST API ile lisans capraz-dogrulamasi — yalnizca apiToken varsa calisir.
-// FAIL-OPEN: gecici/aginda hata (non-OK, exception) engellemez; sadece Freemius'un
-// kesin reddi (urun/plan uyumsuz, iptal edilmis lisans) engeller.
-async function crossCheckFreemiusLicense(freemiusEnv, params) {
-  if (!freemiusEnv.apiToken) return { ok: true, skipped: 'no_api_token' };
-  const licenseId = params.get('license_id') || '';
-  if (!licenseId || !freemiusEnv.productId) return { ok: true, skipped: 'no_license_id' };
-  try {
-    const fields = 'id,plugin_id,plan_id,environment,is_cancelled,expiration';
-    const apiUrl = `${freemiusEnv.apiBase}/v1/products/${encodeURIComponent(freemiusEnv.productId)}/licenses/${encodeURIComponent(licenseId)}.json?fields=${encodeURIComponent(fields)}`;
-    const response = await fetch(apiUrl, {
-      headers: { Authorization: `Bearer ${freemiusEnv.apiToken}`, Accept: 'application/json' }
-    });
-    if (!response.ok) return { ok: true, skipped: `http_${response.status}` };
-    const license = await response.json();
-    if (String(license.plugin_id || '') !== String(freemiusEnv.productId)) return { ok: false, reason: 'license_product_mismatch' };
-    if (freemiusEnv.planId && String(license.plan_id || '') !== String(freemiusEnv.planId)) return { ok: false, reason: 'license_plan_mismatch' };
-    if (license.is_cancelled) return { ok: false, reason: 'license_cancelled' };
-    return { ok: true, checked: true };
-  } catch {
-    return { ok: true, skipped: 'error' };
-  }
-}
 
 function isHttpsUrl(value) {
   try {
@@ -213,11 +195,16 @@ function normalizeBillingCycle(value) {
 
 function getFreemiusConfigIssues(freemiusEnv) {
   const issues = [];
+  if (!freemiusEnv.productId) issues.push('missing_product_id');
   if (!freemiusEnv.checkoutUrl && (!freemiusEnv.productId || !freemiusEnv.planId)) {
     issues.push('missing_checkout_target');
   }
   if (!freemiusEnv.productSecret) {
     issues.push('missing_product_secret');
+  }
+  if (!freemiusEnv.apiToken) issues.push('missing_api_token');
+  if (freemiusEnv.mode === 'sandbox' && !hasSandboxCheckoutProof(buildFreemiusCheckoutUrl(freemiusEnv))) {
+    issues.push('sandbox_token_unavailable');
   }
   if (freemiusEnv.mode === 'production') {
     if (!freemiusEnv.successUrl) {
@@ -286,27 +273,6 @@ function bytesToHex(bytes) {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function bytesToBase64Url(bytes) {
-  let binary = '';
-  for (const byte of new Uint8Array(bytes)) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function textToBase64Url(value) {
-  return bytesToBase64Url(encoder.encode(value));
-}
-
-function base64UrlToText(value) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new TextDecoder().decode(bytes);
-}
 
 function constantTimeEqual(left, right) {
   if (left.length !== right.length) return false;
@@ -330,66 +296,12 @@ async function createFreemiusSignature(cleanUrl, productSecret) {
   return bytesToHex(signature);
 }
 
-async function signValue(value, productSecret) {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(productSecret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value));
-  return bytesToBase64Url(signature);
-}
-
-async function createEntitlementToken(freemiusEnv, entitlement) {
-  const payload = {
-    v: 1,
-    mode: entitlement.mode,
-    planId: entitlement.planId,
-    pricingId: entitlement.pricingId,
-    billingCycle: entitlement.billingCycle,
-    expiresAt: entitlement.expiration || entitlement.trialEndsAt || '',
-    iat: Date.now()
-  };
-  const encoded = textToBase64Url(JSON.stringify(payload));
-  return `${encoded}.${await signValue(encoded, freemiusEnv.productSecret)}`;
-}
-
-async function verifyEntitlementToken(freemiusEnv, token) {
-  if (!freemiusEnv.productSecret || !token || typeof token !== 'string') return null;
-  const [encoded, signature] = token.split('.');
-  if (!encoded || !signature) return null;
-
-  const expected = await signValue(encoded, freemiusEnv.productSecret);
-  if (!constantTimeEqual(expected, signature)) return null;
-
-  let payload;
-  try {
-    payload = JSON.parse(base64UrlToText(encoded));
-  } catch {
-    return null;
-  }
-
-  if (payload.v !== 1) return null;
-  if (payload.mode !== freemiusEnv.mode) return null;
-  if (freemiusEnv.planId && payload.planId !== freemiusEnv.planId) return null;
-  if (freemiusEnv.pricingId && payload.pricingId !== freemiusEnv.pricingId) return null;
-  // billing_cycle bilerek dogrulanmiyor (bkz. validateFreemiusRedirectParams notu).
-  if (payload.expiresAt) {
-    const expiresAt = Date.parse(String(payload.expiresAt).replace(' ', 'T'));
-    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return null;
-  }
-
-  return payload;
-}
 
 function handleFreemiusConfig(freemiusEnv) {
   const issues = getFreemiusConfigIssues(freemiusEnv);
-  const sandboxActive = freemiusEnv.mode === 'sandbox' ? Boolean(resolveSandboxParams(freemiusEnv)) : null;
+  const sandboxActive = freemiusEnv.mode === 'sandbox' ? hasSandboxCheckoutProof(buildFreemiusCheckoutUrl(freemiusEnv)) : null;
   const warnings = [];
   if (freemiusEnv.mode === 'sandbox' && !sandboxActive) {
-    // Bloklamayan uyari: gecerli sandbox token yok → checkout GERCEK ucret cekebilir.
     warnings.push('sandbox_token_unavailable');
   }
   return jsonResponse({
@@ -442,11 +354,9 @@ async function handleFreemiusVerify(freemiusEnv, url, env) {
     return jsonResponse({ ok: false, error: validationError }, 403);
   }
 
-  // Freemius REST capraz-dogrulama (yalnizca apiToken varsa; fail-open).
-  const crossCheck = await crossCheckFreemiusLicense(freemiusEnv, params);
-  if (!crossCheck.ok) {
-    return jsonResponse({ ok: false, error: crossCheck.reason || 'license_check_failed' }, 403);
-  }
+  let entitlement;
+  try { entitlement = await createLegacyPremium(freemiusEnv).verifyPurchase(params); }
+  catch (error) { return jsonResponse({ ok: false, error: error.code || 'license_check_failed' }, error.status || 503); }
 
   // Replay korumasi (yalnizca KV binding varsa; fail-open — sadece 'used' engeller).
   const replay = await consumeReplayGuard(env, signature);
@@ -454,23 +364,7 @@ async function handleFreemiusVerify(freemiusEnv, url, env) {
     return jsonResponse({ ok: false, error: 'redirect_already_used' }, 409);
   }
 
-  const entitlement = {
-    mode: freemiusEnv.mode,
-    action: params.get('action') || '',
-    planId: params.get('plan_id') || '',
-    pricingId: params.get('pricing_id') || '',
-    billingCycle: params.get('billing_cycle') || '',
-    expiration: params.get('expiration') || '',
-    trialEndsAt: params.get('trial_ends_at') || ''
-  };
-
-  return jsonResponse({
-    ok: true,
-    entitlement: {
-      ...entitlement,
-      accessToken: await createEntitlementToken(freemiusEnv, entitlement)
-    }
-  });
+  return jsonResponse({ ok: true, entitlement });
 }
 
 async function handleDetailedReport(freemiusEnv, request) {
@@ -487,17 +381,17 @@ async function handleDetailedReport(freemiusEnv, request) {
 
   const authHeader = request.headers.get('Authorization') || '';
   const headerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
-  const entitlement = await verifyEntitlementToken(freemiusEnv, headerToken || payload.entitlementToken);
-  if (!entitlement) {
-    return jsonResponse({ ok: false, error: 'invalid_entitlement' }, 403);
-  }
+  let entitlement;
+  try { entitlement = await createLegacyPremium(freemiusEnv).authorize(headerToken || payload.entitlementToken); }
+  catch (error) { return jsonResponse({ ok: false, error: error.code || 'invalid_entitlement' }, error.status || 503); }
 
-  if (!payload.report?.audioMetrics) {
+  if (!isDetailedReportInput(payload.report)) {
     return jsonResponse({ ok: false, error: 'missing_report' }, 400);
   }
 
   return jsonResponse({
     ok: true,
+    entitlement,
     detailed: evaluatePremiumReport(payload.report)
   });
 }
@@ -534,6 +428,35 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const freemiusEnv = readFreemiusEnv(env, request.url);
+    // Once Google sign-in is enabled, a missing D1 binding must fail closed
+    // instead of silently restoring the anonymous token billing path.
+    const accountConfigured = Boolean(env.MICPROBE_GOOGLE_CLIENT_ID);
+    if (url.pathname === '/api/freemius/restore' && request.method === 'POST') {
+      if (accountConfigured) return jsonResponse({ ok: false, error: 'account_sign_in_required' }, 403);
+      if (!isAccountMutationAllowed(request, env.MICPROBE_PUBLIC_ORIGIN || url.origin)) return jsonResponse({ ok: false, error: 'invalid_origin' }, 403);
+      try {
+        const { licenseKey } = await readBoundedBillingJson(request, 16384);
+        return jsonResponse({ ok: true, entitlement: await createLegacyPremium(freemiusEnv).restore(licenseKey) });
+      } catch (error) { return jsonResponse({ ok: false, error: error.code || 'invalid_license_key' }, error.status || 400); }
+    }
+    if (url.pathname.startsWith('/api/account/') || url.pathname === '/api/freemius/webhook'
+      || (url.pathname === '/api/report/detailed' && accountConfigured)) {
+      try {
+        if (env.MICPROBE_PUBLIC_ORIGIN && url.origin !== new URL(env.MICPROBE_PUBLIC_ORIGIN).origin) {
+          return jsonResponse({ ok: false, error: 'invalid_origin' }, 403);
+        }
+        const accounts = createAccountService({ db: env.MICPROBE_ACCOUNTS,
+          googleClientId: env.MICPROBE_GOOGLE_CLIENT_ID || '', mode: freemiusEnv.mode,
+          origin: env.MICPROBE_PUBLIC_ORIGIN || url.origin });
+        const billing = createAccountBilling({ accounts, config: freemiusEnv,
+          checkoutUrl: buildFreemiusCheckoutUrl(freemiusEnv), enabled: accountConfigured, evaluatePremiumReport });
+        const response = await billing.handle(request) || await accounts.handle(request);
+        if (response) return withSecurityHeaders(response, request.url);
+        if (url.pathname.startsWith('/api/account/')) return jsonResponse({ ok: false, error: 'not_found' }, 404);
+      } catch {
+        return jsonResponse({ ok: false, error: 'account_service_unavailable' }, 503);
+      }
+    }
 
     if (request.method === 'POST' && url.pathname === '/api/report/detailed') {
       return handleDetailedReport(freemiusEnv, request);
@@ -550,7 +473,9 @@ export default {
     }
 
     if (url.pathname === '/api/freemius/config') {
-      return handleFreemiusConfig(freemiusEnv);
+      const response = handleFreemiusConfig(freemiusEnv);
+      const payload = await response.json();
+      return jsonResponse({ ...payload, accountConfigured });
     }
 
     if (url.pathname === '/api/freemius/verify') {

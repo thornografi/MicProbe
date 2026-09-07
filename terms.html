@@ -6,31 +6,55 @@
   <title>Terms of Service - Mic Probe</title>
   <meta name="description" content="MicProbe Terms of Service">
   <link rel="icon" type="image/svg+xml" href="/assets/micprobe-mark.svg">
-  <!-- CSS (fonts are imported in variables.css) -->
+  <!-- Ayni font ailesi (index.html ile birebir); JS loader olmadigi icin senkron link -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/shared.css">
+  <script src="/js/footer.js" defer></script>
 </head>
 <body>
   <div class="legal-page">
-    <main class="legal-content">
+    <!-- Landing/app ile ayni kabuk: .header-base + .brand-lockup (shared.css) -->
+    <header class="legal-header header-base">
+      <a href="/" class="brand-lockup" title="Back to Home">
+        <img class="brand-mark" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
+        <span class="brand-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
+      </a>
       <a href="/" class="back-link">&larr; Back to Home</a>
+    </header>
+    <main class="legal-content">
       <h1>Terms of Service</h1>
       <p>This page will be updated soon with our complete terms of service.</p>
       <p>MicProbe is provided "as is" for testing and diagnostic purposes. Use at your own discretion.</p>
+      <p>Basic tests can be repeated without an account. Lifetime Premium is a single payment for premium access, with no recurring membership charge or per-test credits. Changing your settings and testing again does not consume your purchase.</p>
+      <p>Sign in with the same MicProbe account to retrieve saved reports and linked premium access. Saved reports contain measurements and settings; they do not include audio recordings. Comparisons describe the captured local tests, not the performance of a real calling app or internet connection.</p>
       <p>For questions, contact us at <a href="mailto:micprobe@gmail.com">micprobe@gmail.com</a>.</p>
     </main>
     <footer class="site-footer">
       <div class="site-footer-content">
+        <div class="site-footer-identity">
         <a href="/" class="site-footer-brand brand-lockup">
-          <img class="brand-mark" src="/assets/micprobe-mark.svg" width="24" height="24" alt="">
+          <img class="brand-mark" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
           <span class="brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
         </a>
-        <nav class="site-footer-links">
-          <a href="/">Home</a>
-          <a href="/privacy.html">Privacy</a>
-          <a href="/terms.html">Terms</a>
+        <p class="site-footer-description">Microphone checks for calls and voice messages.</p>
+        <p class="site-footer-meta">&copy; <span data-copyright-year>2026</span> MicProbe</p>
+        </div>
+        <nav class="site-footer-links" aria-label="Footer">
+          <div class="site-footer-group">
+            <p class="site-footer-heading">Explore</p>
+            <a href="/#features">Features</a>
+            <a href="/#how-it-works">How it works</a>
+          </div>
+          <div class="site-footer-group">
+            <p class="site-footer-heading">Information</p>
+            <a href="/privacy.html">Privacy</a>
+            <a href="/terms.html">Terms</a>
+            <a href="mailto:micprobe@gmail.com" class="site-footer-contact">Support</a>
+          </div>
         </nav>
-        <a href="mailto:micprobe@gmail.com" class="site-footer-contact">micprobe@gmail.com</a>
-        <p class="site-footer-meta">&copy; 2025 MicProbe</p>
       </div>
     </footer>
   </div>

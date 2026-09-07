@@ -1,7 +1,7 @@
 /**
  * Recorder - Ses kaydi yonetimi
  * OCP: Pipeline Strategy Pattern ile farkli kayit modlari eklenebilir
- * WebAudio mode: Stream -> AudioContext -> MediaStreamDestination -> MediaRecorder
+ * MediaRecorder icin stream; WASM Opus ve PCM/WAV icin pipeline'dan PCM kullanir
  */
 import eventBus from './EventBus.js';
 import { requestStream } from './StreamHelper.js';
@@ -9,9 +9,11 @@ import { createAudioContext, getAudioContextOptions, stopStreamTracks, createMed
 import { BUFFER, ENCODER_TYPES, PIPELINE_TYPES, EVENTS } from './constants.js';
 import { createPipeline, isPipelineSupported } from '../pipelines/PipelineFactory.js';
 import { SETTINGS } from './Config.js';
+import { createRunSnapshot, completeRunSnapshot } from './RunSnapshot.js';
+import CaptureGuide from './CaptureGuide.js';
 
 class Recorder {
-  constructor(config) {
+  constructor(config = {}) {
     this.constraints = config.constraints || {
       echoCancellation: true,
       noiseSuppression: true,
@@ -32,13 +34,17 @@ class Recorder {
     this.pipelineStrategy = null;
 
     // Pipeline: WebAudio graph tipi (direct | standard | scriptprocessor | worklet)
-    // Encoder: Kayit formati (mediarecorder | wasm-opus)
+    // Encoder: Kayit formati (mediarecorder | wasm-opus | pcm-wav)
     this.pipelineType = PIPELINE_TYPES.DIRECT;
     this.encoder = 'mediarecorder';
     this.startTime = null; // Kayit baslangic zamani (bitrate hesaplama icin)
 
     // Pre-warm state
     this.isWarmedUp = false;
+    this._startPromise = null;
+    this._stopPromise = null;
+    this._streamStarted = false;
+    this._trackEndedListeners = [];
   }
 
   /**
@@ -71,8 +77,27 @@ class Recorder {
    * Kayit baslatir
    * @throws {Error} Stream alinamazsa veya pipeline olusturulamazsa
    */
-  async start(constraints, pipelineParam = PIPELINE_TYPES.DIRECT, encoderParam = 'mediarecorder', timeslice = 0, bufferSize = BUFFER.DEFAULT_SIZE, mediaBitrate = 0) {
-    if (this.isRecording) return;
+  start(...args) {
+    if (this._startPromise) return this._startPromise;
+    if (this.isRecording) return Promise.resolve();
+    const previousStop = this._stopPromise;
+    this._stopPromise = null;
+    this._cancelStart = false;
+    this._startPromise = (async () => {
+      if (previousStop) await previousStop.catch(() => {});
+      if (this._cancelStart) throw new Error('Recording start cancelled');
+      return this._start(...args);
+    })().finally(() => { this._startPromise = null; });
+    return this._startPromise;
+  }
+
+  async _start(constraints = this.constraints, pipelineParam = PIPELINE_TYPES.DIRECT, encoderParam = 'mediarecorder', timeslice = 0, bufferSize = BUFFER.DEFAULT_SIZE, mediaBitrate = 0, runSnapshot = null) {
+    this._recordingError = null;
+    this.captureDurationMs = null;
+    this.stopReason = null;
+    this.runSnapshot = runSnapshot || createRunSnapshot({ requestedSettings: { ...constraints, pipeline: pipelineParam, encoder: encoderParam, mediaBitrate, timeslice, bufferSize } });
+    this.captureGuide = new CaptureGuide(this.runSnapshot);
+    this.guidedSegments = null;
 
     // Pipeline ve encoder validasyonu (OCP: PipelineFactory destekli kontrol)
     const allowedEncoders = new Set(['mediarecorder', 'wasm-opus', 'pcm-wav']);
@@ -84,11 +109,16 @@ class Recorder {
       log.warning('PCM/WAV encoder requires worklet pipeline, switching pipeline', { requestedPipeline: this.pipelineType, newPipeline: PIPELINE_TYPES.WORKLET });
       this.pipelineType = PIPELINE_TYPES.WORKLET;
     }
+    if (usesWasmOpus(this.encoder) && ![PIPELINE_TYPES.SCRIPTPROCESSOR, PIPELINE_TYPES.WORKLET].includes(this.pipelineType)) {
+      this.pipelineType = PIPELINE_TYPES.WORKLET;
+    }
+    if (this.pipelineType === PIPELINE_TYPES.SCRIPTPROCESSOR) this.encoder = ENCODER_TYPES.WASM_OPUS;
     this.timeslice = timeslice;
     this.mediaBitrate = mediaBitrate; // Hedef bitrate (MediaRecorder veya WASM Opus icin)
 
     try {
       this.stream = await requestStream(constraints);
+      if (this._cancelStart) throw new Error('Recording start cancelled');
       this.chunks = [];
 
       // NOT: stream:started event'i pipeline kurulumundan SONRA emit edilir
@@ -100,7 +130,7 @@ class Recorder {
       const needsWebAudioGraph = usesWebAudio(this.pipelineType);
       const needsMediaRecorder = usesMediaRecorder(this.encoder);
 
-      // WebAudio-based modes: Stream -> (WebAudio graph) -> Destination -> MediaRecorder/WASM
+      // WebAudio graph'i MediaRecorder'a stream, WASM Opus/PCM-WAV encoder'larina PCM saglar
       if (needsWebAudioGraph) {
         log.webaudio('Kayit pipeline modu aktif', { pipeline: this.pipelineType, encoder: this.encoder, preWarmed: this.isWarmedUp });
 
@@ -119,6 +149,8 @@ class Recorder {
         // WASM Opus modunda destinationNode kullanılmıyor (PCM doğrudan worker'a gidiyor)
         if (needsMediaRecorder && !this.destinationNode) {
           this.destinationNode = this.audioContext.createMediaStreamDestination();
+          this.destinationNode.channelCount = this.stream.getAudioTracks()[0]?.getSettings?.().channelCount || 1;
+          this.destinationNode.channelCountMode = 'explicit';
           log.webaudio('MediaStreamAudioDestinationNode created', {
             channelCount: this.destinationNode.channelCount,
             streamId: this.destinationNode.stream.id
@@ -141,7 +173,7 @@ class Recorder {
         await this.pipelineStrategy.setup({
           bufferSize,
           mediaBitrate,
-          channels: constraints.channelCount || 1,
+          channels: this.stream.getAudioTracks()[0]?.getSettings?.().channelCount || 1,
           encoder: this.encoder
         });
 
@@ -156,17 +188,23 @@ class Recorder {
         await this.pipelineStrategy.setup({ stream: this.stream });
       }
 
-      // VU Meter + Stream event'leri (siralama garanti: analyserReady ONCE, stream:started SONRA)
-      emitStreamWithAnalyser(this.pipelineStrategy?.analyserNode, this.stream, this.pipelineStrategy?.analysisAnalyserNode);
-
       // ═══════════════════════════════════════════════════════════════
       // ENCODER KURULUMU (MediaRecorder, WASM Opus veya PCM/WAV)
       // ═══════════════════════════════════════════════════════════════
+      // Reuse the pipeline analyser before encoding; preparation is never part of the saved file.
+      if (this.captureGuide.enabled) {
+        const preparation = this.captureGuide.prepare(this.stream);
+        this._streamStarted = true;
+        emitStreamWithAnalyser(this.pipelineStrategy?.analyserNode, this.stream, this.pipelineStrategy?.analysisAnalyserNode);
+        if (!await preparation || this._cancelStart || this.stream.getAudioTracks().some(track => track.readyState === 'ended')) {
+          throw new Error('Microphone stopped before recording could start');
+        }
+      }
       if (needsMediaRecorder) {
         await this._setupMediaRecorder(recordStream);
       } else if (usesPcmWav(this.encoder)) {
         // PCM/WAV encoder modu - MediaRecorder yok, raw PCM biriktirme
-        this.startTime = Date.now();
+        this.startTime = performance.now();
         log.recorder('PCM/WAV encoder aktif (raw recording)', {
           pipeline: this.pipelineType,
           encoder: this.encoder,
@@ -174,7 +212,7 @@ class Recorder {
         });
       } else {
         // WASM Opus encoder modu - MediaRecorder yok
-        this.startTime = Date.now();
+        this.startTime = performance.now();
         const opusWorker = this.pipelineStrategy?.getOpusWorker?.();
         log.recorder('WASM Opus encoder active (MediaRecorder not used)', {
           pipeline: this.pipelineType,
@@ -183,7 +221,34 @@ class Recorder {
         });
       }
 
+      if (this._cancelStart || this.stream.getAudioTracks().some(track => track.readyState === 'ended')) {
+        throw new Error('Microphone stopped before recording could start');
+      }
+      this.runSnapshot = completeRunSnapshot(this.runSnapshot, this.stream, {
+        pipeline: this.pipelineType,
+        encoder: this.encoder,
+        sampleRate: this.audioContext?.sampleRate ?? null,
+        channels: this.pipelineStrategy?._channels ?? this.stream.getAudioTracks()[0]?.getSettings?.().channelCount ?? null,
+        audioContext: usesWebAudio(this.pipelineType) && this.audioContext ? {
+          supported: true,
+          sampleRate: this.audioContext.sampleRate,
+          baseLatencyMs: Number.isFinite(this.audioContext.baseLatency) ? this.audioContext.baseLatency * 1000 : null,
+          outputLatencyMs: Number.isFinite(this.audioContext.outputLatency) ? this.audioContext.outputLatency * 1000 : null
+        } : null
+      });
+      this.pipelineStrategy.onCaptureError = error => this._requestStop('capture-error', error);
+      this.pipelineStrategy.onCaptureLimit = () => this._requestStop('memory-limit');
       this.isRecording = true;
+      this.pipelineStrategy.startCapture();
+      this._trackEndedListeners = this.stream.getAudioTracks().map(track => {
+        const listener = () => this._requestStop('device-ended');
+        track.addEventListener('ended', listener);
+        return { track, listener };
+      });
+      if (!this._streamStarted) {
+        this._streamStarted = true;
+        emitStreamWithAnalyser(this.pipelineStrategy?.analyserNode, this.stream, this.pipelineStrategy?.analysisAnalyserNode);
+      }
 
       // Pipeline + Encoder kombinasyonuna gore label (DRY: Config.js labels kullaniliyor)
       const pipelineLabel = SETTINGS.pipeline.labels[this.pipelineType] || this.pipelineType;
@@ -192,7 +257,8 @@ class Recorder {
       const timesliceText = this.timeslice > 0 ? `, Timeslice: ${this.timeslice}ms` : '';
       log.recorder(`Recording started (${modeText}${timesliceText})`);
       eventBus.emit(EVENTS.RECORDER_STARTED, { encoder: this.encoder, pipeline: this.pipelineType });
-      eventBus.emit(EVENTS.RECORDING_STARTED);
+      eventBus.emit(EVENTS.RECORDING_STARTED, { runSnapshot: this.runSnapshot });
+      this.captureGuide.start(this.startTime, () => this._requestStop('guided-complete'));
 
     } catch (err) {
       // Spesifik hata mesajlari (DRY: utils.js helper kullaniliyor)
@@ -200,10 +266,11 @@ class Recorder {
 
       log.error(userMessage, { category: 'recorder', originalError: err.name });
 
-      await this.cleanupWebAudio();
-      // NOT: stream:stopped EMIT ETME - stream:started henuz emit edilmedi
-      // (stream:started bu try blogunun sonunda, catch oncesinde)
-      // Bu balance bozulmasi ve yanlis pozitif uyarilari onler
+      this.isRecording = false;
+      this.captureGuide?.cancel();
+      this._releaseStream();
+      this._clearMediaRecorder();
+      await this.cleanupWebAudio(true);
       throw err;
     }
   }
@@ -290,66 +357,17 @@ class Recorder {
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size) this.chunks.push(e.data);
     };
-
-    // MediaRecorder hata handler - kayit sirasinda hata olursa log'a yaz
+    this._mediaStopped = new Promise(resolve => { this._resolveMediaStopped = resolve; });
     this.mediaRecorder.onerror = (e) => {
-      log.error('MediaRecorder error', {
-        error: e.error?.message || e.error?.name || 'Unknown error',
-        state: this.mediaRecorder?.state
-      });
+      this._requestStop('encoder-error', e.error || new Error('MediaRecorder failed'));
     };
-
-    this.mediaRecorder.onstop = async () => {
-      // Race condition önleme: onstop sonrası ondataavailable fire etmesin
-      if (this.mediaRecorder) {
-        this.mediaRecorder.ondataavailable = null;
-      }
-
-      try {
-        const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
-        const blob = new Blob(this.chunks, { type: mimeType });
-        const suffix = this.pipelineType === PIPELINE_TYPES.DIRECT ? '' : `_${this.pipelineType}`;
-        const filename = `kayit${suffix}_${formatTimestampYYMMDDHHMMSS()}.${getExtensionForMimeType(mimeType)}`;
-
-        // Gercek bitrate hesapla (DRY: helper kullan)
-        const durationMs = Date.now() - this.startTime;
-        const { bps: actualBitrate, kbps: actualBitrateKbps } = calculateActualBitrate(blob.size, durationMs);
-
-        // Istenen vs gercek karsilastirmasi
-        const requestedBitrate = this.mediaBitrate || 0;
-        const bitrateComparison = requestedBitrate > 0
-          ? `Requested: ${(requestedBitrate / 1000).toFixed(0)} kbps, Actual: ~${actualBitrateKbps} kbps`
-          : `Actual bitrate: ~${actualBitrateKbps} kbps`;
-
-        log.recorder(`Recording complete: ${bytesToKB(blob.size).toFixed(1)} KB (${bitrateComparison})`);
-        eventBus.emit(EVENTS.RECORDING_COMPLETED, {
-          blob,
-          mimeType,
-          filename,
-          pipeline: this.pipelineType,
-          encoder: this.encoder,
-          useWebAudio: usesWebAudio(this.pipelineType),
-          durationMs,
-          requestedBitrate,
-          actualBitrate
-        });
-
-        // WebAudio temizlik
-        if (usesWebAudio(this.pipelineType)) {
-          await this.cleanupWebAudio();
-        }
-
-        // Temizlik
-        this.mediaRecorder = null;
-      } catch (err) {
-        log.error('MediaRecorder onstop error', { error: err.message, stack: err.stack });
-        eventBus.emit(EVENTS.RECORDING_FAILED, { error: err.message });
-        this.mediaRecorder = null;
-      }
+    this.mediaRecorder.onstop = () => {
+      this._resolveMediaStopped?.();
+      if (!this._stopPromise) this._requestStop('recorder-ended');
     };
 
     // Timeslice ile veya tek chunk olarak baslat
-    this.startTime = Date.now();
+    this.startTime = performance.now();
     if (this.timeslice > 0) {
       this.mediaRecorder.start(this.timeslice);
     } else {
@@ -363,7 +381,10 @@ class Recorder {
    * @private
    */
   async _finishEncoding({ blob, mimeType, filename, extras = {} }) {
-    const durationMs = Date.now() - this.startTime;
+    if (!blob.size || extras.sampleCount === 0) throw new Error('The recording contains no audio samples');
+    const durationMs = Number.isFinite(extras.sampleCount) && extras.sampleRate > 0
+      ? extras.sampleCount / extras.sampleRate * 1000
+      : this.captureDurationMs;
     const { bps: actualBitrate, kbps: actualBitrateKbps } = calculateActualBitrate(blob.size, durationMs);
 
     log.recorder('Recording complete: ' + bytesToKB(blob.size).toFixed(1) + ' KB (~' + actualBitrateKbps + ' kbps)');
@@ -376,32 +397,37 @@ class Recorder {
       useWebAudio: usesWebAudio(this.pipelineType),
       durationMs,
       actualBitrate,
+      runSnapshot: this.runSnapshot,
+      guidedSegments: this.guidedSegments,
+      stopReason: this.stopReason,
+      durationSource: Number.isFinite(extras.sampleCount) ? 'captured-pcm-frames' : 'capture-clock',
+      bitrateSource: 'container-bytes',
       ...extras
     });
-
-    await this.cleanupWebAudio();
   }
 
   async cleanupWebAudio(forceClose = false) {
     // Pipeline strategy temizligi (OCP: Strategy kendini temizler)
     if (this.pipelineStrategy) {
-      await this.pipelineStrategy.cleanup();
+      const pipeline = this.pipelineStrategy;
       this.pipelineStrategy = null;
+      try { await pipeline.cleanup(); } catch (error) {
+        log.error('Pipeline cleanup failed', { error: error.message });
+      }
     }
 
     // DRY: disconnectNodes helper ile sourceNode temizle
     disconnectNodes([this.sourceNode]);
     this.sourceNode = null;
 
-    // Pre-warmed ise context ve destination'i koru (tekrar hizli baslatma icin)
+    stopStreamTracks(this.destinationNode?.stream);
+    disconnectNodes([this.destinationNode]);
+    this.destinationNode = null;
+    // A warmed context can be reused; per-recording destination tracks cannot.
     if (this.isWarmedUp && !forceClose) {
       log.webaudio('WebAudio cleanup (context korunuyor - pre-warmed)', { contextState: this.audioContext?.state });
       return;
     }
-
-    // Full cleanup - DRY: disconnectNodes helper ile destinationNode temizle
-    disconnectNodes([this.destinationNode]);
-    this.destinationNode = null;
 
     if (this.audioContext) {
       try {
@@ -415,79 +441,115 @@ class Recorder {
     this.isWarmedUp = false;
   }
 
-  async stop() {
-    if (!this.isRecording) return;
-
-    // PCM/WAV encoder modu
-    if (usesPcmWav(this.encoder) && this.pipelineStrategy?.getEncoderMode?.() === ENCODER_TYPES.PCM_WAV) {
-      try {
-        log.recorder('PCM/WAV encoding finishing...');
-
-        const result = await this.pipelineStrategy.finishPcmWavEncoding();
-        const sampleRate = this.audioContext?.sampleRate || 48000;
-        const theoreticalBitrate = sampleRate * 1 * 16; // mono, 16-bit
-
-        await this._finishEncoding({
-          blob: result.blob,
-          mimeType: 'audio/wav',
-          filename: 'kayit_raw_' + formatTimestampYYMMDDHHMMSS() + '.wav',
-          extras: { requestedBitrate: theoreticalBitrate, sampleCount: result.sampleCount, encoderType: result.encoderType }
-        });
-
-      } catch (error) {
-        log.error('PCM/WAV encoding error', { error: error.message });
-
-        await this.cleanupWebAudio();
-      }
+  _requestStop(reason, error = null) {
+    if (error) this._recordingError = error;
+    if (reason === 'device-ended') {
+      eventBus.emit(EVENTS.UI_MESSAGE, { message: 'Microphone disconnected. Finishing the captured recording.', tone: 'warning' });
+    } else if (reason === 'memory-limit') {
+      eventBus.emit(EVENTS.UI_MESSAGE, { message: 'Raw recording reached the memory limit. The captured audio is being saved; start a new recording to continue.', tone: 'warning' });
     }
-    // WASM Opus encoder modu icin Opus Worker'i bitir (OCP: Strategy'den al)
-    else if (usesWasmOpus(this.encoder) && this.pipelineStrategy?.getOpusWorker?.()) {
-      try {
-        log.recorder('Opus encoding finishing...');
+    void this.stop(reason).catch(() => {}); // stop publishes the failure and releases all resources.
+  }
 
-        const result = await this.pipelineStrategy.finishOpusEncoding();
-
-        await this._finishEncoding({
-          blob: result.blob,
-          mimeType: 'audio/ogg; codecs=opus',
-          filename: 'kayit_wasm_opus_' + formatTimestampYYMMDDHHMMSS() + '.ogg',
-          extras: { requestedBitrate: this.mediaBitrate || 16000, pageCount: result.pageCount, encoderType: result.encoderType }
-        });
-
-      } catch (error) {
-        log.error('Opus encoding error', { error: error.message });
-
-        await this.cleanupWebAudio();
-      }
-    } else if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      // MediaRecorder modu - onstop callback'i bekle (TestRecordingFlow pattern)
-      // BUG-5 fix: reject arm ekle — cleanup hatalari artik sessizce yutulmuyor
-      const stopPromise = new Promise((resolve, reject) => {
-        const originalOnstop = this.mediaRecorder.onstop;
-        this.mediaRecorder.onstop = async () => {
-          try {
-            if (originalOnstop) await originalOnstop();
-            resolve();
-          } catch (e) {
-            log.error('MediaRecorder onstop error', { error: e.message });
-            reject(e);
-          }
-        };
-      });
-
-      this.mediaRecorder.stop();
-      await stopPromise;
-    }
-
-    // Stream durdur (DRY: stopStreamTracks kullan)
+  _releaseStream() {
+    for (const { track, listener } of this._trackEndedListeners) track.removeEventListener('ended', listener);
+    this._trackEndedListeners = [];
     stopStreamTracks(this.stream);
     this.stream = null;
+    if (this._streamStarted) {
+      this._streamStarted = false;
+      eventBus.emit(EVENTS.STREAM_STOPPED);
+    }
+  }
 
-    this.isRecording = false;
+  _clearMediaRecorder() {
+    const recorder = this.mediaRecorder;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+      if (recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* failed/inactive encoder already released */ }
+      }
+    }
+    this.mediaRecorder = null;
+    this.chunks = [];
+    this._resolveMediaStopped = null;
+    this._mediaStopped = null;
+  }
 
-    eventBus.emit(EVENTS.STREAM_STOPPED);
-    log.recorder('Recording stopped');
-    eventBus.emit(EVENTS.RECORDER_STOPPED, { encoder: this.encoder, pipeline: this.pipelineType });
+  stop(reason = 'user') {
+    if (this._stopPromise) return this._stopPromise;
+    this._cancelStart = true;
+    if (this._startPromise) this.captureGuide?.cancel();
+    this._stopPromise = Promise.resolve().then(async () => {
+      if (this._startPromise) await this._startPromise.catch(() => {});
+      if (!this.isRecording && !this.stream && !this.pipelineStrategy) return;
+      this.isRecording = false;
+      this.stopReason = reason;
+      this.captureDurationMs = Math.max(0, performance.now() - this.startTime);
+      this.guidedSegments = this.captureGuide?.finish(this.captureDurationMs) || null;
+      eventBus.emit(EVENTS.RECORDING_CAPTURE_STOPPED, {
+        durationMs: this.captureDurationMs, stopReason: reason, runSnapshot: this.runSnapshot
+      });
+      try {
+        // Stop accepting input before waiting for workers or MediaRecorder finalization.
+        const captureStopped = Promise.resolve(this.pipelineStrategy?.stopCapture());
+        captureStopped.catch(() => {});
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
+        this._releaseStream();
+        disconnectNodes([this.sourceNode]);
+        await captureStopped;
+        if (this._recordingError) throw this._recordingError;
+
+        if (usesPcmWav(this.encoder)) {
+          const result = await this.pipelineStrategy.finishPcmWavEncoding();
+          await this._finishEncoding({
+            blob: result.blob, mimeType: 'audio/wav',
+            filename: 'kayit_raw_' + formatTimestampYYMMDDHHMMSS() + '.wav',
+            extras: { ...result, requestedBitrate: result.sampleRate * result.channels * 16 }
+          });
+        } else if (usesWasmOpus(this.encoder)) {
+          const result = await this.pipelineStrategy.finishOpusEncoding();
+          await this._finishEncoding({
+            blob: result.blob, mimeType: 'audio/ogg; codecs=opus',
+            filename: 'kayit_wasm_opus_' + formatTimestampYYMMDDHHMMSS() + '.ogg',
+            extras: { ...result, requestedBitrate: this.mediaBitrate > 0 ? this.mediaBitrate : null }
+          });
+        } else if (this.mediaRecorder) {
+          let timeout;
+          try {
+            await Promise.race([
+              this._mediaStopped,
+              new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('MediaRecorder completion timed out')), 10000); })
+            ]);
+          } finally { clearTimeout(timeout); }
+          if (this._recordingError) throw this._recordingError;
+          const mimeType = this.mediaRecorder.mimeType || 'audio/webm';
+          const blob = new Blob(this.chunks, { type: mimeType });
+          if (!blob.size) throw new Error('The recording contains no audio data');
+          await this._finishEncoding({
+            blob, mimeType,
+            filename: `kayit_${formatTimestampYYMMDDHHMMSS()}.${getExtensionForMimeType(mimeType)}`,
+            extras: { requestedBitrate: this.mediaBitrate > 0 ? this.mediaBitrate : null }
+          });
+        }
+      } catch (error) {
+        log.error('Recording finalization failed', { error: error.message });
+        eventBus.emit(EVENTS.RECORDING_FAILED, { error: error.message, runSnapshot: this.runSnapshot });
+        eventBus.emit(EVENTS.UI_MESSAGE, { message: `Recording could not be saved: ${error.message}`, tone: 'error' });
+        throw error;
+      } finally {
+        this._releaseStream();
+        this._clearMediaRecorder();
+        try {
+          await this.cleanupWebAudio();
+        } finally {
+          eventBus.emit(EVENTS.RECORDER_STOPPED, { encoder: this.encoder, pipeline: this.pipelineType, runSnapshot: this.runSnapshot });
+        }
+      }
+    });
+    return this._stopPromise;
   }
 
   getStream() {

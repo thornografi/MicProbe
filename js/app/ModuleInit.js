@@ -1,7 +1,7 @@
 /**
  * ModuleInit - Modul initialization fonksiyonlari
  */
-import { toggleDisplay, log } from '../modules/utils.js';
+import { setVisible, log } from '../modules/utils.js';
 import { PROFILES } from '../modules/Config.js';
 
 /**
@@ -40,23 +40,21 @@ export function initUIStateManager(uiStateManager, elements, stateGetters, profi
     playBtn: elements.playBtnEl,
     progressBar: elements.progressBarEl,
     downloadBtn: elements.downloadBtnEl,
+    downloadMp3Btn: elements.downloadMp3BtnEl,
     micSelector: elements.micSelector,
     refreshMicsBtn: elements.refreshMicsBtn,
     timerEl: elements.timerEl,
     headerBrandLink: elements.headerBrandLink,
     customSettingsToggle: elements.customSettingsToggle,
-    footerBrandLink: elements.footerBrandLink,
-    settingsDrawer: elements.settingsDrawer,
-    drawerOverlay: elements.drawerOverlay
+    accountMenuBtn: elements.accountMenuBtnEl,
+    sharedFooter: elements.sharedFooterEl
   });
 
   uiStateManager.setRadioGroups(radioGroups);
   uiStateManager.setStateGetters(stateGetters);
   uiStateManager.setProfileCollections({
-    navItems: [...elements.navItems],
-    scenarioCards: [...elements.scenarioCards]
+    navItems: [...elements.navItems]
   });
-  uiStateManager.setFooterLinks([...elements.footerLinks]);
   uiStateManager.setProfileController(profileController);
 }
 
@@ -96,15 +94,7 @@ export function initDebugConsole(debugConsole, deps) {
  * ProfileUIManager initialization
  */
 export function initProfileUIManager(profileUIManager, elements, stateGetters, callbacks) {
-  profileUIManager.init({
-    scenarioCards: elements.scenarioCards,
-    navItems: elements.navItems,
-    pageTitle: elements.pageTitle,
-    pageTitleIcon: elements.pageTitleIcon,
-    pageSubtitle: elements.pageSubtitle,
-    scenarioBadge: elements.scenarioBadge,
-    scenarioTech: elements.scenarioTech
-  });
+  profileUIManager.init(elements);
   profileUIManager.setStateGetters(stateGetters);
   profileUIManager.setCallbacks(callbacks);
 }
@@ -119,13 +109,12 @@ export function updateCategoryUI(profileId, elements) {
   const { canTest, canRecord, category } = profile;
   const loopbackValue = profile.values?.loopback;
 
-  toggleDisplay(elements.recordToggleBtn, canRecord, 'flex');
-
-  toggleDisplay(elements.testBtn, canTest, 'flex');
-  toggleDisplay(elements.recordingPlayerPanelEl, canRecord);
+  setVisible(elements.recordToggleBtn, canRecord);
+  setVisible(elements.testBtn, canTest);
+  setVisible(elements.recordingPlayerPanelEl, false);
 
   const remoteVuContainer = document.getElementById('remoteVuContainer');
-  toggleDisplay(remoteVuContainer, loopbackValue === true);
+  setVisible(remoteVuContainer, loopbackValue === true);
 
   log.ui(`Kategori UI guncellendi: ${category}`, {
     category,
@@ -139,7 +128,7 @@ export function updateCategoryUI(profileId, elements) {
  * Baslangic UI senkronizasyonu
  */
 export function syncInitialUI(elements, workletSupported, wasmOpusSupported) {
-  toggleDisplay(elements.encoderContainer, true);
+  setVisible(elements.encoderContainer, true);
 
   if (!workletSupported) {
     log.system('AudioWorklet not supported - Worklet options disabled', {});

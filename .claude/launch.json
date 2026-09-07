@@ -4,9 +4,21 @@
     {
       "name": "micprobe",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": [
+        "server.js"
+      ],
       "port": 8080,
       "autoPort": true
+    },
+    {
+      "name": "micprobe-8090",
+      "runtimeExecutable": "pwsh",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:PORT='8090'; $env:MICPROBE_STRICT_PORT='1'; node server.js"
+      ],
+      "port": 8090
     }
   ]
 }

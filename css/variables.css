@@ -1,7 +1,20 @@
-/* MicProbe - Unified Design System
-   ================================
-   Tum renkler ve stiller burada tanimlanir.
-   Landing ve App ayni design token'lari kullanir.
+/* MicProbe - Design Tokens
+   ========================
+   Yalnizca token'lar (:root + body.app-mode). Paylasilan bilesen CSS'i
+   (reset, header-base, marka, footer, buton sistemi, utility'ler) css/shared.css'te;
+   her sayfa <head>'inde sira: variables.css -> shared.css -> (landing.css | app CSS).
+   Landing ve App ayni token'lari kullanir.
+
+   BREAKPOINT REFERANSI (var() @media icinde calismadigi icin literal; tek kaynak burasi,
+   micprobe-ui-state skill tablosu ile ayni):
+     xs : (max-width: 479px)
+     sm : (max-width: 767px)                          mobil kabuk, tek kolon, gutter 16
+     md : (min-width: 768px) and (max-width: 1023px)  rail 216
+     lg : (min-width: 768px) and (max-width: 1199px)  konsol tek kolon
+     xl : (min-width: 1200px)                         rail 248, konsol iki kolon
+
+   RUNTIME DEGISKENLERI (JS setProperty ile yazilir, burada tanimlanmaz; fallback'leri
+   kullanim yerindedir): --ripple-x, --ripple-y (app.js).
 */
 
 /* Fonts are requested asynchronously from index.html to keep first paint fast. */
@@ -9,91 +22,57 @@
 :root {
   /* ========== CORE COLORS ========== */
   /* Base palette - her iki view icin ortak */
-  /* NOT: orange artik accent-text ile ayni (tema tutarliligi icin) */
-  --color-orange: #C03FA4;
-  --color-purple: #a855f7;
-  --color-purple-light: #c084fc;
-  --color-coral: #C03FA4;
-  --color-pink: #d946a8;
+  /* Muted violet identifies controls; the working surfaces stay neutral. */
+  --accent-primary: #8174b6;
+  --color-purple: #9d92c8;
+  --color-purple-light: #b9afd9;
+  --color-pink: #8c82ad;
 
   /* RGB values - rgba() icinde kullanmak icin */
-  --color-orange-rgb: 192, 63, 164;
-  --color-purple-rgb: 168, 85, 247;
-  --color-pink-rgb: 217, 70, 168;
-  --color-rose-rgb: var(--color-pink-rgb);  /* rose alias - hero wave (nth-child 1) */
+  --accent-primary-rgb: 129, 116, 182;
+  --color-purple-rgb: 157, 146, 200;
+  --color-pink-rgb: 140, 130, 173;
+  --color-blue-rgb: 59, 130, 246;
   --color-white-rgb: 255, 255, 255;
   --color-black-rgb: 0, 0, 0;
 
-  /* Active profile color - ortak accent text rengi (Real-World, sidebar, baslik) */
-  /* Parlak mor-pembe, dengeli lacivert tonu */
-  --color-accent-text: #9855f7;
-  --color-accent-text-rgb: 152, 85, 247;
+  /* Active profiles and accent text share the same readable violet. */
+  --color-accent-text: var(--color-purple);
+  --color-accent-text-rgb: var(--color-purple-rgb);
   --profile-accent: var(--color-accent-text);
-  --profile-accent-glow: rgba(var(--color-accent-text-rgb), 0.55);
 
   /* Background - Dark theme */
-  --bg-primary-rgb: 13, 12, 20;
+  --bg-primary-rgb: 21, 23, 28;
   --bg-primary: rgb(var(--bg-primary-rgb));
-  --bg-secondary: #12121a;
+  --bg-secondary: #1d2027;
   --bg-input: rgba(var(--color-white-rgb), 0.05);
   --bg-elevated: rgba(var(--color-white-rgb), 0.08);
 
-  /* One viewport-relative canvas for landing, app and legal pages. */
-  --site-atmosphere: radial-gradient(ellipse at 50% 0%,
-    rgba(146, 117, 194, 0.18) 0%,
-    rgba(146, 117, 194, 0.06) 45%,
-    rgba(146, 117, 194, 0) 78%);
-  --chrome-bg: rgba(var(--bg-primary-rgb), 0.46);
+  /* One quiet canvas, shared by landing, app and legal pages. */
+  --site-atmosphere: none;
+  --chrome-bg: rgba(var(--bg-primary-rgb), 0.96);
+  --action-bg: #67589f;
+  --action-hover-bg: #7565ae;
 
-  /* Primary accent gradient */
-  --gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
-
-  /* Neon circle gradient - mikrofon dairesi ve step numaralari icin ortak */
-  --gradient-neon-circle: linear-gradient(160deg,
-    rgba(var(--color-pink-rgb), 0.92) 0%,
-    rgba(var(--color-purple-rgb), 0.92) 60%,
-    rgba(59, 130, 246, 0.88) 100%);
-
-  /* Glass shine overlay - button ::before icin */
-  --gradient-shine: linear-gradient(135deg, rgba(var(--color-white-rgb), 0.1), transparent);
-  --gradient-shine-strong: linear-gradient(135deg, rgba(var(--color-white-rgb), 0.15), transparent);
-
-  /* Accent gradients for backgrounds - 6 seviye yeterli */
-  /* faint < subtle < hover < muted < mid < strong */
-  --gradient-accent-faint: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.03) 0%,
-    rgba(var(--color-purple-rgb), 0.02) 100%);
+  /* Accent gradients for backgrounds (subtle < muted < strong) */
   --gradient-accent-subtle: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.05) 0%,
+    rgba(var(--accent-primary-rgb), 0.05) 0%,
     rgba(var(--color-purple-rgb), 0.03) 100%);
-  --gradient-accent-hover: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.1) 0%,
-    rgba(var(--color-purple-rgb), 0.06) 100%);
   --gradient-accent-muted: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.15) 0%,
+    rgba(var(--accent-primary-rgb), 0.15) 0%,
     rgba(var(--color-purple-rgb), 0.1) 100%);
-  --gradient-accent-mid: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.12) 0%,
-    rgba(var(--color-purple-rgb), 0.08) 100%);
   --gradient-accent-strong: linear-gradient(135deg,
-    rgba(var(--color-orange-rgb), 0.2) 0%,
+    rgba(var(--accent-primary-rgb), 0.2) 0%,
     rgba(var(--color-purple-rgb), 0.15) 100%);
 
   /* ========== GLOW & SHADOW SYSTEM ========== */
-  /* Drop-shadow filters - icon/svg icin (sm < md < lg < xl) */
-  --glow-accent-sm: drop-shadow(0 0 6px rgba(var(--color-orange-rgb), 0.5));
-  --glow-accent-md: drop-shadow(0 0 8px rgba(var(--color-orange-rgb), 0.6)) drop-shadow(0 0 16px rgba(var(--color-purple-rgb), 0.3));
-  --glow-accent-lg: drop-shadow(0 0 12px rgba(var(--color-orange-rgb), 0.6)) drop-shadow(0 0 20px rgba(var(--color-purple-rgb), 0.3));
-  --glow-accent-xl: drop-shadow(0 0 16px rgba(var(--color-orange-rgb), 0.8)) drop-shadow(0 0 24px rgba(var(--color-purple-rgb), 0.4));
+  /* Drop-shadow filters - icon/svg icin (sm < md) */
+  --glow-accent-sm: drop-shadow(0 0 6px rgba(var(--accent-primary-rgb), 0.5));
+  --glow-accent-md: drop-shadow(0 0 8px rgba(var(--accent-primary-rgb), 0.6)) drop-shadow(0 0 16px rgba(var(--color-purple-rgb), 0.3));
 
   /* Box-shadow - container/card icin */
-  --shadow-accent-md: 0 0 12px rgba(var(--color-orange-rgb), 0.4);
-  --shadow-accent-lg: 0 0 15px rgba(var(--color-orange-rgb), 0.4);
-  --shadow-accent-glow: 0 0 12px rgba(var(--color-orange-rgb), 0.8), 0 0 20px rgba(var(--color-orange-rgb), 0.4);
+  --shadow-accent-glow: 0 0 12px rgba(var(--accent-primary-rgb), 0.8), 0 0 20px rgba(var(--accent-primary-rgb), 0.4);
   --shadow-purple-glow: 0 0 12px rgba(var(--color-purple-rgb), 0.8), 0 0 20px rgba(var(--color-purple-rgb), 0.4);
-
-  /* Accent colors */
-  --accent-primary: var(--color-coral);
 
   /* Status colors */
   --accent-danger: #e53935;
@@ -101,15 +80,20 @@
   --accent-success: #1db954;
   --accent-info: #2196f3;
 
-  /* VU Meter colors */
-  --vu-green: #22c55e;
-  --vu-yellow: #eab308;
-  --vu-purple: #8b5cf6;
+  /* Live level meters: distinguish the two signals without implying quality. */
+  --vu-local: #b1a6d1;
+  --vu-remote: #969fc1;
+  --vu-track: #2c3039;
+
+  /* Playback and test progress tracks; live level meters use their own scale. */
+  --track-bg: rgba(var(--color-white-rgb), 0.06);
+  --track-border: var(--border-secondary);
+  --track-radius: var(--radius-full);
 
   /* Text colors */
-  --text-primary: #ffffff;
-  --text-secondary: #b3b3b3;
-  --text-muted: #727272;
+  --text-primary: #f3f4f6;
+  --text-secondary: #b5bac4;
+  --text-muted: #a0a6b2;
 
   /* Border colors */
   --border-primary: rgba(var(--color-white-rgb), 0.1);
@@ -125,18 +109,29 @@
   --blur-sm: 12px;
   --blur-md: 16px;
   --blur-lg: 20px;
-  --backdrop-blur: var(--blur-sm);
 
-  /* Panel ortak stiller (header ve content panel icin) */
-  --panel-gradient: linear-gradient(145deg, rgba(var(--color-white-rgb), 0.04) 0%, rgba(var(--color-white-rgb), 0.01) 100%);
-  --panel-blur: var(--blur-md);
+  /* Panel golgesi (mobil cekmece) */
   --panel-shadow: 0 8px 32px rgba(var(--color-black-rgb), 0.15);
-  --panel-body-bg: rgba(18, 18, 26, 0.6);
+
+  /* ========== OVERLAY (modal / drawer) - tek gorsel sozlesme ========== */
+  --overlay-w-sm: 640px;              /* rapor: okunabilir satirlar + baslik eylemleri */
+  --overlay-w-lg: 900px;              /* account / history dialog'u */
+  --drawer-w: 400px;                  /* dev console */
+  --overlay-radius: var(--radius-xl);
+  --overlay-bg: #1d2027;
+  --overlay-border: rgba(207, 198, 226, 0.13);
+  --overlay-shadow: 0 24px 64px rgba(var(--color-black-rgb), 0.5);
+  --drawer-shadow: -10px 0 40px rgba(var(--color-black-rgb), 0.4);
+  --overlay-header-pad: var(--space-md) var(--space-lg);
+  --overlay-header-h: 64px;
+  --scrim: rgba(var(--color-black-rgb), 0.6);
+  --scrim-blur: var(--blur-xs);
 
   /* ========== SPACING ========== */
   --space-2xs: 2px;
   --space-xs: 4px;
   --space-sm: 8px;
+  --space-ms: 12px;   /* 8-16 arasi tek ara adim (nav/chip gap, kart ici satir) */
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
@@ -149,7 +144,6 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-2xl: 24px;
   --radius-full: 9999px;
 
   /* ========== LABEL/BADGE (Merkeziyetçi) ========== */
@@ -163,518 +157,83 @@
 
   /* ========== TYPOGRAPHY ========== */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Headings and controls share the same open, readable letterforms. */
+  --font-display: var(--font-sans);
+  --heading-tracking: -0.01em;
   --font-ui-accent: var(--font-display);
   --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
 
-  /* Font sizes - px (fixed scale for UI components) */
-  --fs-2xs: 10px;
+  /* Font sizes - px (sabit olcek: 12 · 13 · 14 · 15 · 16 · 20 · 24; alt sinir 12) */
   --fs-xs: 12px;
   --fs-sm: 13px;
   --fs-base: 14px;
   --fs-md: 15px;
   --fs-lg: 16px;
-  --fs-btn: 18px;    /* Action butonları için */
   --fs-xl: 20px;
   --fs-2xl: 24px;
-  --fs-3xl: 30px;
+  --fs-h1: clamp(28px, 2.4vw, 34px);  /* sayfa basligi (app h1, legal h1) */
 
-  /* Button sizes */
-  --btn-action-height: 44px;
-
-  /* ========== SHADOWS ========== */
-  --shadow-sm: 0 1px 2px rgba(var(--color-black-rgb), 0.3);
-  --shadow-md: 0 4px 6px rgba(var(--color-black-rgb), 0.4);
-  --shadow-lg: 0 10px 15px rgba(var(--color-black-rgb), 0.5);
-  --shadow-xl: 0 20px 25px rgba(var(--color-black-rgb), 0.6);
-
-  /* Glow effects - tutarli accent renkleri */
-  --glow-accent: 0 0 25px rgba(var(--color-orange-rgb), 0.35);
-  --glow-purple: 0 0 25px rgba(192, 132, 252, 0.3);
-  --glow-brand-hover: 0 0 12px rgba(var(--color-pink-rgb), 0.7);
-  /* Primary buton hover parlamasi (landing mic-hover-active) - btn--primary:hover ile ayni */
-  --shadow-glow-orange: 0 0 25px rgba(var(--color-pink-rgb), 0.6), 0 0 50px rgba(var(--color-purple-rgb), 0.35);
+  /* ========== KONTROL YUKSEKLIK OLCEGI (xs 24 · s 32 · m 40 · l 48) ==========
+     Uygulama kurali: min-height + padding-block: 0 + inline-flex + line-height 1.2
+     (font'tan bagimsiz). l: kartin birincil kontrolleri (select, .btn-action, .btn-icon,
+     akordeon basligi); m: ikincil butonlar/select'ler/nav; s: ikon butonlar, rozetler;
+     xs: etkilesimsiz rozetler. */
+  --control-h-xs: 24px;
+  --control-h-s: 32px;
+  --control-h-m: 40px;
+  --control-h-l: 48px;
 
   /* Accent muted variants */
   --accent-danger-muted: rgba(229, 57, 53, 0.15);
   --accent-info-muted: rgba(33, 150, 243, 0.15);
 
   /* Brand */
+  --brand-accent-color: #b1a6d1;
 
-  /* ========== Z-INDEX ========== */
-  --z-dropdown: 100;
+  /* A restrained waveform, separate from capture-status colors. */
+  --hero-wave-edge: #6e7789;
+  --hero-wave-center: #b1a6d1;
+
+  /* ========== Z-INDEX (sticky < drawer-overlay < drawer < report; dialog'lar top layer) ========== */
   --z-sticky: 200;
-  --z-modal: 300;
-  --z-tooltip: 400;
   --z-drawer-overlay: 900;
-  --z-console-toggle: 900;
   --z-drawer: 1000;
   --z-report: 1100;
 
   /* ========== LAYOUT ========== */
-  --sidebar-width: 248px;
+  --sidebar-width: clamp(264px, 16vw, 320px);
   --sidebar-width-compact: 216px;
-  --sidebar-width-medium: 232px;
-  --navbar-height: 72px;
+  --navbar-height: 80px;
   --header-height: var(--navbar-height); /* .header-base, .app-shell grid satiri ve mobil sidebar top */
-  --sidebar-nav-top: 30px;
   --player-time-width: 105px;
 
   /* Fluid Layout - ekran boyutuna göre ölçeklenir */
-  --max-width: clamp(800px, 92vw, 1600px);
-  --gap-fluid: clamp(20px, 3vw, 48px);
+  --max-width: 1600px;
+  --page-gutter: clamp(16px, 3vw, 48px);
+  --section-space: clamp(48px, 5vw, 80px);
   --padding-fluid: clamp(20px, 3vw, 40px);
+  --workspace-gutter: clamp(24px, 3.5vw, 64px);
 
   /* ========== UI STATES ========== */
   --opacity-disabled: 0.55;
 
   /* ========== APP SURFACE (test-console kartlari) ========== */
-  /* Translucent surfaces carry the landing palette into the workspace. */
-  --surface-card-bg: rgba(25, 23, 34, 0.72);
+  --surface-card-bg: #1d2027;
   --surface-card-border: rgba(207, 198, 226, 0.13);
-  --surface-card-shadow: 0 8px 32px rgba(var(--color-black-rgb), 0.10);
-  --surface-inset: #15131d;
-
-  /* Action buttons share the landing accent. */
-  --gradient-action: var(--gradient-neon-circle);
+  --surface-card-shadow: none;
+  --surface-inset: #181b21;
 
   /* App icerik kolonu ust siniri: page-header ve test-console ayni genislikte,
      content-container icinde ortalanir (simetrik gutter) */
-  --app-content-max: 1280px;
+  --app-content-max: 1440px;
 }
 
 /* Keep text readable while sharing the landing's brand colors. */
 body.app-mode {
   color-scheme: dark;
-  --bg-secondary: #191422;
+  --bg-secondary: #1d2027;
   --bg-input: rgba(255, 255, 255, 0.045);
-  --bg-elevated: #2b243a;
-  --text-primary: #f3f3fa;
-  --text-secondary: #afb0c0;
-  --text-muted: #989aac;
+  --bg-elevated: #292d35;
   --profile-accent: var(--color-purple-light);
   --font-ui-accent: var(--font-sans);
-  --fs-btn: 15px;
-}
-
-/* ========== HEADER BASE (Ortak Bilesen) ========== */
-/* Landing navbar (.navbar, landing.css) ve app header (.app-header, header.css)
-   ayni bilesenden turer: kabuk (.header-base), marka blogu (.brand-lockup) ve
-   mobil menu butonu (.header-menu-btn). Konumlama ve icerik duzeni sayfaya
-   ozgudur. header.css lazy yuklendigi icin paylasilan parcalar burada durur;
-   footer ve legal sayfalari da .brand-lockup sinifini kullanir. */
-.header-base {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  background: var(--chrome-bg);
-  backdrop-filter: blur(var(--blur-md));
-  -webkit-backdrop-filter: blur(var(--blur-md));
-  border-bottom: 1px solid var(--glass-border);
-  z-index: var(--z-sticky);
-}
-
-/* Marka blogu: logo + wordmark. Boyutlar degiskenle ezilir (footer 24px, mobil app 28px). */
-.brand-lockup {
-  display: flex;
-  align-items: center;
-  gap: var(--brand-gap, 12px);
-  color: var(--text-primary);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.brand-mark {
-  display: block;
-  flex-shrink: 0;
-  width: var(--brand-mark-size, 32px);
-  height: var(--brand-mark-size, 32px);
-}
-
-.brand-title {
-  font-size: var(--brand-title-size, 22px);
-  font-weight: 600;
-}
-
-.header-base .brand-lockup {
-  transition: opacity var(--transition-fast);
-}
-
-.header-base .brand-lockup:hover {
-  opacity: 0.8;
-}
-
-/* Aktif kayit/test kilidi: UIStateManager UI_CLASSES.DISABLED (.ui-disabled) ekler ve
-   body[data-app-state] whitelist kurali a:not(.always-active) uzerinden calisir (helpers.css).
-   Burada ayri bir .disabled kurali yoktur. */
-
-/* Mobil menu butonu: landing icin nav listesi (#mobileNav), app icin profil cekmecesi (#profileSidebar) */
-.header-menu-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  background: rgba(var(--color-white-rgb), 0.04);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
-}
-
-.header-menu-btn:hover {
-  background: rgba(var(--color-purple-rgb), 0.12);
-  border-color: rgba(var(--color-purple-rgb), 0.35);
-  color: var(--color-purple-light);
-}
-
-/* Mobil esigi app kabugu ile ayni: layout.css icinde 768px masaustu duzenine dahildir */
-@media (max-width: 767px) {
-  .header-menu-btn {
-    display: flex;
-  }
-}
-
-/* ========== RESET ========== */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-html, body {
-  min-height: 100%;
-}
-
-html {
-  background: var(--site-atmosphere), var(--bg-primary);
-  background-attachment: fixed;
-}
-
-body {
-  font-family: var(--font-sans);
-  background: transparent;
-  color: var(--text-primary);
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ========== FOCUS STATES ========== */
-/* a11y: global :focus{outline:none} kaldirildi - klavye gostergesi :focus-visible
-   ile verilir, :focus-visible desteklenmeyen durumda UA fallback outline'i korunur. */
-:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-/* ========== SCROLLBAR ========== */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--bg-elevated);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
-
-/* ========== UTILITY CLASSES ========== */
-.hidden {
-  display: none !important;
-}
-
-.no-pointer-events {
-  pointer-events: none;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* ========== BRAND WORDMARK ========== */
-.brand-wordmark {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0;
-  white-space: nowrap;
-  font-family: var(--font-display);
-  letter-spacing: -0.045em;
-}
-
-.brand-word {
-  display: inline-block;
-  line-height: 1;
-}
-
-.brand-word--mic,
-.brand-word--probe {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* ========== LEGAL PAGES (Privacy, Terms vb.) ========== */
-.legal-page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  /* Uses the shared html canvas. */
-}
-
-.legal-content {
-  flex: 1;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: var(--space-3xl) var(--space-xl);
-}
-
-.legal-content h1 {
-  font-size: var(--fs-3xl);
-  color: var(--text-primary);
-  margin-bottom: var(--space-lg);
-}
-
-.legal-content p {
-  color: var(--text-secondary);
-  line-height: 1.7;
-  margin-bottom: var(--space-md);
-}
-
-.legal-content a {
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color var(--transition-fast);
-}
-
-.legal-content a:hover {
-  color: var(--text-primary);
-}
-
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: var(--fs-base);
-  margin-bottom: var(--space-xl);
-  transition: color var(--transition-fast);
-}
-
-.back-link:hover {
-  color: var(--text-primary);
-}
-
-/* ========== SITE FOOTER (Ortak - Tüm Sayfalar) ========== */
-/* Landing page footer baz alındı - ortalanmış dikey düzen */
-.site-footer {
-  padding: var(--space-2xl) var(--space-xl);
-  border-top: 1px solid var(--border-secondary);
-  background: rgba(var(--color-white-rgb), 0.015);
-  text-align: center;
-  margin-top: auto;
-}
-
-.site-footer-content {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-md);
-}
-
-/* .brand-lockup (HEADER BASE) uzerine footer boyutu ve hover zemini */
-.site-footer-brand {
-  --brand-mark-size: 24px;
-  --brand-gap: 8px;
-  display: inline-flex;
-  font-weight: 600;
-  padding: 6px 12px 6px 6px;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-normal);
-}
-
-.site-footer-brand .brand-wordmark {
-  color: inherit;
-}
-
-.site-footer-brand:hover {
-  background: var(--gradient-accent-subtle);
-}
-
-.site-footer-links {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.site-footer-links a {
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: var(--fs-base);
-  transition: color var(--transition-fast);
-  display: flex;
-  align-items: center;
-}
-
-.site-footer-links a::before {
-  content: '·';
-  margin: 0 var(--space-sm);
-  color: var(--text-muted);
-  opacity: 0.5;
-}
-
-.site-footer-links a:first-child::before {
-  display: none;
-}
-
-.site-footer-links a:hover {
-  color: var(--text-primary);
-}
-
-.site-footer-links a.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.site-footer-links a.disabled:hover {
-  color: var(--text-muted);
-}
-
-.site-footer-meta {
-  font-size: var(--fs-base);
-  color: var(--text-muted);
-}
-
-.site-footer-meta a {
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color var(--transition-fast);
-}
-
-.site-footer-meta a:hover {
-  color: var(--text-primary);
-}
-
-.site-footer-contact {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: var(--fs-base);
-  transition: color var(--transition-fast);
-}
-
-.site-footer-contact:hover {
-  color: var(--text-primary);
-}
-
-.site-footer-contact svg {
-  opacity: 0.7;
-}
-
-/* Footer Mobile Responsive */
-@media (max-width: 640px) {
-  .site-footer-links {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-}
-
-/* ========== SHARED BUTTONS (Ortak - Tüm Sayfalar) ========== */
-/* Base button */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-xl);
-  border: none;
-  border-radius: var(--radius-lg);
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
-  text-decoration: none;
-}
-
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-/* Primary variant - neon circle gradient with glow */
-.btn--primary {
-  background: var(--gradient-neon-circle);
-  color: white;
-  border-radius: var(--radius-full);
-  box-shadow: 0 0 20px rgba(var(--color-pink-rgb), 0.4),
-              0 0 40px rgba(var(--color-purple-rgb), 0.25);
-}
-
-.btn--primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 0 25px rgba(var(--color-pink-rgb), 0.6),
-              0 0 50px rgba(var(--color-purple-rgb), 0.35);
-}
-
-/* Secondary variant - ghost/outline */
-.btn--secondary {
-  background: transparent;
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
-}
-
-.btn--secondary:hover:not(:disabled) {
-  background: rgba(var(--color-white-rgb), 0.05);
-  border-color: var(--text-muted);
-}
-
-/* ========== GLASS SURFACE (Ortak Utility) ========== */
-.glass-surface {
-  background: linear-gradient(145deg, rgba(var(--color-white-rgb), 0.05) 0%, rgba(var(--color-white-rgb), 0.02) 100%);
-  backdrop-filter: blur(var(--blur-md));
-  -webkit-backdrop-filter: blur(var(--blur-md));
-  border: 1px solid rgba(var(--color-white-rgb), 0.1);
-  border-radius: var(--radius-xl);
-}
-
-/* ========== ACCESSIBILITY: REDUCED MOTION ========== */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
 }

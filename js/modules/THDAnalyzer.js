@@ -4,9 +4,10 @@
  * Frekans domain'inde fundamental ve harmonik pikleri tespit eder.
  * THD = sqrt(H2^2 + H3^2 + ... + HN^2) / H1
  *
- * Kullanim:
- *   const thd = new THDAnalyzer(analyserNode, sampleRate);
- *   const result = thd.analyze();
+ * Normal rapor/test akisina bagli degildir; kontrollu test tonu gerektirir.
+ * Disaridan saglanan getFloatFrequencyData() sonucu ile kullanim:
+ *   const thd = new THDAnalyzer(sampleRate, fftSize);
+ *   const result = thd.analyze(freqData);
  *   // { thd: 0.023, thdPercent: 2.3, fundamental: 1000, harmonics: [...] }
  *
  * NOT: En dogru sonuc icin test tonu (OscillatorNode ile 1kHz sinusoidal)

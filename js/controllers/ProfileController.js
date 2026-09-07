@@ -6,24 +6,9 @@
 
 import eventBus from '../modules/EventBus.js';
 import { PROFILES, SETTINGS, PROFILE_TIPS } from '../modules/Config.js';
-import { toggleDisplay, needsBufferSetting, usesWasmOpus, shouldDisableTimeslice, log } from '../modules/utils.js';
-import { PIPELINE_TYPES, EVENTS } from '../modules/constants.js';
-
-/**
- * Dinamik kilit politikasi - DRY: Tek noktadan kilit kurallari
- * @param {string} pipeline - Pipeline tipi (direct, standard, scriptprocessor, worklet)
- * @param {boolean} loopback - Loopback aktif mi
- * @param {string} encoder - Encoder tipi (mediarecorder, wasm-opus)
- * @returns {Object} Kilit durumu haritasi { settingKey: isLocked }
- */
-function getDynamicLockPolicy(pipeline, loopback, encoder) {
-  return {
-    buffer: !needsBufferSetting(pipeline),        // Sadece ScriptProcessor'da editable
-    mediaBitrate: loopback,                       // Loopback ON -> disabled (WebRTC varsa MediaRecorder bitrate anlamsiz)
-    bitrate: !loopback,                           // Loopback OFF -> disabled (WebRTC yoksa Opus bitrate anlamsiz)
-    timeslice: shouldDisableTimeslice(loopback, encoder)  // MediaRecorder yoksa disabled
-  };
-}
+import { setVisible, usesWasmOpus, log } from '../modules/utils.js';
+import { getSettingLockPolicy } from '../modules/utils/settings.js';
+import { PIPELINE_TYPES, EVENTS, MARKUP_CLASSES } from '../modules/constants.js';
 
 /**
  * ProfileController class - Profil islemlerini yonetir
@@ -31,7 +16,7 @@ function getDynamicLockPolicy(pipeline, loopback, encoder) {
 class ProfileController {
   constructor() {
     // Mevcut profil ID'si
-    this.currentProfileId = 'discord';
+    this.currentProfileId = null;
 
     // UI element referanslari
     this.elements = {
@@ -210,14 +195,13 @@ class ProfileController {
   }
 
   /**
-   * Dinamik kilitleme - Ham Kayit profilinde aykiri ayarlari disable et
+   * Profil kilidi olmayan profillerde ayar bagimliliklarini uygula
    */
   updateDynamicLocks() {
     const profile = PROFILES[this.currentProfileId];
     if (!profile) return;
 
-    // Dinamik kilitleme: lockedSettings bos olan profillerde aktif
-    // (Raw profili gibi tum ayarlarin degistirilebildigi profiller)
+    // Profil kilidi olmayan profillerin drawer kontrollerini guncelle.
     const isDynamicProfile = profile.lockedSettings?.length === 0;
 
     if (!isDynamicProfile) return;
@@ -227,7 +211,7 @@ class ProfileController {
     const encoder = this.callbacks.getRadioValue('encoder', 'mediarecorder');
 
     // DRY: Kilit politikasini tek noktadan al
-    const lockPolicy = getDynamicLockPolicy(pipeline, loopback, encoder);
+    const lockPolicy = getSettingLockPolicy(profile, { pipeline, loopback, encoder });
     Object.entries(lockPolicy).forEach(([key, isLocked]) => {
       this.callbacks.setSettingDisabled(key, isLocked);
     });
@@ -251,15 +235,15 @@ class ProfileController {
     const loopbackOn = loopbackToggle?.checked ?? false;
 
     // DRY: Kilit politikasini tek noktadan al
-    const lockPolicy = getDynamicLockPolicy(pipeline, loopbackOn, encoder);
+    const lockPolicy = getSettingLockPolicy(this.getCurrentProfile(), { pipeline, loopback: loopbackOn, encoder });
 
     Object.entries(lockPolicy).forEach(([key, isLocked]) => {
       const element = customSettingsGrid.querySelector(`[data-setting="${key}"]`);
       if (element) {
         element.disabled = isLocked;
-        const parent = element.closest('.custom-setting-item');
+        const parent = element.closest(`.${MARKUP_CLASSES.CUSTOM_ITEM}`);
         if (parent) {
-          parent.classList.toggle('dynamic-locked', isLocked);
+          parent.classList.toggle(MARKUP_CLASSES.CUSTOM_ITEM_LOCKED, isLocked);
         }
       }
     });
@@ -317,13 +301,13 @@ class ProfileController {
     const { pipelineSection, webrtcSection, developerSection } = this.elements;
 
     // Pipeline section: webaudio, pipeline, encoder, buffer
-    toggleDisplay(pipelineSection, isVisible('webaudio') || isVisible('pipeline') || isVisible('encoder') || isVisible('buffer'));
+    setVisible(pipelineSection, isVisible('webaudio') || isVisible('pipeline') || isVisible('encoder') || isVisible('buffer'));
 
     // WebRTC section: loopback, bitrate, mediaBitrate
-    toggleDisplay(webrtcSection, isVisible('loopback') || isVisible('bitrate') || isVisible('mediaBitrate'));
+    setVisible(webrtcSection, isVisible('loopback') || isVisible('bitrate') || isVisible('mediaBitrate'));
 
     // Developer section: timeslice
-    toggleDisplay(developerSection, isVisible('timeslice'));
+    setVisible(developerSection, isVisible('timeslice'));
   }
 
   /**
@@ -355,7 +339,7 @@ class ProfileController {
       techParts.push('WebRTC Loopback');
       techParts.push(`Opus ${profile.values.bitrate / 1000}kbps`);
     } else if (usesWasmOpus(profile.values.encoder)) {
-      // VBR (mediaBitrate: 0) veya sabit bitrate
+      // 0: encoder varsayilani; pozitif deger: ortalama bitrate istegi (CBR garantisi degil)
       const bitrateText = profile.values.mediaBitrate === 0
         ? 'VBR'
         : `${profile.values.mediaBitrate / 1000}kbps`;
@@ -406,7 +390,7 @@ class ProfileController {
 
     // Tips HTML'i olustur
     const html = tips.map(tip =>
-      `<span class="utip"><em>${tip.step}</em><span class="utip-text">${tip.text}</span></span>`
+      `<li class="${MARKUP_CLASSES.TIP}" value="${tip.step}"><span class="${MARKUP_CLASSES.TIP_STEP}" aria-hidden="true">${tip.step}</span><span class="${MARKUP_CLASSES.TIP_TEXT}">${tip.text}</span></li>`
     ).join('');
 
     container.innerHTML = html;

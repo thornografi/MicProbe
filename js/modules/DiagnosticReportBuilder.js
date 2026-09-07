@@ -2,28 +2,28 @@
  * DiagnosticReportBuilder - Yapilandirilmis diagnostik rapor olusturucu
  *
  * Test/kayit tamamlandiginda tum verileri birlestirip JSON rapor olusturur.
- * Mevcut degerlendirme ReportEvaluator tarafindan kural bazli yapilir.
+ * Free degerlendirmeyi ReportEvaluator, premium detaylari Node/Worker evaluator yapar.
  *
  * Veri kaynaklari:
- * - AudioMetricsCollector (ses kalite metrikleri)
- * - ProfileController (profil ve constraint bilgileri)
+ * - DeepAnalysisEngine (kayit dosyasindan kesintisiz PCM olcumleri)
+ * - RunSnapshot (baslangicta secilen ve gercekte uygulanan ayarlar)
  * - LogManager (sanity report, log istatistikleri)
  * - RECORDING_COMPLETED event (kayit verisi)
  * - LOOPBACK_STATS event (WebRTC istatistikleri)
- * - DeviceInfo DOM (cihaz bilgileri)
  * - navigator API (ortam bilgileri)
  */
 import eventBus from './EventBus.js';
 import { EVENTS, IS_DEV } from './constants.js';
-import { log } from './utils.js';
+import { log, downloadBlob } from './utils.js';
+import { UNKNOWN_COMMUNICATION_CONTEXT } from './CommunicationContext.js';
+import { UNKNOWN_TROUBLESHOOTING_CONTEXT } from './TroubleshootingContext.js';
 
 class DiagnosticReportBuilder {
   constructor() {
     // Dependency injection ile set edilecek referanslar
     this._deps = {
-      metricsCollector: null,
+      deepAnalysisEngine: null,
       systemProbeCollector: null,
-      profileController: null,
       logManager: null
     };
 
@@ -32,47 +32,43 @@ class DiagnosticReportBuilder {
     this._lastLoopbackStats = null;
     this._lastDeepAnalysis = null;
     this._lastReport = null;
-    this._lastDeliveredSampleRate = null;
+    this._publishedRunId = null;
     this._activeRunType = null;
     this._testSampleReady = false;
     this._reportTimerId = null;
+    this._pendingReportRunId = null;
     this._lastProfileId = null;
 
     // Event listener referanslari
-    this._onRecordingStarted = () => this._beginRun('record');
-    this._onTestRecordingStarted = () => this._beginRun('test');
+    this._onRecordingStarted = (data) => this._beginRun('record', data);
+    this._onTestRecordingStarted = (data) => this._beginRun('test', data);
     this._onProfileChanged = (data) => this._handleProfileChanged(data);
     this._onRecordingCompleted = (data) => this._handleRecordingCompleted(data);
-    this._onTestRecordingStopped = () => this._handleTestRecordingStopped();
-    this._onTestCompleted = () => this._handleTestCompleted();
-    this._onTestCancelled = () => this._handleTestCancelled();
-    this._onLoopbackStats = (stats) => { this._lastLoopbackStats = stats; };
-    this._onDeepAnalysisReady = (data) => { this._lastDeepAnalysis = data; };
-    this._lastCapabilities = null;
-    this._onStreamStarted = (stream) => {
-      const track = stream?.getAudioTracks?.()?.[0];
-      this._lastDeliveredSampleRate = track?.getSettings?.()?.sampleRate ?? null;
-      // Device capabilities (EC/NS/AGC donanim destegi)
-      const caps = track?.getCapabilities?.() ?? {};
-      this._lastCapabilities = {
-        sampleRateRange: caps.sampleRate ?? null,
-        channelCountRange: caps.channelCount ?? null,
-        ecSupported: caps.echoCancellation ?? null,
-        nsSupported: caps.noiseSuppression ?? null,
-        agcSupported: caps.autoGainControl ?? null
-      };
+    this._onTestRecordingStopped = (data) => this._handleTestRecordingStopped(data);
+    this._onTestCompleted = (data) => this._handleTestCompleted(data);
+    this._onTestCancelled = (data) => this._handleTestCancelled(data);
+    this._onCaptureStopped = (data) => {
+      if (!this._matchesRun(data)) return;
+      this._captureClosed = true;
+      this._systemSnapshot = this._deps.systemProbeCollector?.stop?.() || null;
+    };
+    this._onLoopbackStats = (stats) => {
+      if (!this._captureClosed && this._matchesRun(stats)) this._lastLoopbackStats = structuredClone(stats);
+    };
+    this._onDeepAnalysisReady = (data) => {
+      if (this._matchesRun(data)) this._lastDeepAnalysis = data;
     };
 
     eventBus.on(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     eventBus.on(EVENTS.TEST_RECORDING_STARTED, this._onTestRecordingStarted);
     eventBus.on(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.on(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.on(EVENTS.RECORDING_CAPTURE_STOPPED, this._onCaptureStopped);
     eventBus.on(EVENTS.TEST_RECORDING_STOPPED, this._onTestRecordingStopped);
     eventBus.on(EVENTS.TEST_COMPLETED, this._onTestCompleted);
     eventBus.on(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
     eventBus.on(EVENTS.DEEP_ANALYSIS_READY, this._onDeepAnalysisReady);
-    eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
 
   /**
@@ -89,6 +85,23 @@ class DiagnosticReportBuilder {
     return this._lastReport;
   }
 
+  // Capture can already be idle while its saved file is still being analysed or published.
+  isReportPending() {
+    return !!this._pendingReportRunId && this._matchesRun({ runId: this._pendingReportRunId });
+  }
+
+  /**
+   * Disaridan saglanan hazir bir raporu son rapor olarak kabul et (checkout donusu).
+   * build() CAGRILMAZ; rapor onceki calismanin donmus ciktisidir. Emit, mevcut
+   * DIAGNOSTIC_REPORT_READY akisini (ReportPanelUI render + showReportBtn) aynen tetikler.
+   */
+  restoreReport(report) {
+    if (!report) return;
+    this._lastReport = report;
+    eventBus.emit(EVENTS.DIAGNOSTIC_REPORT_READY, report);
+    log.system('Saved diagnostic report restored', { sessionId: report.sessionId || null, runId: report.run?.id || null });
+  }
+
   /**
    * Raporu JSON olarak indir
    */
@@ -101,51 +114,58 @@ class DiagnosticReportBuilder {
 
     const filename = `mic-probe-diagnostic-${data.sessionId || 'unknown'}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
 
     log.system('Diagnostic report exported', { filename });
     return data;
   }
 
   destroy() {
-    this._clearReportTimer();
+    this._resetRunState();
     eventBus.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     eventBus.off(EVENTS.TEST_RECORDING_STARTED, this._onTestRecordingStarted);
     eventBus.off(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.off(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.off(EVENTS.RECORDING_CAPTURE_STOPPED, this._onCaptureStopped);
     eventBus.off(EVENTS.TEST_RECORDING_STOPPED, this._onTestRecordingStopped);
     eventBus.off(EVENTS.TEST_COMPLETED, this._onTestCompleted);
     eventBus.off(EVENTS.TEST_CANCELLED, this._onTestCancelled);
     eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
     eventBus.off(EVENTS.DEEP_ANALYSIS_READY, this._onDeepAnalysisReady);
-    eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
   }
 
   // === PRIVATE: Event Handlers ===
 
-  _beginRun(type) {
+  _beginRun(type, data = {}) {
+    this._captureClosed = false;
+    this._deps.deepAnalysisEngine?.cancel?.(this._runSnapshot?.runId);
     this._clearReportTimer();
+    this._pendingReportRunId = null;
+    this._runSnapshot = data.runSnapshot || null;
+    this._systemSnapshot = null;
     this._activeRunType = type;
     this._testSampleReady = false;
     this._lastRecordingData = null;
     this._lastLoopbackStats = null;
     this._lastDeepAnalysis = null;
     this._lastReport = null;
+    this._publishedRunId = null;
   }
 
   _resetRunState() {
+    this._captureClosed = true;
+    this._deps.deepAnalysisEngine?.cancel?.(this._runSnapshot?.runId);
+    this._runSnapshot = null;
+    this._systemSnapshot = null;
     this._clearReportTimer();
+    this._pendingReportRunId = null;
     this._activeRunType = null;
     this._testSampleReady = false;
     this._lastRecordingData = null;
     this._lastLoopbackStats = null;
     this._lastDeepAnalysis = null;
     this._lastReport = null;
+    this._publishedRunId = null;
   }
 
   _handleProfileChanged(data = {}) {
@@ -159,29 +179,46 @@ class DiagnosticReportBuilder {
     this._lastProfileId = nextProfileId;
   }
 
-  _handleRecordingCompleted(data) {
+  _matchesRun(data) {
+    const id = data?.runId ?? data?.runSnapshot?.runId;
+    return !!id && id === this._runSnapshot?.runId;
+  }
+
+  async _handleRecordingCompleted(data) {
+    if (!this._matchesRun(data)) return;
     this._lastRecordingData = data;
-    // Kisa gecikme: MetricsCollector.stop() RECORDING_COMPLETED'dan once
-    // calisabilir, setTimeout ile rapor sira garantisi
+    const runId = this._runSnapshot.runId;
+    this._pendingReportRunId = runId;
+    try {
+      const result = await this._deps.deepAnalysisEngine?.analyze?.(data.blob, { source: 'record', runId, guidedSegments: data.guidedSegments });
+      if (!this._matchesRun({ runId })) return;
+      this._lastDeepAnalysis = result || { runId, status: 'unavailable' };
+    } catch (error) {
+      if (!this._matchesRun({ runId })) return;
+      this._lastDeepAnalysis = { runId, status: 'failed', reason: error.message };
+    }
     this._scheduleBuildAndEmit(0);
   }
 
-  _handleTestRecordingStopped() {
-    // Rapor, kullanici playback'i duyduktan sonra TEST_COMPLETED ile acilir.
-    // Playback basarisiz olursa TEST_CANCELLED handler'i sample hazirsa raporu yine acar.
+  _handleTestRecordingStopped(data) {
+    if (!this._matchesRun(data)) return;
+    this._onCaptureStopped(data);
+    // Analiz sonucu ve Player'a yuklenen dosya TEST_COMPLETED ile birlestirilir.
     this._testSampleReady = true;
+    this._pendingReportRunId = this._runSnapshot.runId;
   }
 
-  _handleTestCompleted() {
-    if (this._testSampleReady && !this._lastReport) {
+  _handleTestCompleted(data) {
+    if (!this._matchesRun(data)) return;
+    if (data?.analysis) this._lastDeepAnalysis = data.analysis;
+    if (data?.recording) this._lastRecordingData = { ...data.recording };
+    if (this._testSampleReady && this._publishedRunId !== this._runSnapshot.runId) {
       this._scheduleBuildAndEmit(0);
     }
   }
 
-  _handleTestCancelled() {
-    if (this._testSampleReady && !this._lastReport) {
-      this._scheduleBuildAndEmit(0);
-    }
+  _handleTestCancelled(data) {
+    if (this._matchesRun(data)) this._resetRunState();
   }
 
   _clearReportTimer() {
@@ -193,19 +230,31 @@ class DiagnosticReportBuilder {
 
   _scheduleBuildAndEmit(delayMs) {
     this._clearReportTimer();
+    const runId = this._runSnapshot?.runId;
+    this._pendingReportRunId = runId;
     this._reportTimerId = setTimeout(() => {
       this._reportTimerId = null;
-      this._buildAndEmit();
+      if (this._matchesRun({ runId })) this._buildAndEmit();
     }, delayMs);
   }
 
   _buildAndEmit() {
-    const report = this.build();
+    const runId = this._runSnapshot?.runId;
+    let report;
+    try {
+      report = this.build();
+    } finally {
+      // Listeners see the report as settled; a new run keeps its own pending marker.
+      if (this._pendingReportRunId === runId) this._pendingReportRunId = null;
+    }
     if (report) {
+      // The displayed/restored report does not own completion of the active run.
+      this._publishedRunId = runId;
       this._lastReport = report;
       eventBus.emit(EVENTS.DIAGNOSTIC_REPORT_READY, report);
       log.system('Diagnostic report ready', {
-        score: report.audioMetrics?.snr?.estimatedDb,
+        runId: report.run.id,
+        measurementStatus: report.audioMetrics?.status ?? 'unavailable',
         frames: report.audioMetrics?.sampleCount
       });
       if (IS_DEV) console.log('%c[DiagnosticReport]', 'color: #22c55e; font-weight: bold', report);
@@ -214,29 +263,71 @@ class DiagnosticReportBuilder {
 
   // === PUBLIC: Build ===
 
-  build() {
-    const { metricsCollector, profileController, logManager } = this._deps;
+  /**
+   * A user-requested help report has its own identity and no measured sample.
+   * Do not begin/reset a run here: an active capture and its pending analysis keep ownership.
+   */
+  createGuidanceReport(runSnapshot) {
+    if (typeof runSnapshot?.runId !== 'string' || !runSnapshot.runId.trim()) {
+      throw new TypeError('A new run snapshot is required for a troubleshooting report.');
+    }
+    return {
+      version: '2.0',
+      generatedAt: new Date().toISOString(),
+      sessionId: this._deps.logManager?.sessionId || null,
+      run: { id: runSnapshot.runId, accountOwnerId: runSnapshot.accountOwnerId || null, type: 'troubleshooting' },
+      environment: this._buildEnvironment(),
+      communicationContext: {
+        ...(runSnapshot.communicationContext || UNKNOWN_COMMUNICATION_CONTEXT),
+        usage: runSnapshot.troubleshooting?.usage || 'unknown'
+      },
+      troubleshooting: runSnapshot.troubleshooting || UNKNOWN_TROUBLESHOOTING_CONTEXT,
+      device: null,
+      profile: {
+        id: null,
+        label: 'Troubleshooting',
+        category: null,
+        approximation: false,
+        scope: 'Guidance based on your description; no audio was captured or measured.'
+      },
+      recording: null,
+      loopback: null,
+      audioMetrics: null,
+      deepAnalysis: null,
+      system: null,
+      sanityCheck: null,
+      logs: null
+    };
+  }
 
-    // Metrik sonuclari al (stop zaten cagirilmis, lastResults saklanmis)
-    const audioMetrics = metricsCollector?.getResults?.() || null;
+  build() {
+    const { logManager } = this._deps;
+
+    // UI onizlemesi yerine ayni runId'ye ait kayit dosyasinin sonucunu kullan.
+    const audioMetrics = this._lastDeepAnalysis?.audioMetrics || null;
 
     return {
-      version: '1.1',
+      version: '2.0',
       generatedAt: new Date().toISOString(),
       sessionId: logManager?.sessionId || null,
       run: {
+        id: this._runSnapshot?.runId || null,
+        accountOwnerId: this._runSnapshot?.accountOwnerId || null,
         type: this._activeRunType,
         testSampleReady: this._activeRunType === 'test' ? this._testSampleReady : undefined
       },
 
       environment: this._buildEnvironment(),
+      communicationContext: this._runSnapshot?.communicationContext || UNKNOWN_COMMUNICATION_CONTEXT,
+      troubleshooting: this._runSnapshot?.troubleshooting || UNKNOWN_TROUBLESHOOTING_CONTEXT,
       device: this._buildDevice(),
-      profile: this._buildProfile(profileController),
+      profile: this._buildProfile(),
       recording: this._buildRecording(),
       loopback: this._buildLoopback(),
       audioMetrics: audioMetrics,
-      deepAnalysis: this._lastDeepAnalysis,   // Offline spektral pass (DeepAnalysisEngine); yoksa null
-      system: this._buildSystem(audioMetrics, profileController),   // Dolayli sistem/perf sinyalleri; yoksa null
+      deepAnalysis: this._lastDeepAnalysis,   // Kayit dosyasinin cevrimdisi analizi ve PCM metrikleri; yoksa null
+      captureContext: this._buildCaptureContext(audioMetrics),
+      system: this._buildSystem(),
       sanityCheck: this._buildSanityCheck(logManager),
       logs: this._buildLogSummary(logManager)
     };
@@ -248,50 +339,17 @@ class DiagnosticReportBuilder {
    * Sistem/performans sinyalleri + korelasyon.
    * DURUSTLUK: yalnizca dolayli proxy; her cikti confidence + disclaimer tasir.
    */
-  _buildSystem(audioMetrics, profileController) {
-    const sys = this._deps.systemProbeCollector?.getResults?.();
+  _buildSystem() {
+    const sys = this._systemSnapshot;
     if (!sys) return null;
-    const pipeline = profileController?.getCurrentProfile?.()?.values?.pipeline || null;
-    return { ...sys, correlation: this._correlateSystem(sys, audioMetrics, pipeline) };
+    return { ...sys, correlation: this._correlateSystem(sys) };
   }
 
-  _correlateSystem(sys, audioMetrics, pipeline) {
-    const dropoutCount = audioMetrics?.dropouts?.count ?? 0;
-    const jitterSpikes = sys?.mainThreadJitter?.spikeCount ?? 0;
-    const severeSpikes = sys?.mainThreadJitter?.severeSpikeCount ?? 0;
-    const concealmentEvents = sys?.network?.concealmentEvents ?? 0;
-    const findings = [];
-
-    // ScriptProcessor ana thread'de calisir -> jitter<->glitch bagi GUCLU/DOGRUDAN;
-    // worklet/direct/standard'da ses ayri thread'de -> bag DOLAYLI/ZAYIF (genel sistem yuku gostergesi)
-    const strongLink = pipeline === 'scriptprocessor';
-    const hasAudioGlitch = dropoutCount > 0 || concealmentEvents > 0;
-
-    if ((jitterSpikes > 0 || severeSpikes > 0) && hasAudioGlitch) {
-      findings.push({
-        id: 'CPU_LIKELY',
-        confidence: (severeSpikes > 0 && strongLink) ? 'medium' : 'low',
-        message: strongLink
-          ? 'Main-thread stalls coincide with audio glitches; likely CPU/background load affecting the ScriptProcessor pipeline.'
-          : 'Main-thread stalls seen alongside audio glitches; possible CPU/background load (indirect signal for this pipeline).'
-      });
-    }
-
-    if (concealmentEvents > 0 && jitterSpikes === 0) {
-      findings.push({
-        id: 'NETWORK_LIKELY',
-        confidence: 'low',
-        message: 'Audio concealment without main-thread stalls; likely encode/transport (loopback) jitter rather than CPU.'
-      });
-    }
-
-    if (findings.length === 0) {
-      findings.push({
-        id: 'INCONCLUSIVE',
-        confidence: 'low',
-        message: 'No clear correlation between system load and audio glitches in this run.'
-      });
-    }
+  _correlateSystem(sys) {
+    const findings = [{
+      id: 'INCONCLUSIVE', confidence: 'unavailable',
+      message: 'Browser scheduling and local transport observations do not identify the cause of an audio problem.'
+    }];
 
     if (sys?.tabWasHidden) {
       findings.push({
@@ -302,7 +360,7 @@ class DiagnosticReportBuilder {
     }
 
     return {
-      method: 'session-count-heuristic',
+      method: 'observations-only',
       findings,
       disclaimer: 'Dolayli sinyallere dayanir; kesin nedensellik iddia etmez. Tarayici gercek CPU/RAM olcemez.'
     };
@@ -326,85 +384,121 @@ class DiagnosticReportBuilder {
   }
 
   _buildDevice() {
-    // DeviceInfo DOM elementlerinden oku (lightweight, DI gerektirmez)
-    const micNameEl = document.getElementById('infoMicName');
-    const channelsEl = document.getElementById('infoChannels');
+    return this._runSnapshot?.device || null;
+  }
 
+  _buildProfile() {
+    const run = this._runSnapshot;
+    if (!run) return null;
+    const v = run.requestedSettings || {};
+    const applied = run.appliedSettings || {};
+    const keys = ['echoCancellation', 'noiseSuppression', 'autoGainControl', 'sampleRate', 'channelCount'];
+    const constraints = Object.fromEntries(keys.map(key => [key, applied[key] ?? null]));
+    // The device may ignore a requested value (e.g. 44.1 kHz on a 48 kHz-only interface,
+    // mono on a stereo pair). Keep both and list every difference explicitly.
+    const constraintMismatches = run.appliedSettings ? keys
+      .filter(key => v[key] !== undefined && v[key] !== null && applied[key] !== undefined && applied[key] !== null
+        && String(v[key]) !== String(applied[key]))
+      .map(key => ({ key, requested: v[key], applied: applied[key] })) : [];
     return {
-      micName: micNameEl?.title || micNameEl?.textContent || null,
-      channelCount: channelsEl?.textContent === 'Stereo' ? 2
-        : channelsEl?.textContent === 'Mono' ? 1 : null,
-      sampleRate: this._lastDeliveredSampleRate ?? null,
-      capabilities: this._lastCapabilities
+      id: run.profileId,
+      label: run.profileLabel,
+      category: run.category,
+      constraints,
+      appliedConstraints: constraints,
+      requestedConstraints: v,
+      constraintMismatches,
+      pipeline: run.pipeline ?? v.pipeline ?? null,
+      encoder: this._activeRunType === 'test' ? null : run.encoder ?? v.encoder ?? null,
+      requestedEncoder: v.encoder ?? null,
+      bitrate: v.bitrate ?? null,
+      loopback: v.loopback ?? false,
+      detection: run.detection || null,
+      evidence: run.evidence || null,
+      approximation: run.profileId !== 'raw',
+      scope: run.profileId === 'raw' ? 'Uncompressed recording of the audio delivered by the browser; hardware and operating-system processing may still apply.'
+        : 'Local browser processing preset; does not reproduce the named application or its network.'
     };
   }
 
-  _buildProfile(profileController) {
-    if (!profileController) return null;
-
-    const profile = profileController.getCurrentProfile?.();
-    const profileId = profileController.getCurrentProfileId?.();
-    if (!profile) return { id: profileId };
-
-    const v = profile.values || {};
+  /**
+   * What the browser knows and cannot know about the input path. The operating
+   * system's input level, driver processing and audio enhancements are not exposed
+   * to web apps; a pinned waveform ceiling in audioMetrics is the only indirect sign.
+   */
+  _buildCaptureContext(audioMetrics) {
+    const run = this._runSnapshot;
+    if (!run) return null;
+    const applied = run.appliedSettings || {};
     return {
-      id: profileId,
-      label: profile.label || null,
-      category: profile.category || null,
-      constraints: {
-        echoCancellation: v.ec ?? null,
-        noiseSuppression: v.ns ?? null,
-        autoGainControl: v.agc ?? null,
-        sampleRate: v.sampleRate ?? null,
-        channelCount: v.channelCount ?? null
-      },
-      pipeline: v.pipeline || null,
-      encoder: v.encoder || null,
-      bitrate: v.loopback ? (v.bitrate || null) : (v.mediaBitrate || null),
-      loopback: v.loopback ?? false,
-      detection: profile.detection || null
+      deviceLabel: run.device?.micName ?? null,
+      capabilities: run.device?.capabilities ?? null,
+      channelLayout: audioMetrics?.channelLayout ?? null,
+      osInputLevel: { status: 'unavailable', reason: 'not-exposed-to-web-apps' },
+      osProcessing: { status: 'unavailable', reason: 'driver-and-enhancement-state-not-exposed-to-web-apps' },
+      browserInputVolumeAdjustment: applied.autoGainControl === true
+        ? { status: 'possible', reason: 'browser-agc-may-change-system-input-level' }
+        : { status: 'not-expected', reason: 'automatic-gain-control-off' },
+      pinnedCeiling: audioMetrics?.ceiling?.status === 'measured'
+        ? { peakDb: audioMetrics.ceiling.peakDb, flatTopRate: audioMetrics.ceiling.flatTopRate,
+          nearCeilingRate: audioMetrics.ceiling.nearCeilingRate } : null
     };
   }
 
   _buildRecording() {
-    if (this._activeRunType !== 'record') return null;
+    if (!['record', 'test'].includes(this._activeRunType)) return null;
 
     const d = this._lastRecordingData;
     if (!d) return null;
+    const isCallSample = this._activeRunType === 'test';
+    const requestedBitrate = isCallSample ? null : d.requestedBitrate ?? this._runSnapshot?.requestedSettings?.bitrate;
 
     return {
-      durationMs: d.durationMs || null,
-      blobSize: d.blob?.size || null,
+      durationMs: d.durationMs ?? null,
+      blobSize: d.blob?.size ?? d.blobSize ?? null,
       mimeType: d.mimeType || null,
+      mimeTypeSource: d.mimeTypeSource || null,
       pipeline: d.pipeline || null,
       encoder: d.encoder || null,
-      requestedBitrate: d.requestedBitrate || null,
-      actualBitrate: d.actualBitrate || null,
-      bitrateDeviation: (d.requestedBitrate && d.actualBitrate && d.requestedBitrate > 0)
-        ? +((d.actualBitrate - d.requestedBitrate) / d.requestedBitrate).toFixed(3)
-        : null
+      requestedBitrate: requestedBitrate > 0 ? requestedBitrate : null,
+      bitrateMode: isCallSample ? 'browser-default' : d.encoder === 'pcm-wav' ? 'uncompressed-pcm' : requestedBitrate === 0 ? 'encoder-default-vbr' : 'requested',
+      encoderReportedBitrate: Number.isFinite(d.encoderReportedBitrate) && d.encoderReportedBitrate > 0 ? d.encoderReportedBitrate : null,
+      actualBitrate: d.actualBitrate ?? null,
+      bitrateDeviation: null,
+      stopReason: d.stopReason || null,
+      durationSource: d.durationSource || null,
+      guidedSegments: d.guidedSegments || null,
+      bitrateSource: d.bitrateSource || null,
+      sampleCount: d.sampleCount ?? null,
+      encoderPaddingFrames: d.encoderPaddingFrames ?? null,
+      sampleSource: isCallSample ? 'saved-received-audio' : 'saved-recording'
     };
   }
 
   _buildLoopback() {
     if (this._activeRunType !== 'test') return null;
 
-    const s = this._lastLoopbackStats;
-    if (!s) return null;
-
-    const requested = parseFloat(s.requestedKbps) || 0;
-    const actual = parseFloat(s.actualKbps) || 0;
+    const s = this._lastLoopbackStats || {};
+    const requestedBitrate = s.requestedBitrate ?? this._runSnapshot?.requestedSettings?.bitrate ?? null;
 
     return {
-      requestedBitrate: s.requestedBitrate || null,
-      actualBitrate: s.actualBitrate || null,
-      requestedKbps: requested || null,
-      actualKbps: actual || null,
-      bitrateDeviation: requested > 0 ? +((actual - requested) / requested).toFixed(3) : null,
+      requestedCodec: 'audio/opus',
+      senderCodec: s.senderCodec || null,
+      receiverCodec: s.receiverCodec || null,
+      requestedBitrate,
+      bitrateMeaning: 'maximum-average-bitrate',
+      actualBitrate: s.actualBitrate ?? null,
+      requestedKbps: s.requestedKbps ?? (requestedBitrate > 0 ? requestedBitrate / 1000 : null),
+      actualKbps: s.actualKbps ?? null,
+      bitrateDeviation: null,
       rttMs: s.rttMs ?? null,
       jitterMs: s.jitterMs ?? null,
       packetLossRate: s.packetLossRate ?? null,
-      isDtxActive: s.isDtxActive ?? null
+      isDtxActive: null,
+      sampleSource: 'saved-received-audio',
+      measurementBoundary: 'Received loopback audio saved through MediaRecorder; file measurements include this additional encoding.',
+      receive: s.receive || null,
+      timestamp: s.timestamp ?? null
     };
   }
 
@@ -425,6 +519,7 @@ class DiagnosticReportBuilder {
     const warnings = logManager.getByCategory?.('warning') || [];
 
     return {
+      scope: 'browser-session',
       errorCount: stats.error || 0,
       warningCount: stats.warning || 0,
       totalCount: stats.total || 0,

@@ -181,7 +181,7 @@ export function createAnalyserNode(audioContext) {
 
 /**
  * Frekans analizi icin yuksek cozunurluklu AnalyserNode factory
- * VU meter icin 256 FFT yeterli, frekans analizi icin 2048 gerekli (11.7 Hz/bin @ 48kHz)
+ * FFT boyutu AUDIO.ANALYSIS_FFT_SIZE; bin araligi = audioContext.sampleRate / FFT boyutu.
  * @param {AudioContext} audioContext - AudioContext instance
  * @returns {AnalyserNode} - Yuksek cozunurluklu AnalyserNode
  */

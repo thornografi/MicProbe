@@ -12,7 +12,7 @@
 export { log } from './log.js';
 
 // UI helpers
-export { formatTime, formatTimestampYYMMDDHHMMSS, toggleDisplay } from './ui.js';
+export { formatTime, formatTimestampYYMMDDHHMMSS, setHidden, setVisible } from './ui.js';
 
 // Stream helpers
 export { stopStreamTracks, getStreamErrorMessage, wrapAsyncHandler, emitStreamWithAnalyser } from './stream.js';
@@ -52,3 +52,6 @@ export {
 
 // Settings helpers
 export { SettingTypeHandlers } from './settings.js';
+
+// Download helpers
+export { downloadBlob } from './download.js';

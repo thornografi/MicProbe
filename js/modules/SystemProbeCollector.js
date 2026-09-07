@@ -10,8 +10,7 @@
  *  - Network glitch gecmisi (LOOPBACK_STATS'e pasif tutunur: concealment/jitter)
  *  - Ortam anlik okumalari (hardwareConcurrency, deviceMemory, AudioContext latency, JS heap)
  *
- * Yasam dongusu AudioMetricsCollector ile ayni sozlesme (start/stop/getResults/destroy),
- * kayit fazina senkron (TEST_RECORDING_STARTED/STOPPED, RECORDING_STARTED/COMPLETED).
+ * Kayit fazinda baslar; capture stop, test bitisi veya iptalde durur.
  */
 import eventBus from './EventBus.js';
 import { EVENTS, JITTER } from './constants.js';
@@ -46,8 +45,8 @@ class SystemProbeCollector {
     this._tabWasHidden = false;
 
     // Event handler referanslari
-    this._onRecordingStarted = () => this.start({ source: 'record' });
-    this._onTestStarted = () => this.start({ source: 'test' });
+    this._onRecordingStarted = (data) => this.start(data);
+    this._onTestStarted = (data) => this.start(data);
     this._onRecordingCompleted = () => this.stop();
     this._onTestStopped = () => this.stop();
     this._onForceStop = () => { if (this._isProbing) this.stop(); };
@@ -57,6 +56,7 @@ class SystemProbeCollector {
     eventBus.on(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     eventBus.on(EVENTS.TEST_RECORDING_STARTED, this._onTestStarted);
     eventBus.on(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.on(EVENTS.RECORDING_CAPTURE_STOPPED, this._onRecordingCompleted);
     eventBus.on(EVENTS.TEST_RECORDING_STOPPED, this._onTestStopped);
     eventBus.on(EVENTS.STREAM_STOPPED, this._onForceStop);
     eventBus.on(EVENTS.TEST_CANCELLED, this._onForceStop);
@@ -65,9 +65,10 @@ class SystemProbeCollector {
 
   // === PUBLIC API ===
 
-  start() {
+  start(data = {}) {
     if (this._isProbing) return;
     this._reset();
+    this._runSnapshot = data.runSnapshot || null;
     this._isProbing = true;
     this._startTime = performance.now();
     this._graceLeft = JITTER.GRACE_SAMPLES;
@@ -123,6 +124,7 @@ class SystemProbeCollector {
     eventBus.off(EVENTS.RECORDING_STARTED, this._onRecordingStarted);
     eventBus.off(EVENTS.TEST_RECORDING_STARTED, this._onTestStarted);
     eventBus.off(EVENTS.RECORDING_COMPLETED, this._onRecordingCompleted);
+    eventBus.off(EVENTS.RECORDING_CAPTURE_STOPPED, this._onRecordingCompleted);
     eventBus.off(EVENTS.TEST_RECORDING_STOPPED, this._onTestStopped);
     eventBus.off(EVENTS.STREAM_STOPPED, this._onForceStop);
     eventBus.off(EVENTS.TEST_CANCELLED, this._onForceStop);
@@ -184,7 +186,7 @@ class SystemProbeCollector {
    * @private
    */
   _collectLoopbackStats(stats) {
-    if (!this._isProbing || !stats) return;
+    if (!this._isProbing || !stats || stats.runId !== this._runSnapshot?.runId) return;
     // En guncel degerleri sakla
     this._net = {
       jitterMs: stats.jitterMs ?? null,
@@ -213,14 +215,14 @@ class SystemProbeCollector {
   }
 
   /**
-   * Ortam anlik okumalari. AudioContext.latency icin kisa omurlu bagimsiz context.
+   * Ortam anlik okumalari; AudioContext bilgisi calismanin RunSnapshot'indan gelir.
    * @private
    */
   _readEnvironment() {
     const env = {
       hardwareConcurrency: navigator.hardwareConcurrency ?? null,
       deviceMemoryGB: navigator.deviceMemory ?? null,  // Chrome-only, KABA (banded), "yaklasik"
-      audioContext: { supported: false, baseLatencyMs: null, outputLatencyMs: null, sampleRate: null },
+      audioContext: this._runSnapshot?.audioContext || { supported: false, baseLatencyMs: null, outputLatencyMs: null, sampleRate: null },
       jsHeap: { supported: false, usedMBStart: null, usedMBEnd: null, deltaMB: null }
     };
 
@@ -231,21 +233,6 @@ class SystemProbeCollector {
         env.jsHeap.supported = true;
         env.jsHeap.usedMBStart = +(mem.usedJSHeapSize / 1048576).toFixed(1);
         this._heapStartMB = env.jsHeap.usedMBStart;
-      }
-    } catch { /* */ }
-
-    // AudioContext latency: kisa omurlu, bagimsiz, resume EDILMEDEN okunur (yan etki yok).
-    // baseLatency suspended durumda da mevcut; outputLatency context calismadan 0 olabilir -> null birak.
-    // Not: bu context gercek pipeline context'i ile birebir olmayabilir (farkli latencyHint/sample rate).
-    try {
-      const Ctor = window.AudioContext || window.webkitAudioContext;
-      if (Ctor) {
-        const ctx = new Ctor();
-        env.audioContext.supported = true;
-        env.audioContext.baseLatencyMs = ctx.baseLatency != null ? +(ctx.baseLatency * 1000).toFixed(2) : null;
-        env.audioContext.outputLatencyMs = (ctx.outputLatency != null && ctx.outputLatency > 0) ? +(ctx.outputLatency * 1000).toFixed(2) : null;
-        env.audioContext.sampleRate = ctx.sampleRate ?? null;
-        ctx.close?.().catch?.(() => {});
       }
     } catch { /* */ }
 
@@ -293,6 +280,7 @@ class SystemProbeCollector {
     }
 
     return {
+      runId: this._runSnapshot?.runId || null,
       environment: this._env,
       mainThreadJitter,
       network,

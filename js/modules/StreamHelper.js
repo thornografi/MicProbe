@@ -3,7 +3,7 @@
  * requestStream fonksiyonu TestRecordingFlow ve Recorder tarafindan kullanilir
  */
 import eventBus from './EventBus.js';
-import { log } from './utils.js';
+import { log, stopStreamTracks } from './utils.js';
 import { EVENTS } from './constants.js';
 
 const DEFAULT_CONSTRAINTS = {
@@ -26,8 +26,9 @@ export async function requestStream(constraints = {}) {
   // Detayli log
   log.stream('Calling getUserMedia', { constraints: merged });
 
+  let stream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: merged,
       video: false
     });
@@ -82,6 +83,7 @@ export async function requestStream(constraints = {}) {
 
     return stream;
   } catch (err) {
+    stopStreamTracks(stream);
     log.error('Microphone access failed - ' + err.message);
     log.error('getUserMedia error', { error: err.message, name: err.name });
     throw err;

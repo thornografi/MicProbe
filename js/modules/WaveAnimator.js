@@ -3,6 +3,11 @@
  *
  * Dikey cubuklar (bars) ile STATIK ses dalgasi.
  * Ekranin tamamina yayilir, kenarlarda ve merkezde (mikrofon) fade olur.
+ *
+ * Yukseklik = dalga seviyesi (dort sinus + noise) x merkez zarfi.
+ * Zarf kenarda en yuksek, mikrofona dogru sabit egimle kuculur ("huni", merkezde
+ * birlesme). Buyuk resmin zarfi izlemesi icin: vadiler sigirlastirilir (troughDepth)
+ * ve lob tepeleri ortak seviyeye cekilir (peakRegularity); yerel doku/gurultu kalir.
  */
 
 class WaveAnimator {
@@ -25,11 +30,22 @@ class WaveAnimator {
       minBarHeight: config.minBarHeight || 6,
       maxBarHeight: config.maxBarHeight || 120,
 
-      // Wave parametreleri (dogal ses sinyali icin)
-      waveFrequency: config.waveFrequency || 1.8,
-      secondaryFrequency: config.secondaryFrequency || 4.3,
-      tertiaryFrequency: config.tertiaryFrequency || 7.1,
-      quaternaryFrequency: config.quaternaryFrequency || 11.7,
+      // Dalga bilesenleri: sol ve sag taraf bagimsiz (ayni karmasiklik, farkli pattern)
+      // frequencies: genislik basina dongu; phases: radyan. Agirliklar sabit (WAVE_WEIGHTS).
+      waveLeft: config.waveLeft || { frequencies: [1.8, 4.3, 7.1, 11.7], phases: [0, 0.7, 1.4, 2.1] },
+      waveRight: config.waveRight || { frequencies: [2.3, 5.1, 8.7, 13.2], phases: [0.8, 2.1, 0.3, 1.5] },
+
+      // Modulasyon derinligi: 1 = orijinal, >1 tepeler daha yuksek, vadiler daha derin (uzaktan belirgin girinti/cikinti)
+      modulationDepth: config.modulationDepth || 1,
+
+      // Vadi derinligi: 1 = orijinal, <1 negatif sapmalar (vadiler) sigirlasir; tepeler degismez.
+      // Merkezden kenara dogrusal karisim (merkezde troughDepthCenter, kenarda troughDepthEdge)
+      troughDepthCenter: config.troughDepthCenter ?? 1,
+      troughDepthEdge: config.troughDepthEdge ?? config.troughDepthCenter ?? 1,
+
+      // Lob tepelerini ortak seviyeye cekme (0 = kapali, 1 = tepeler tamamen zarfi izler)
+      peakRegularity: config.peakRegularity ?? 0,
+      peakRegularityWindow: config.peakRegularityWindow || 12, // Yerel tepe penceresi (bar)
 
       // Merkez bosluk (mikrofon ikonu icin)
       centerGap: config.centerGap || 0.12, // Merkezin %12'si bos
@@ -39,9 +55,9 @@ class WaveAnimator {
       edgeFadeStart: config.edgeFadeStart || 0.30, // Opacity azalmaya baslar
       edgeFadeEnd: config.edgeFadeEnd || 0.10,     // Tamamen seffaf
 
-      // Merkez yukseklik azaltma (dugum efekti)
+      // Merkez yukseklik azaltma (dugum efekti / huni)
       centerHeightMin: config.centerHeightMin || 0.35, // Merkezde min yukseklik orani
-      centerHeightEasing: config.centerHeightEasing || 0.6, // Gecis yumusakligi
+      centerHeightEasing: config.centerHeightEasing || 0.6, // Gecis yumusakligi (1 = dogrusal)
     };
 
     this.bars = [];
@@ -69,21 +85,36 @@ class WaveAnimator {
 
     // Cubuklari olustur ve statik pozisyonla
     const centerY = this.config.height / 2;
+    const { minBarHeight, maxBarHeight, barCount } = this.config;
+    const heightRange = maxBarHeight - minBarHeight;
 
-    for (let i = 0; i < this.config.barCount; i++) {
+    // 1. gecis: her bar icin normalize X, opacity ve dalga seviyesi (0-1)
+    const normalizedXs = [];
+    const opacities = [];
+    const levels = [];
+    for (let i = 0; i < barCount; i++) {
       const x = startX + i * totalBarWidth;
       // normalizedX: bar'in gercek X pozisyonuna gore (viewBox koordinatlari)
-      const barCenterX = x + this.config.barWidth / 2;
-      const normalizedX = barCenterX / this.config.width; // 0-1 arasi
+      const normalizedX = (x + this.config.barWidth / 2) / this.config.width; // 0-1 arasi
+      normalizedXs.push(normalizedX);
+      opacities.push(this.calculateOpacity(normalizedX));
+      levels.push(this.calculateWaveLevel(normalizedX, i));
+    }
 
-      // Opacity hesapla (kenar + merkez fade)
-      const opacity = this.calculateOpacity(normalizedX);
+    // 2. gecis: lob tepelerini ortak seviyeye cek -> yukseklikler zarfi (huniyi) izler
+    const shapedLevels = this.regularizePeaks(levels, opacities);
+
+    for (let i = 0; i < barCount; i++) {
+      const opacity = opacities[i];
 
       // Cok dusuk opacity'li bar'lari atla (performans)
       if (opacity < 0.02) continue;
 
-      // Yukseklik hesapla (barIndex ile asimetrik pattern)
-      const height = this.calculateBarHeight(normalizedX, i);
+      const x = startX + i * totalBarWidth;
+      const normalizedX = normalizedXs[i];
+
+      // Yukseklik = seviye x merkez zarfi
+      const height = minBarHeight + shapedLevels[i] * heightRange * this.centerHeightMultiplier(normalizedX);
       const y = centerY - height / 2;
 
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -142,8 +173,9 @@ class WaveAnimator {
       // Tam merkez - tamamen seffaf
       centerOpacity = 0;
     } else if (distFromCenter < halfGap + centerFadeZone) {
-      // Fade zone - yumusak gecis
-      centerOpacity = (distFromCenter - halfGap) / centerFadeZone;
+      // Fade zone - smoothstep: mikrofona yaklastikca yavasca gozden kaybolma
+      const t = (distFromCenter - halfGap) / centerFadeZone;
+      centerOpacity = t * t * (3 - 2 * t);
     }
 
     // Her iki opacity'yi carp
@@ -151,8 +183,8 @@ class WaveAnimator {
   }
 
   /**
-   * Merkez yukseklik multiplier - kenarlarda yuksek, merkeze dogru azalan
-   * Mikrofon ikonunda "dugum" efekti yaratir
+   * Merkez yukseklik multiplier - kenarlarda yuksek, merkeze dogru azalan (huni)
+   * Mikrofon ikonunda "dugum" / birlesme efekti yaratir
    */
   centerHeightMultiplier(normalizedX) {
     const { centerHeightMin, centerHeightEasing } = this.config;
@@ -168,6 +200,38 @@ class WaveAnimator {
   }
 
   /**
+   * Lob tepelerini ortak bir seviyeye dogru ceker; boylece yukseklikler buyuk resimde
+   * zarfi izler (kenardan merkeze duzenli kuculme). Vadiler ve cubuk dokusu korunur.
+   */
+  regularizePeaks(levels, opacities) {
+    const { peakRegularity, peakRegularityWindow: W } = this.config;
+    if (!(peakRegularity > 0)) return levels;
+
+    const n = levels.length;
+    const boxBlur = (arr) => arr.map((_, i) => {
+      let sum = 0, count = 0;
+      for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) { sum += arr[j]; count++; }
+      return sum / count;
+    });
+
+    // Yerel tepe seviyesi: pencere ici maksimum, iki kez yumusatilmis
+    const localPeak = levels.map((_, i) => {
+      let max = 0;
+      for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j++) max = Math.max(max, levels[j]);
+      return max;
+    });
+    const smoothPeak = boxBlur(boxBlur(localPeak));
+
+    // Hedef: gorunur bolgedeki en yuksek yerel tepe (genlik korunur, digerleri yukari cekilir)
+    const target = Math.max(...smoothPeak.filter((_, i) => opacities[i] > 0.3));
+
+    return levels.map((level, i) => {
+      const gain = 1 + (target / smoothPeak[i] - 1) * peakRegularity;
+      return Math.min(1, level * gain);
+    });
+  }
+
+  /**
    * Pseudo-random noise (deterministic, seed-based)
    * Farkli seed'ler farkli pattern uretir
    */
@@ -177,48 +241,38 @@ class WaveAnimator {
   }
 
   /**
-   * Statik dalga yuksekligi hesapla - dogal ses sinyali
+   * Statik dalga seviyesi (0-1) - dogal ses sinyali
    * Sol ve sag taraf BAGIMSIZ hesaplanir (ayni karmasiklik, farkli pattern)
    */
-  calculateBarHeight(normalizedX, barIndex) {
-    const { waveFrequency, secondaryFrequency, tertiaryFrequency, quaternaryFrequency,
-            minBarHeight, maxBarHeight } = this.config;
+  calculateWaveLevel(normalizedX, barIndex) {
+    const { waveLeft, waveRight, modulationDepth, troughDepthCenter, troughDepthEdge } = this.config;
 
+    // Taraf secimi; sag taraf kendi 0-0.5 ekseninde hesaplanir
     const isRightSide = normalizedX > 0.5;
+    const wave = isRightSide ? waveRight : waveLeft;
+    const rx = isRightSide ? normalizedX - 0.5 : normalizedX;
 
-    // Sol ve sag taraf icin TAMAMEN FARKLI frekanslar
-    // Ayni karmasiklik seviyesinde ama farkli pattern
-    let primary, secondary, tertiary, quaternary;
-
-    if (!isRightSide) {
-      // SOL TARAF - orijinal frekanslar
-      primary = Math.sin(normalizedX * waveFrequency * Math.PI * 2) * 0.35;
-      secondary = Math.sin(normalizedX * secondaryFrequency * Math.PI * 2 + 0.7) * 0.25;
-      tertiary = Math.sin(normalizedX * tertiaryFrequency * Math.PI * 2 + 1.4) * 0.2;
-      quaternary = Math.sin(normalizedX * quaternaryFrequency * Math.PI * 2 + 2.1) * 0.12;
-    } else {
-      // SAG TARAF - farkli frekanslar ve phase (ayni karmasiklik)
-      const rx = normalizedX - 0.5; // Sag taraf icin normalize (0-0.5)
-      primary = Math.sin(rx * 2.3 * Math.PI * 2 + 0.8) * 0.35;
-      secondary = Math.sin(rx * 5.1 * Math.PI * 2 + 2.1) * 0.25;
-      tertiary = Math.sin(rx * 8.7 * Math.PI * 2 + 0.3) * 0.2;
-      quaternary = Math.sin(rx * 13.2 * Math.PI * 2 + 1.5) * 0.12;
+    // Dort sinus bileseni (agirliklar: ana dalga -> ince detay)
+    let combined = 0;
+    for (let k = 0; k < WAVE_WEIGHTS.length; k++) {
+      combined += Math.sin(rx * wave.frequencies[k] * Math.PI * 2 + wave.phases[k]) * WAVE_WEIGHTS[k];
     }
 
     // Her bar icin benzersiz noise (barIndex kullanarak)
-    const noiseVal1 = (this.noise(normalizedX * 50, barIndex * 0.1) - 0.5) * 0.18;
-    const noiseVal2 = (this.noise(barIndex * 7.3 + normalizedX * 30) - 0.5) * 0.12;
+    combined += (this.noise(normalizedX * 50, barIndex * 0.1) - 0.5) * 0.10;
+    combined += (this.noise(barIndex * 7.3 + normalizedX * 30) - 0.5) * 0.06;
 
-    // Kombine ve normalize (0-1)
-    const combined = primary + secondary + tertiary + quaternary + noiseVal1 + noiseVal2;
-    const normalizedHeight = Math.max(0.1, Math.min(1, (combined + 1) / 2));
+    // Modulasyon derinligi: sapmalari buyut (tepeler yukari, vadiler asagi)
+    combined *= modulationDepth;
 
-    // Merkez dugum efekti - kenarlarda yuksek, merkeze dogru azalan
-    const heightMult = this.centerHeightMultiplier(normalizedX);
+    // Vadi sikistirma: yalnizca negatif sapmalar carpilir (tepeler degismez)
+    if (combined < 0) {
+      const distFromCenter = Math.abs(normalizedX - 0.5) * 2;
+      combined *= troughDepthCenter + (troughDepthEdge - troughDepthCenter) * distFromCenter;
+    }
 
-    // Yukseklik (wave + merkez envelope)
-    const heightRange = maxBarHeight - minBarHeight;
-    return minBarHeight + (normalizedHeight * heightRange * heightMult);
+    // Normalize (0-1)
+    return Math.max(0.1, Math.min(1, (combined + 1) / 2));
   }
 
   // No-op: initWaveAnimator() yeni instance oncesi stop() cagirir, bos metod yeterli
@@ -228,6 +282,9 @@ class WaveAnimator {
     Object.assign(this.config, newConfig);
   }
 }
+
+// Sinus bilesenlerinin agirliklari: ana dalga, ikincil, ucuncul, ince detay
+const WAVE_WEIGHTS = [0.35, 0.25, 0.2, 0.12];
 
 // Singleton export for easy use
 let waveAnimatorInstance = null;

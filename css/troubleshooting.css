@@ -1,0 +1,7 @@
+.report-troubleshooting-context { font-size: var(--fs-xs); line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
+.report-popup--guidance #reportMetricsTitle,
+.report-popup--guidance #reportMetricsGrid { display: none; }
+.rec-steps { margin: var(--space-xs) 0; padding-left: 24px; color: var(--text-secondary); }
+.rec-steps li { margin: var(--space-xs) 0; }
+.rec-evidence, .rec-outcome, .rec-source { font-size: var(--fs-xs); line-height: 1.5; color: var(--text-secondary); }
+.rec-source a { color: var(--color-purple-light); overflow-wrap: anywhere; }

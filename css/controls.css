@@ -2,7 +2,8 @@
 /* Layout only - sadece yerleşim */
 .button-row {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: var(--space-ms);
   align-items: center;
 }
 
@@ -13,18 +14,12 @@
  */
 :where(.button-row) .btn {
   flex: 0 0 auto;
-  padding: var(--space-sm) var(--space-lg);
+  padding: 0 var(--space-lg);
   border-radius: var(--radius-md);
-  font-size: var(--fs-btn);
+  font-size: var(--fs-md);
   font-family: var(--font-ui-accent);
   font-weight: 600;
   letter-spacing: 0;
-}
-
-:where(.button-row) .btn svg {
-  width: var(--fs-lg);
-  height: var(--fs-lg);
-  flex-shrink: 0;
 }
 
 :where(.button-row) .btn:disabled {
@@ -42,30 +37,34 @@
 .btn-action {
   flex: 0 0 auto;
   min-width: 152px;
-  /* Sabit yükseklik - ikon boyutundan bağımsız tutarlılık */
-  min-height: var(--btn-action-height);
-  background: var(--gradient-action);
+  /* Kart birincil kontrol basamagi (L48) - select/refresh satiriyla ayni yukseklik */
+  min-height: var(--control-h-l);
+  background: var(--action-bg);
   color: white;
   position: relative;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(var(--color-white-rgb), 0.12), 0 2px 4px rgba(var(--color-black-rgb), 0.18);
+  box-shadow: none;
   user-select: none;
 }
 
-/* Action butonları için ikon boyutu - 1.5x */
-.btn-action svg {
-  width: calc(var(--fs-lg) * 1.5);
-  height: calc(var(--fs-lg) * 1.5);
-}
-
-/* Record butonu indicator ikonları - küçük kalmalı */
-.btn-action .icon-circle,
-.btn-action .icon-square {
-  width: var(--fs-lg);
+/* Tight icon viewBoxes give every action the same visible 16px height.
+   Width follows the glyph, so flex centering includes no asymmetric empty space. */
+.btn-action > svg {
+  width: auto;
   height: var(--fs-lg);
 }
 
-.btn-action:hover:not(:disabled):not(.active) {
+.btn-action > .icon-circle,
+.btn-action > .icon-square,
+.btn-action > .icon-stop {
+  width: var(--fs-lg);
+}
+
+.btn-action > .icon-play {
+  width: calc(var(--fs-lg) * 11 / 14);
+}
+
+.btn-action:hover:not(:disabled):not([aria-pressed="true"]) {
   filter: brightness(1.12);
   transform: none;
 }
@@ -89,24 +88,25 @@
   transition: opacity 0.05s ease;
 }
 
-.btn-action.active,
-.btn-test.recording {
-  background: var(--gradient-action);
+/* Calisma durumu: body[data-app-state] (UIStateManager) + aria-pressed; buton class'i yok */
+body[data-app-state="recording"] .btn-record,
+body[data-app-state="testing"] .btn-test {
+  background: var(--action-bg);
   color: white;
   box-shadow: 0 0 0 2px rgba(var(--color-purple-rgb), 0.25);
 }
 
-/* Preparing state - ortak (DRY) */
-.btn-action.preparing {
-  background: var(--gradient-action);
+/* Preparing state - hazirlanan akisin butonu (aria-pressed) */
+body[data-app-state="preparing"] .btn-action[aria-pressed="true"] {
+  background: var(--action-bg);
   color: white;
   cursor: wait;
   pointer-events: none;
-  opacity: 0.7;
+  opacity: var(--opacity-disabled);
 }
 
 /* Preparing state spinner */
-.btn-action.preparing::after {
+body[data-app-state="preparing"] .btn-action[aria-pressed="true"]::after {
   content: '';
   position: static;
   width: 16px;
@@ -115,6 +115,7 @@
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
+  order: -1;
   animation: btn-spin 0.8s linear infinite;
   background: none;
   opacity: 1;
@@ -129,23 +130,24 @@
 
 /* Record ikonu toggle */
 .btn-record .icon-square { display: none; }
-.btn-record.active .icon-circle { display: none; }
-.btn-record.active .icon-square { display: block; }
+body[data-app-state="recording"] .btn-record .icon-circle { display: none; }
+body[data-app-state="recording"] .btn-record .icon-square { display: block; }
 
 @media (max-width: 767px) {
   .button-row {
-    gap: 10px;
+    gap: var(--space-sm);
   }
 
   .button-row .btn-action {
     min-width: 0;
-    padding-inline: 16px;
+    padding-inline: var(--space-md);
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 479px) {
   .button-row .btn-action {
-    padding-inline: 12px;
+    padding-inline: var(--space-ms);
+    font-size: var(--fs-sm);
   }
 }
 
@@ -157,13 +159,13 @@
 
 /* Test ikonu toggle */
 .btn-test .icon-stop { display: none; }
-.btn-test.recording .icon-play { display: none; }
-.btn-test.recording .icon-stop { display: block; }
-.btn-test.analysing .icon-play { display: none; }
-.btn-test.analysing .icon-stop { display: block; }
+body[data-app-state="testing"] .btn-test .icon-play,
+body[data-app-state="analysing"] .btn-test .icon-play { display: none; }
+body[data-app-state="testing"] .btn-test .icon-stop,
+body[data-app-state="analysing"] .btn-test .icon-stop { display: block; }
 
 /* Test analysing state - pulse animasyonu (mor/pembe ton) */
-.btn-test.analysing {
+body[data-app-state="analysing"] .btn-test {
   animation: test-analysing-pulse 1s ease-in-out infinite;
 }
 
@@ -177,47 +179,47 @@
 }
 
 /* All preparing variants use the same spinner, without a second action icon. */
-.btn-action.preparing :is(.icon-circle, .icon-square, .icon-play, .icon-stop) {
+body[data-app-state="preparing"] .btn-action[aria-pressed="true"] :is(.icon-circle, .icon-square, .icon-play, .icon-stop) {
   display: none;
 }
 
 /* Countdown participates in layout so compact labels cannot overlap it. */
 .test-countdown {
   flex-shrink: 0;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
+  min-width: var(--control-h-xs);
+  height: var(--control-h-xs);
+  padding: 0 var(--space-sm);
   background: var(--accent-danger);
   color: white;
   font-size: var(--fs-xs);
   font-weight: 700;
   font-family: var(--font-mono);
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   display: none;
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(229, 57, 53, 0.5);
 }
 
-.btn-test.recording .test-countdown {
+body[data-app-state="testing"] .btn-test .test-countdown {
   display: flex;
 }
 
 /* Test analysing progress bar - butonun altinda ince determinate cubuk */
 .test-progress-bar {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 5px;
-  height: 3px;
-  border-radius: 2px;
+  left: var(--space-sm);
+  right: var(--space-sm);
+  bottom: var(--space-xs);
+  height: 4px;
+  border-radius: var(--track-radius);
   background: rgba(var(--color-white-rgb), 0.18);
   overflow: hidden;
   display: none;
   z-index: 1;
 }
 
-.btn-test.analysing .test-progress-bar {
+body[data-app-state="analysing"] .btn-test .test-progress-bar {
   display: block;
 }
 
@@ -231,120 +233,8 @@
   transition: transform 0.12s linear;
   will-change: transform;
 }
-
-/* ========== TOGGLE SWITCH ========== */
-.toggle-switch {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  flex-shrink: 0;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--glass-bg-hover);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-full);
-  transition: all var(--transition-normal);
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
-  background: var(--text-muted);
-  border-radius: 50%;
-  transition: all var(--transition-normal);
-}
-
-.toggle-switch input:checked + .toggle-slider {
-  background: var(--gradient-action);
-  border-color: transparent;
-  box-shadow: var(--shadow-accent-lg);
-}
-
-.toggle-switch input:checked + .toggle-slider:before {
-  transform: translateX(20px);
-  background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-switch input:disabled + .toggle-slider {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-/* ========== SEGMENT CONTROL ========== */
-.segment-control {
-  display: inline-flex;
-  position: relative;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  gap: var(--space-2xs);
-  width: 100%;
-}
-
-/* a11y: radyolar gorsel gizli ama klavye/odak icin erisilebilir.
-   display:none klavye navigasyonunu tamamen engelliyordu. opacity:0
-   input'un kendi outline'ini de gizler; odak halkasi label'da gosterilir. */
-.segment-control input[type="radio"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  margin: 0;
-  pointer-events: none;
-}
-
-.segment-control input[type="radio"]:focus-visible + .segment-btn {
-  outline: 2px solid var(--color-purple);
-  outline-offset: 2px;
-}
-
-.segment-btn {
-  flex: 1;
-  padding: 6px var(--space-sm);
-  text-align: center;
-  font-size: var(--fs-base);
-  font-weight: 500;
-  color: var(--text-muted);
-  background: transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-  user-select: none;
-}
-
-.segment-btn:hover {
-  color: var(--text-primary);
-  background: var(--glass-bg-hover);
-}
-
-.segment-control input[type="radio"]:checked + .segment-btn {
-  background: var(--gradient-action);
-  color: white;
-  box-shadow: var(--shadow-accent-md);
-}
-
-.segment-control input[type="radio"]:disabled + .segment-btn {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
+.capture-guide { margin-top: var(--space-md); font-size: var(--fs-sm); }
+.capture-sample { margin-top: var(--space-sm); }
+.capture-sample summary { cursor: pointer; color: var(--text-secondary); }
+.capture-sample p { margin-top: var(--space-sm); }
+.capture-guide-status { margin-top: var(--space-ms); padding: var(--space-ms); border-left: 2px solid var(--color-purple-light); background: var(--bg-secondary); }

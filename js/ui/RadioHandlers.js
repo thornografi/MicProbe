@@ -4,7 +4,7 @@
  */
 
 import { RadioGroupHandler } from './RadioGroupHandler.js';
-import { toggleDisplay, needsBufferSetting } from '../modules/utils.js';
+import { setVisible, needsBufferSetting } from '../modules/utils.js';
 import { EVENTS } from '../modules/constants.js';
 import { remoteVuContainerEl, bitrateRadios, mediaBitrateRadios } from './UIElements.js';
 
@@ -58,7 +58,7 @@ export function registerRadioGroups(radios, callbacks) {
                                 profile?.editableSettings?.includes('buffer') ||
                                 profile?.allowedSettings === 'all';
         if (!bufferInProfile) {
-          toggleDisplay(bufferSizeContainer, needsBufferSetting(pipeline));
+          setVisible(bufferSizeContainer, needsBufferSetting(pipeline));
         }
         updateAllStates();
       }
@@ -109,7 +109,7 @@ export function registerRadioGroups(radios, callbacks) {
     'Media Bitrate': {
       radios: [...mediaBitrateRadios],
       logCategory: 'log:recorder',
-      formatValue: (v) => v === 0 ? 'Off' : `${v / 1000}k`,
+      formatValue: (v) => v === 0 ? 'Auto' : `${v / 1000}k`,
       onChange: (mediaBitrate) => syncToCustomPanel('mediaBitrate', mediaBitrate)
     },
 
@@ -117,14 +117,16 @@ export function registerRadioGroups(radios, callbacks) {
     'Sample Rate': {
       radios: [...sampleRateRadios],
       logCategory: 'log:audio',
-      formatValue: (v) => `${v} Hz`
+      formatValue: (v) => `${v} Hz`,
+      onChange: (sampleRate) => syncToCustomPanel('sampleRate', sampleRate)
     },
 
     // Channel Count
     'Channel Count': {
       radios: [...channelCountRadios],
       logCategory: 'log:audio',
-      formatValue: (v) => v === 1 ? 'Mono' : 'Stereo'
+      formatValue: (v) => v === 1 ? 'Mono' : 'Stereo',
+      onChange: (channelCount) => syncToCustomPanel('channelCount', channelCount)
     }
   });
 }
@@ -148,8 +150,8 @@ export function registerLoopbackToggle(loopbackToggle, callbacks) {
     offLabel: 'PASIF',
     onChange: (enabled) => {
       // Bitrate seciciyi ve Remote VU container'i goster/gizle
-      toggleDisplay(opusBitrateContainer, enabled);
-      toggleDisplay(remoteVuContainerEl, enabled);
+      setVisible(opusBitrateContainer, enabled);
+      setVisible(remoteVuContainerEl, enabled);
       updateAllStates();
 
       // DeviceInfo panelini guncelle

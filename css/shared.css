@@ -1,0 +1,514 @@
+/* MicProbe - Shared Components
+   ============================
+   Tum sayfalarin (landing, app, privacy/terms, micprobe.html) ortak bilesen CSS'i:
+   reset, focus, scrollbar, utility'ler, header-base + marka blogu, legal sayfa
+   iskeleti, site footer, buton sistemi, overlay kapat butonu, reduced-motion.
+   Token'lar variables.css'te; bu dosya her <head>'de variables.css'ten hemen sonra gelir
+   (js/landing.js APP_STYLESHEET_HREFS listesine girmez - lazy degil, kritik).
+*/
+
+/* ========== HEADER BASE (Ortak Bilesen) ========== */
+/* Landing navbar (.navbar, landing.css) ve app header (.app-header, header.css)
+   ayni bilesenden turer: kabuk (.header-base), marka blogu (.brand-lockup) ve
+   mobil menu butonu (.header-menu-btn). Konumlama ve icerik duzeni sayfaya
+   ozgudur. header.css lazy yuklendigi icin paylasilan parcalar burada durur;
+   footer ve legal sayfalari da .brand-lockup sinifini kullanir. */
+.header-base {
+  --brand-mark-size: 36px;
+  --brand-title-size: 22px;
+  flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  background: var(--chrome-bg);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+  border-bottom: 1px solid var(--glass-border);
+  z-index: var(--z-sticky);
+}
+
+/* Marka blogu: logo + wordmark. Boyutlar degiskenle ezilir (header 36px, footer 32px, mobil app 28px). */
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--brand-gap, 12px);
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  width: var(--brand-mark-size, 32px);
+  height: var(--brand-mark-size, 32px);
+}
+
+.brand-title {
+  font-size: var(--brand-title-size, var(--fs-xl));
+  font-weight: 600;
+}
+
+.header-base .brand-lockup {
+  transition: opacity var(--transition-fast);
+}
+
+.header-base .brand-lockup:hover {
+  opacity: 0.8;
+}
+
+/* Aktif kayit/test kilidi: body[data-app-state] whitelist kurali (helpers.css) ve UIStateManager
+   (a: aria-disabled + tabindex=-1, button: disabled, bolge: inert). Burada ayri bir .disabled kurali yoktur. */
+
+/* Mobil menu butonu: landing icin nav listesi (#mobileNav), app icin profil cekmecesi (#profileSidebar) */
+.header-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: rgba(var(--color-white-rgb), 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
+}
+
+.header-menu-btn:hover {
+  background: rgba(var(--color-purple-rgb), 0.12);
+  border-color: rgba(var(--color-purple-rgb), 0.35);
+  color: var(--color-purple-light);
+}
+
+/* Mobil esigi app kabugu ile ayni: layout.css icinde 768px masaustu duzenine dahildir */
+@media (max-width: 767px) {
+  .header-menu-btn {
+    display: flex;
+  }
+}
+
+/* ========== RESET ========== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html, body {
+  min-height: 100%;
+}
+
+html {
+  background: var(--site-atmosphere), var(--bg-primary);
+  background-attachment: fixed;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: transparent;
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========== FOCUS STATES ========== */
+/* a11y: global :focus{outline:none} kaldirildi - klavye gostergesi :focus-visible
+   ile verilir, :focus-visible desteklenmeyen durumda UA fallback outline'i korunur. */
+:focus-visible {
+  outline: 2px solid var(--color-purple);
+  outline-offset: 2px;
+}
+
+/* Devre disi baglanti: fare + klavye birlikte (UIStateManager aria-disabled + tabindex=-1 yazar) */
+a[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+/* Solid accent buttons need a white focus ring to remain distinct. */
+.btn--primary:focus-visible,
+.btn-action:focus-visible {
+  outline-color: #fff;
+}
+
+/* Form kontrolleri UA stylesheet'inden sistem fontu alir; sayfanin yazi tipini ve
+   olcegini miras alsinlar. Yukseklikler --control-h-* ile pinlenir (font'tan bagimsiz). */
+button, input, select, textarea, summary {
+  font: inherit;
+}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ========== UTILITY CLASSES ========== */
+/* Inline SVG sprite: her sayfada ilk boyada 0x0 olmali; helpers.css idle'da
+   yuklendigi icin kural burada. display:none kullanilmaz - gradient/filter
+   referanslarini bozabilir. */
+.svg-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Tek gorunurluk mekanizmasi: `hidden` attribute'u, display'i author CSS'e karsi da kazanir. */
+[hidden] {
+  display: none !important;
+}
+
+/* OverlayController: modal overlay acikken body scroll kilidi (tek sayac) */
+html.is-scroll-locked {
+  overflow: hidden;
+}
+
+/* ========== BRAND WORDMARK ========== */
+.brand-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  letter-spacing: -0.045em;
+}
+
+.brand-word {
+  display: inline-block;
+  line-height: 1;
+}
+
+.brand-word--mic {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.brand-word--probe {
+  font-weight: 400;
+  color: var(--brand-accent-color);
+}
+
+/* ========== LEGAL PAGES (Privacy, Terms vb.) ========== */
+.legal-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* Uses the shared html canvas. */
+}
+
+/* Ust bar: landing navbar ile ayni kabuk ve ayni yatay hiza formulu; sayfa akisinda (fixed degil) */
+.legal-header {
+  justify-content: space-between;
+  padding-inline: max(var(--page-gutter), calc((100% - var(--max-width)) / 2));
+}
+
+.legal-header .back-link {
+  margin: 0;
+}
+
+.legal-content {
+  flex: 1;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--space-3xl) var(--space-xl);
+}
+
+/* Mobil gutter 16: header, icerik ve footer ayni hatta (landing navbar ile ayni) */
+@media (max-width: 767px) {
+  .legal-header {
+    padding-inline: var(--space-md);
+  }
+
+  .legal-content {
+    padding: var(--space-2xl) var(--space-md);
+  }
+}
+
+/* App h1 ile ayni baslik dili (display font, 600, -0.035em) */
+.legal-content h1 {
+  font-size: var(--fs-h1);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--heading-tracking);
+  line-height: 1.18;
+  color: var(--text-primary);
+  margin-bottom: var(--space-lg);
+}
+
+.legal-content p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--space-md);
+}
+
+.legal-content a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.legal-content a:hover {
+  color: var(--text-primary);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: var(--fs-base);
+  margin-bottom: var(--space-xl);
+  transition: color var(--transition-fast);
+}
+
+.back-link:hover {
+  color: var(--text-primary);
+}
+
+/* ========== SITE FOOTER (Ortak - Tüm Sayfalar) ========== */
+/* Shared bounds and hierarchy across landing, app and legal pages. */
+.site-footer {
+  padding: var(--space-2xl) var(--page-gutter) var(--space-xl);
+  border-top: 1px solid var(--border-primary);
+  background: rgba(var(--bg-primary-rgb), 0.72);
+  margin-top: auto;
+}
+
+.site-footer-content {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-xl);
+}
+
+.site-footer-identity {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-ms);
+}
+
+.site-footer-brand {
+  --brand-mark-size: 32px;
+  --brand-title-size: 20px;
+  display: inline-flex;
+  min-height: var(--control-h-m);
+  font-size: var(--brand-title-size);
+  font-weight: 600;
+  transition: opacity var(--transition-fast);
+}
+
+.site-footer-brand .brand-wordmark {
+  color: inherit;
+}
+
+.site-footer-brand:hover {
+  opacity: 0.8;
+}
+
+.site-footer-description {
+  max-width: 32ch;
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+}
+
+.site-footer-links {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-xl);
+}
+
+.site-footer-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.site-footer-heading {
+  min-height: var(--control-h-m);
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.site-footer-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--fs-base);
+  transition: color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h-m);
+}
+
+.site-footer-links a:hover {
+  color: var(--text-primary);
+}
+
+.site-footer-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Footer Mobile Responsive (mobil esigi ile ayni; gutter 16) */
+@media (max-width: 767px) {
+  .site-footer {
+    padding: var(--space-xl) var(--space-md) var(--space-lg);
+  }
+
+  .site-footer-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .site-footer-links {
+    grid-column: 1 / -1;
+    column-gap: var(--space-lg);
+  }
+}
+
+/* ========== SHARED BUTTONS (Ortak - Tüm Sayfalar) ========== */
+/* Base button */
+/* Kontrol olcegi: L 48 (varsayilan) · M 40 (.btn--m) · S 32 (.btn--s); padding-block 0 +
+   min-height + line-height 1.2 -> yukseklik font'tan bagimsiz. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  min-height: var(--control-h-l);
+  padding: 0 var(--space-xl);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  text-decoration: none;
+}
+
+/* SVG boxes must not shrink or contribute inline baseline space. */
+.btn > svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.btn--m {
+  min-height: var(--control-h-m);
+  padding: 0 var(--space-md);
+  font-size: var(--fs-base);
+}
+
+.btn--s {
+  min-height: var(--control-h-s);
+  padding: 0 var(--space-ms);
+  font-size: var(--fs-sm);
+}
+
+.btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Primary actions use one solid surface across the product. */
+.btn--primary {
+  background: var(--action-bg);
+  color: white;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--action-hover-bg);
+  transform: none;
+}
+
+/* Secondary variant - ghost/outline */
+.btn--secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: rgba(var(--color-white-rgb), 0.05);
+  border-color: var(--text-muted);
+}
+
+/* Overlay kapat/ikon butonu - tek gramer: 32x32, radius-md, ghost, ikon 20.
+   Report popup, dev console, settings drawer ve account dialog ayni sinifi kullanir. */
+.btn-overlay-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-overlay-close:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-overlay-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ========== ACCESSIBILITY: REDUCED MOTION ========== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

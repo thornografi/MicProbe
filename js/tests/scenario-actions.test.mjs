@@ -30,10 +30,10 @@ test('all call scenarios retain Test while voice-message and raw scenarios retai
     };
     updateCategoryUI(profile.id, elements);
     const isCall = profile.category === 'call';
-    assert.equal(elements.testBtn.style.display, isCall ? 'flex' : 'none', profile.id);
-    assert.equal(elements.recordToggleBtn.style.display, isCall ? 'none' : 'flex', profile.id);
-    assert.equal(elements.recordingPlayerPanelEl.style.display, isCall ? 'none' : 'block', profile.id);
-    assert.equal(remoteVu.style.display, isCall ? 'block' : 'none', profile.id);
+    assert.equal(elements.testBtn.hidden, !isCall, profile.id);
+    assert.equal(elements.recordToggleBtn.hidden, isCall, profile.id);
+    assert.equal(elements.recordingPlayerPanelEl.hidden, true, `${profile.id}: no result card before a sample exists`);
+    assert.equal(remoteVu.hidden, !isCall, profile.id);
   }
 });
 
@@ -57,13 +57,14 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
   let currentMode = null, isPreparing = false;
   manager.init(elements);
   manager.setProfileCollections({ navItems: [profileButton] });
-  manager.setStateGetters({ currentMode: () => currentMode, isPreparing: () => isPreparing });
+  manager.setStateGetters({ currentMode: () => currentMode, isPreparing: () => isPreparing,
+    currentProfileId: () => 'discord' });
 
   manager.updateButtonStates();
   assert.equal(document.body.dataset.appState, 'idle');
   assert.equal(elements.testBtn.disabled, false);
   assert.equal(elements.recordToggleBtn.disabled, false);
-  assert.equal(profileButton.getAttribute('aria-disabled'), 'false');
+  assert.equal(profileButton.disabled, false);
 
   currentMode = 'test-recording'; isPreparing = true;
   manager.updateButtonStates();
@@ -71,7 +72,7 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
   assert.equal(elements.testBtn.getAttribute('aria-label'), 'Preparing scenario test');
   assert.equal(elements.recordToggleBtn.disabled, true);
   assert.equal(elements.micSelector.disabled, true);
-  assert.equal(profileButton.getAttribute('aria-disabled'), 'true');
+  assert.equal(profileButton.disabled, true);
 
   isPreparing = false;
   manager.updateButtonStates();
@@ -81,6 +82,8 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
 
   currentMode = 'test-analysing';
   manager.updateButtonStates();
+  assert.equal(document.body.dataset.appState, 'analysing');
+  assert.equal(elements.testBtn.getAttribute('aria-pressed'), 'true');
   assert.equal(elements.testBtn.getAttribute('aria-label'), 'Analysing recording');
   assert.equal(elements.recordToggleBtn.disabled, true);
 
@@ -90,4 +93,17 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
   assert.equal(elements.testBtn.disabled, true);
   assert.equal(elements.recordToggleBtn.disabled, false);
   assert.equal(elements.recordToggleBtn.getAttribute('aria-label'), 'Stop recording');
+});
+
+test('first use cannot start a capture before a scenario is selected', () => {
+  globalThis.document = { body: { dataset: {} } };
+  const manager = new uiStateManager.constructor();
+  const elements = { testBtn: element(), recordToggleBtn: element() };
+  manager.init(elements);
+  manager.updateButtonStates();
+  assert.equal(elements.testBtn.disabled, true);
+  assert.equal(elements.recordToggleBtn.disabled, true);
+  manager.setStateGetters({ currentProfileId: () => 'raw' });
+  manager.updateButtonStates();
+  assert.equal(elements.recordToggleBtn.disabled, false);
 });

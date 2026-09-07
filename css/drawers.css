@@ -1,21 +1,21 @@
 /* ========== DRAWER BASE (Ortak Stiller) ========== */
 /* Sağdan açılan drawer'lar için ortak base - DRY */
+/* Overlay sozlesmesi (variables.css --overlay-* / --drawer-*): yuzey, kenar ve golge modal'larla ayni */
 .drawer-base {
-  --drawer-width: 400px;
   position: fixed;
   top: 0;
-  right: calc(-1 * var(--drawer-width));
-  width: var(--drawer-width);
+  right: calc(-1 * var(--drawer-w));
+  width: var(--drawer-w);
   height: 100vh;
   height: 100dvh;
-  background: rgba(10, 10, 15, 0.95);
+  background: var(--overlay-bg);
   backdrop-filter: blur(var(--blur-lg));
   -webkit-backdrop-filter: blur(var(--blur-lg));
-  border-left: 1px solid var(--glass-border);
+  border-left: 1px solid var(--overlay-border);
   z-index: var(--z-drawer);
   display: flex;
   flex-direction: column;
-  transition: right 0.3s ease, opacity 0.3s ease;
+  transition: right var(--transition-slow), opacity var(--transition-slow);
   content-visibility: hidden;
   opacity: 0;
 }
@@ -24,20 +24,16 @@
   content-visibility: visible;
   right: 0;
   opacity: 1;
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--drawer-shadow);
 
   @starting-style {
     opacity: 0;
-    right: calc(-1 * var(--drawer-width));
+    right: calc(-1 * var(--drawer-w));
   }
 }
 
 /* ========== DEV CONSOLE DRAWER ========== */
-.dev-console-drawer {
-  --drawer-width: 420px;
-  background: linear-gradient(180deg, rgba(10, 10, 15, 0.98) 0%, rgba(18, 18, 26, 0.95) 100%);
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
-}
+/* Modal olmayan yan panel: scrim almaz (tiklamalari yutmasin), gorsel dil drawer-base'den */
 
 /* Drawer sol kenar gradient çizgi */
 .dev-console-drawer::before {
@@ -49,7 +45,7 @@
   height: 100%;
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(var(--color-orange-rgb), 0.3) 30%,
+    rgba(var(--accent-primary-rgb), 0.3) 30%,
     rgba(var(--color-purple-rgb), 0.3) 70%,
     transparent 100%);
   pointer-events: none;
@@ -59,8 +55,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md) var(--space-lg);
-  background: var(--gradient-accent-subtle);
+  min-height: var(--overlay-header-h);
+  padding: var(--overlay-header-pad);
+  background: var(--surface-inset);
   border-bottom: 1px solid var(--glass-border);
 }
 
@@ -76,7 +73,7 @@
 .dev-console-drawer-header .toggle-icon {
   width: 18px;
   height: 18px;
-  color: var(--color-orange);
+  color: var(--accent-primary);
   filter: var(--glow-accent-sm);
 }
 
@@ -92,7 +89,7 @@
 
 .dev-console-drawer-header .log-count.has-logs {
   background: var(--gradient-accent-strong);
-  color: var(--color-orange);
+  color: var(--accent-primary);
 }
 
 .dev-console-drawer-header .header-actions {
@@ -101,32 +98,7 @@
   gap: var(--space-sm);
 }
 
-/* Drawer/console kapatma butonu - ortak base (DRY) */
-.btn-close-console,
-.btn-close-drawer {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-close-console:hover {
-  background: var(--glass-bg-hover);
-  color: var(--color-orange);
-}
-
-.btn-close-console svg,
-.btn-close-drawer svg {
-  width: 20px;
-  height: 20px;
-}
+/* Kapatma butonu: .btn-overlay-close (variables.css) */
 
 .dev-console-drawer-body {
   flex: 1;
@@ -136,46 +108,49 @@
 
 .dev-console-drawer-footer {
   padding: var(--space-md) var(--space-lg);
-  background: var(--gradient-accent-faint);
+  background: var(--surface-inset);
   border-top: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
 
-/* Toggle Button - Sağ alt köşe, yuvarlak */
+/* Shares the rail's final row; the sidebar reserves room so content never overlaps. */
 .dev-console-toggle-btn {
-  position: fixed;
-  bottom: var(--space-lg);
-  right: var(--space-lg);
-  z-index: var(--z-console-toggle);
-  width: 40px;
+  grid-area: 2 / 1;
+  justify-self: start;
+  align-self: end;
+  margin: 0 var(--space-lg) var(--space-lg);
+  position: relative;
+  z-index: 2;
+  min-width: 40px;
   height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(var(--color-orange-rgb), 0.15) 0%, rgba(var(--color-purple-rgb), 0.1) 100%);
+  gap: var(--space-sm);
+  padding-inline: var(--space-ms);
+  font-size: var(--fs-xs);
+  background: var(--bg-input);
   backdrop-filter: blur(var(--blur-sm));
   -webkit-backdrop-filter: blur(var(--blur-sm));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  color: var(--color-orange);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-slow);
-  opacity: 0.6;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
 }
 
 .dev-console-toggle-btn:hover {
-  opacity: 1;
-  background: linear-gradient(135deg, rgba(var(--color-orange-rgb), 0.25) 0%, rgba(var(--color-purple-rgb), 0.15) 100%);
-  box-shadow: 0 4px 20px rgba(var(--color-orange-rgb), 0.2);
-  transform: scale(1.05);
+  background: var(--bg-elevated);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px rgba(var(--accent-primary-rgb), 0.2);
 }
 
 .dev-console-toggle-btn svg {
-  width: 20px;
-  height: 20px;
-  filter: var(--glow-accent-sm);
+  width: 16px;
+  height: 16px;
 }
 
 /* Console açıkken toggle butonunu gizle */
@@ -184,18 +159,33 @@
   pointer-events: none;
 }
 
+/* Mobil: kabuk flex sutunu olur; toggle akista, icerigin altinda sagda; drawer tam genislik
+   (profil cekmecesiyle ayni esik) */
+@media (max-width: 767px) {
+  .dev-console-toggle-btn {
+    align-self: flex-end;
+    margin: 0 var(--space-md) var(--space-lg);
+  }
+
+  .dev-console-drawer {
+    --drawer-w: 100vw;
+  }
+}
+
 /* Hide dev console in production */
 body.production .dev-console-drawer,
 body.production .dev-console-toggle-btn {
   display: none;
 }
 
+/* Log govdesi notr - renk yalnizca anlam tasiyan kategorilerde (hata=kirmizi).
+   Eski hali tum metni doygun magenta basiyordu, okunurluk dusuktu. */
 #log {
   padding: var(--space-md);
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  color: var(--color-orange);
+  color: var(--text-secondary);
   background: transparent;
   height: 100%;
   overflow: auto;
@@ -245,11 +235,11 @@ body.production .dev-console-toggle-btn {
 .log-line.log-stream,
 .log-line.log-recorder,
 .log-line.log-audio {
-  color: var(--color-orange);
+  color: var(--text-secondary);
 }
 
 .log-line.log-ui {
-  color: var(--color-purple-light);
+  color: var(--text-primary);
 }
 
 .log-line.log-system {
@@ -264,17 +254,22 @@ body.production .dev-console-toggle-btn {
   flex-wrap: wrap;
 }
 
+/* Filtre/export chip'leri: S32 basamagi, app'in radius-md dili (pill yalniz premium CTA) */
 .btn-filter,
 .btn-export-small {
-  padding: var(--space-xs) 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-s);
+  padding: 0 var(--space-ms);
   font-size: var(--fs-xs);
   font-weight: 500;
+  line-height: 1.2;
   background: var(--glass-bg);
-  border: 1px solid transparent;
+  border: 1px solid var(--glass-border);
   color: var(--text-muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   user-select: none;
 }
 
@@ -287,8 +282,8 @@ body.production .dev-console-toggle-btn {
 
 .btn-filter.active {
   background: var(--gradient-accent-muted);
-  border-color: rgba(var(--color-orange-rgb), 0.3);
-  color: var(--color-orange);
+  border-color: rgba(var(--accent-primary-rgb), 0.3);
+  color: var(--accent-primary);
 }
 
 .btn-filter-error.active {
@@ -298,16 +293,20 @@ body.production .dev-console-toggle-btn {
 }
 
 .btn-clear {
-  padding: var(--space-xs) 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h-s);
+  padding: 0 var(--space-ms);
   font-size: var(--fs-xs);
   font-weight: 500;
+  line-height: 1.2;
   background: transparent;
-  border: none;
+  border: 1px solid var(--glass-border);
   color: var(--text-muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   user-select: none;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .btn-clear:hover {
@@ -317,20 +316,20 @@ body.production .dev-console-toggle-btn {
 
 /* Copy Button */
 .btn-copy {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-xs) var(--space-sm);
-  font-size: var(--fs-xs);
-  font-weight: 500;
+  width: var(--control-h-s);
+  height: var(--control-h-s);
+  padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
   margin-left: auto;
-  margin-right: 6px;
+  margin-right: var(--space-sm);
 }
 
 .btn-copy:hover {
@@ -358,9 +357,7 @@ body.production .dev-console-toggle-btn {
   display: block;
 }
 
-/* ========== SETTINGS DRAWER ========== */
-/* .drawer-base'den miras - sadece variant stillleri */
-
+/* ========== DRAWER OVERLAY (mobil profil cekmecesi backdrop'u) ========== */
 .drawer-overlay {
   position: fixed;
   top: 0;
@@ -379,103 +376,4 @@ body.production .dev-console-toggle-btn {
 .drawer-overlay.open {
   opacity: 1;
   pointer-events: auto;
-}
-
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-lg);
-  border-bottom: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-}
-
-.drawer-header h3 {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.btn-close-drawer:hover {
-  background: var(--bg-input);
-  color: var(--text-primary);
-}
-
-.drawer-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-lg);
-}
-
-/* ========== SETTINGS SECTIONS ========== */
-.settings-section {
-  margin-bottom: var(--space-xl);
-}
-
-.settings-section:last-child {
-  margin-bottom: 0;
-}
-
-.settings-section-title {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: var(--space-md);
-}
-
-.settings-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.setting-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-input);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.setting-item:hover {
-  background: var(--bg-elevated);
-}
-
-.setting-item input[type="checkbox"] {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--text-muted);
-  border-radius: 4px;
-  cursor: pointer;
-  position: relative;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.setting-item input[type="checkbox"]:checked {
-  background: var(--gradient-accent);
-  border-color: var(--color-orange);
-}
-
-.setting-item input[type="checkbox"]:checked::after {
-  content: '\2713';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: var(--bg-primary);
-  font-size: var(--fs-base);
-  font-weight: bold;
-}
-
-.setting-label {
-  font-size: var(--fs-md);
-  color: var(--text-secondary);
-  font-weight: 500;
 }

@@ -7,10 +7,11 @@
  * - Route handling (path + hash based)
  * - Navbar scroll effect
  * - Smooth scroll for anchor links
- * - Wave animator initialization
+ * - Decorative hero waveform
  * - Navigation event binding
  */
 
+import { createOverlayController } from './ui/OverlayController.js';
 import { initWaveAnimator } from './modules/WaveAnimator.js';
 import { getCurrentMode, getIsPreparing } from './app/AppState.js';
 import { markStartupDiag, markStartupFrameSequence, startStartupDiagnostics } from './modules/StartupDiagnostics.js';
@@ -27,19 +28,21 @@ let fontStylesPromise = null;
 
 startStartupDiagnostics();
 
-const FONT_STYLESHEET_HREF = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
+const FONT_STYLESHEET_HREF = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
 
 const APP_STYLESHEET_HREFS = [
-  'css/layout.css',
-  'css/header.css',
-  'css/panels.css',
-  'css/controls.css',
-  'css/player.css',
-  'css/vu-meter.css',
-  'css/drawers.css',
-  'css/components.css',
-  'css/helpers.css',
-  'css/report.css'
+  '/css/layout.css',
+  '/css/header.css',
+  '/css/panels.css',
+  '/css/controls.css',
+  '/css/player.css',
+  '/css/vu-meter.css',
+  '/css/drawers.css',
+  '/css/components.css',
+  '/css/helpers.css',
+  '/css/report.css',
+  '/css/account.css',
+  '/css/troubleshooting.css'
 ];
 
 function findStylesheet(href) {
@@ -310,6 +313,9 @@ function handleRoute() {
 
   // Default: show landing
   showLandingView();
+  if (!document.body.classList.contains('app-mode') && (hash === '#features' || hash === '#how-it-works')) {
+    document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'instant' });
+  }
 }
 
 // ============================================
@@ -336,95 +342,25 @@ function initNavbarScroll() {
 // ============================================
 
 /**
- * Enable smooth scrolling for anchor links in landing view only
- * Excludes #app (handled by view switching) and download links
+ * Section links also work after the shared footer moves into the app.
+ * Keep the existing capture guard and respect reduced-motion preferences.
  */
 function initSmoothScroll() {
-  document.querySelectorAll('#landing-view a[href^="#"]:not([download])').forEach(anchor => {
+  document.querySelectorAll('#landing-view a[href^="#"]:not([download]), #landing-view a[href^="/#"]').forEach(anchor => {
     anchor.addEventListener('click', function(e) {
-      const href = this.getAttribute('href');
+      const href = new URL(this.getAttribute('href'), window.location.href).hash;
 
       // Skip empty hash and #app (handled by showAppView)
-      if (href === '#' || href === '#app') return;
+      if (!href || href === '#app') return;
 
       const target = document.querySelector(href);
       if (target) {
         e.preventDefault();
-        target.scrollIntoView({ behavior: 'smooth' });
+        if (document.body.classList.contains('app-mode')) showLandingView();
+        if (document.body.classList.contains('app-mode')) return;
+        target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
       }
     });
-  });
-}
-
-// ============================================
-// WAVE ANIMATOR
-// ============================================
-
-/**
- * Initialize hero section wave animation
- */
-function initWaveAnimation() {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  initWaveAnimator('.hero-soundwave', {
-    barCount: 280,
-    width: 1600,
-    height: 260,
-    barWidth: 2.5,
-    barGap: 3,
-    minBarHeight: 6,
-    maxBarHeight: 180,
-    waveFrequency: 1.8,
-    secondaryFrequency: 4.3,
-    tertiaryFrequency: 7.1,
-    quaternaryFrequency: 11.7,
-    centerGap: 0.10,
-    centerFadeZone: 0.06,
-    edgeFadeStart: 0.35,
-    edgeFadeEnd: 0.05,
-    centerHeightMin: 0.15,
-    centerHeightEasing: 0.5
-  });
-}
-
-// ============================================
-// SCROLL REVEAL
-// ============================================
-
-/**
- * Initialize scroll-triggered reveal animations using IntersectionObserver
- */
-function initScrollReveal() {
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // Reduced motion: hemen goster
-  if (reducedMotion) {
-    document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
-    return;
-  }
-
-  const revealElements = document.querySelectorAll('.reveal');
-
-  // Viewport ustunde kalmis elementleri hemen goster
-  revealElements.forEach(el => {
-    const rect = el.getBoundingClientRect();
-    if (rect.bottom < 0) {
-      el.classList.add('visible');
-    }
-  });
-
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
-
-  revealElements.forEach(el => {
-    if (!el.classList.contains('visible')) {
-      observer.observe(el);
-    }
   });
 }
 
@@ -438,20 +374,16 @@ function initScrollReveal() {
 function bindNavigationEvents() {
   const mobileMenuBtn = document.getElementById('mobileMenuBtn');
   const mobileNav = document.getElementById('mobileNav');
-  const closeMobileMenu = () => {
-    if (!mobileMenuBtn || !mobileNav) return;
-    mobileNav.classList.remove('open');
-    mobileMenuBtn.setAttribute('aria-expanded', 'false');
-    mobileMenuBtn.setAttribute('aria-label', 'Open menu');
-  };
-
-  if (mobileMenuBtn && mobileNav) {
-    mobileMenuBtn.addEventListener('click', () => {
-      const isOpen = mobileNav.classList.toggle('open');
-      mobileMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      mobileMenuBtn.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
-    });
-  }
+  // Mobil menu: modal olmayan disclosure; ESC + aria-expanded OverlayController'dan
+  const mobileMenu = createOverlayController(mobileNav, {
+    modal: false,
+    triggerEl: mobileMenuBtn,
+    restoreFocus: false,
+    onOpen: () => mobileMenuBtn?.setAttribute('aria-label', 'Close menu'),
+    onClose: () => mobileMenuBtn?.setAttribute('aria-label', 'Open menu')
+  });
+  const closeMobileMenu = () => mobileMenu.close();
+  mobileMenuBtn?.addEventListener('click', () => mobileMenu.toggle());
 
   // showAppView triggers
   const appViewTriggers = [
@@ -487,6 +419,7 @@ function bindNavigationEvents() {
 
   // showLandingView triggers (prevent default for <a> tags)
   const landingViewTriggers = [
+    document.getElementById('navbarBrand'),
     document.getElementById('footerBrand'),
     document.getElementById('appHeaderBrand')
   ];
@@ -500,22 +433,6 @@ function bindNavigationEvents() {
     el.addEventListener('click', closeMobileMenu);
   });
 
-  // Hero mic icon hover sync with launch button
-  const heroMicIcon = document.getElementById('heroMicIcon');
-  const heroLaunchBtn = document.getElementById('heroLaunchBtn');
-  if (heroMicIcon && heroLaunchBtn) {
-    heroMicIcon.addEventListener('mouseenter', () => heroLaunchBtn.classList.add('mic-hover-active'));
-    heroMicIcon.addEventListener('mouseleave', () => heroLaunchBtn.classList.remove('mic-hover-active'));
-    // a11y: role=button klavye aktivasyonu (Enter/Space)
-    heroMicIcon.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        closeMobileMenu();
-        markStartupDiag('appTrigger.keydown', { trigger: 'heroMicIcon', key: e.key });
-        showAppView(`keydown:heroMicIcon:${e.key}`);
-      }
-    });
-  }
 }
 
 // ============================================
@@ -527,8 +444,19 @@ function init() {
   // Initialize landing page features
   initNavbarScroll();
   initSmoothScroll();
-  initWaveAnimation();
-  initScrollReveal();
+  initWaveAnimator('.hero-soundwave', {
+    barCount: 132,
+    width: 800,
+    height: 180,
+    barWidth: 3,
+    barGap: 3,
+    minBarHeight: 6,
+    maxBarHeight: 146,
+    centerGap: 0.14,
+    centerFadeZone: 0.08,
+    edgeFadeStart: 0.16,
+    edgeFadeEnd: 0.015
+  });
   bindNavigationEvents();
   schedulePostLoadWarmups();
 

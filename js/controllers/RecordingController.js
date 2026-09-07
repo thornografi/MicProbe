@@ -1,6 +1,6 @@
 /**
  * RecordingController - Kayit islemlerini yonetir
- * Sadece normal kayit (MediaRecorder) - Loopback recording kaldirildi
+ * Record kategorisinin UI/state akisi; encoder secimini Recorder'a iletir
  * DIP: Bagimliliklar dependency injection ile alinir
  */
 import eventBus from '../modules/EventBus.js';
@@ -27,6 +27,19 @@ class RecordingController {
       getCurrentMode: () => null,
       setIsPreparing: () => {}
     };
+    this._stopPromise = null;
+    eventBus.on(EVENTS.RECORDER_STOPPED, () => {
+      if (this.deps.getCurrentMode() === 'recording') {
+        this.deps.uiStateManager?.stopTimer();
+        resetState(this.deps);
+      }
+    });
+    eventBus.on(EVENTS.RECORDING_CAPTURE_STOPPED, () => {
+      if (this.deps.getCurrentMode() === 'recording') {
+        this.deps.uiStateManager?.stopTimer();
+        beginPreparing(this.deps, 'recording');
+      }
+    });
   }
 
   /**
@@ -55,6 +68,7 @@ class RecordingController {
    * Kayit baslat
    */
   async start() {
+    if (this._stopPromise || this.deps.getIsPreparing?.()) return;
     const useWebAudio = this.deps.isWebAudioEnabled();
     const constraints = this.deps.getConstraints();
     const pipeline = useWebAudio ? this.deps.getPipeline() : PIPELINE_TYPES.DIRECT;
@@ -76,7 +90,8 @@ class RecordingController {
       const mediaBitrate = this.deps.getMediaBitrate();
       const bufferSize = this.deps.getBufferSize();
 
-      await this.deps.recorder.start(constraints, pipeline, encoder, timeslice, bufferSize, mediaBitrate);
+      const runSnapshot = this.deps.createRunSnapshot?.();
+      await this.deps.recorder.start(constraints, pipeline, encoder, timeslice, bufferSize, mediaBitrate, runSnapshot);
 
       // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
       endPreparing(this.deps);
@@ -99,7 +114,13 @@ class RecordingController {
   /**
    * Kayit durdur
    */
-  async stop() {
+  stop() {
+    if (this._stopPromise) return this._stopPromise;
+    this._stopPromise = this._stop().finally(() => { this._stopPromise = null; });
+    return this._stopPromise;
+  }
+
+  async _stop() {
     log.recorder('Recording stopping', {});
 
     try {

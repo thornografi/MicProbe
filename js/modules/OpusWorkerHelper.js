@@ -2,11 +2,12 @@
  * OpusWorkerHelper - opus-recorder WASM Encoder ile entegrasyon
  *
  * opus-recorder (chris-rudmin/opus-recorder) kullanir
- * WhatsApp Web pattern: ScriptProcessorNode(4096, 1, 1) + WASM Opus
+ * Yerel voice-note senaryolarinda ScriptProcessor/Worklet PCM verisini Opus'a kodlar.
+ * Bir platform istemcisinin tum ses zincirini yeniden olusturmaz.
  */
 
 // opus-recorder worker path
-const OPUS_ENCODER_WORKER_URL = new URL('../lib/opus/encoderWorker.min.js', import.meta.url).href;
+const OPUS_ENCODER_WORKER_URL = new URL('../workers/opus-encoder-worker.js', import.meta.url).href;
 
 // Ogg Opus header constants
 const OPUS_HEAD_SIGNATURE = [0x4F, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64]; // "OpusHead"
@@ -41,7 +42,7 @@ export function isWasmOpusSupported() {
  * @param {Object} options - Encoder ayarlari
  * @param {number} options.sampleRate - Input sample rate (default: 48000)
  * @param {number} options.channels - Kanal sayisi (default: 1)
- * @param {number} options.bitRate - Hedef bitrate bps (default: 16000)
+ * @param {number} options.bitrate - Requested average bitrate; 0/omitted keeps encoder default.
  * @param {number} options.encoderApplication - 2048=Voice, 2049=FullBand, 2051=LowDelay (default: 2048)
  * @returns {Promise<OpusRecorderWrapper>}
  */
@@ -52,11 +53,7 @@ export async function createOpusWorker(options = {}) {
     encoderApplication = 2048 // Voice
   } = options;
 
-  // VBR destegi:
-  // - options.bitrate === undefined veya null → VBR (encoderBitRate gonderme)
-  // - options.bitrate === 0 → VBR (encoderBitRate gonderme)
-  // - options.bitrate > 0 → CBR (sabit bitrate)
-  // NOT: Eski default 16000 kaldırıldı - VBR varsayılan olmalı
+  // encoderBitRate requests an average rate; it does not disable variable bitrate.
   const actualBitRate = (options.bitrate === undefined || options.bitrate === null || options.bitrate === 0)
     ? null  // VBR - encoderBitRate gönderilmeyecek
     : options.bitrate;
@@ -73,15 +70,18 @@ export async function createOpusWorker(options = {}) {
     encoderPath: OPUS_ENCODER_WORKER_URL
   };
 
-  // VBR: encoderBitRate gonderilmezse opus-recorder VBR kullanir
-  // actualBitRate === null → VBR modu
-  // actualBitRate > 0 → CBR modu (sabit bitrate)
+  // Omit unspecified bitrate rather than inventing a target.
   if (actualBitRate !== null && actualBitRate > 0) {
     initConfig.encoderBitRate = actualBitRate;
   }
 
   const wrapper = new OpusRecorderWrapper();
-  await wrapper.init(initConfig);
+  try {
+    await wrapper.init(initConfig);
+  } catch (error) {
+    wrapper.terminate();
+    throw error;
+  }
 
   return wrapper;
 }
@@ -104,6 +104,9 @@ export class OpusRecorderWrapper {
     this.config = null;
     this.pages = []; // Collected Ogg pages
     this.totalSamples = 0;
+    this.paddingSamples = 0;
+    this._inputBlockLength = null;
+    this._preSkip = null;
 
     // Callback'ler
     this.onProgress = null;
@@ -115,6 +118,7 @@ export class OpusRecorderWrapper {
     this._finishResolver = null;
     this._initTimeout = null;
     this._finishTimeout = null;
+    this._finishPromise = null;
 
     // Ogg serial number (consistent across all pages)
     this._serialNumber = null;
@@ -156,6 +160,10 @@ export class OpusRecorderWrapper {
         this.config = config;
         this.pages = [];
         this.totalSamples = 0;
+        this.paddingSamples = 0;
+        this._inputBlockLength = null;
+        this._preSkip = null;
+        this._finishPromise = null;
 
         this.worker.onmessage = this._handleMessage.bind(this);
         this.worker.onerror = (e) => {
@@ -188,38 +196,50 @@ export class OpusRecorderWrapper {
 
   /**
    * PCM verisini encode icin gonder
-   * @param {Float32Array} pcmData - Mono PCM samples
+   * @param {Float32Array[]|Float32Array} pcmData - One equally sized buffer per channel.
    */
-  encode(pcmData) {
+  encode(pcmData, validFrames = null) {
     if (!this.worker) {
       throw new Error('Worker not initialized');
     }
+    if (this._finishPromise) throw new Error('Encoding already finished or finishing');
+
+    const buffers = Array.isArray(pcmData) ? pcmData : [pcmData];
+    if (buffers.length !== this.config.numberOfChannels ||
+        buffers.some(buffer => !(buffer instanceof Float32Array) || buffer.length !== buffers[0].length)) {
+      throw new Error('PCM channel count or frame lengths do not match the encoder configuration');
+    }
+    const frameCount = validFrames ?? buffers[0].length;
+    if (!Number.isInteger(frameCount) || frameCount < 0 || frameCount > buffers[0].length) {
+      throw new Error('Invalid captured PCM frame count');
+    }
+    // The bundled stereo interleaver caches its first block size.
+    if (buffers.length > 1 && this._inputBlockLength !== null && buffers[0].length !== this._inputBlockLength) {
+      throw new Error('Stereo Opus input block length must stay constant');
+    }
+    this._inputBlockLength = buffers[0].length;
 
     // opus-recorder format: { command: 'encode', buffers: [channelData, ...] }
-    // Mono icin tek kanal
     this.worker.postMessage({
       command: 'encode',
-      buffers: [pcmData]
+      buffers
     });
 
-    this.totalSamples += pcmData.length;
+    this.totalSamples += frameCount;
+    this.paddingSamples += buffers[0].length - frameCount;
   }
 
   /**
    * Encoding'i bitir ve Blob al
    * @returns {Promise<{blob: Blob, duration: number, pageCount: number}>}
    */
-  async finish() {
-    return new Promise((resolve, reject) => {
+  finish() {
+    if (this._finishPromise) return this._finishPromise;
+    this._finishPromise = new Promise((resolve, reject) => {
       if (!this.worker) {
         reject(new Error('Worker not initialized'));
         return;
       }
-      if (this._finishResolver) {
-        reject(new Error('Opus Worker finish already in progress'));
-        return;
-      }
-
       this._finishResolver = { resolve, reject };
       this._finishTimeout = setTimeout(() => {
         if (!this._finishResolver) return;
@@ -234,13 +254,14 @@ export class OpusRecorderWrapper {
 
       // opus-recorder done komutu
       try {
-        this.worker.postMessage({ command: 'done' });
+        this.worker.postMessage({ command: 'done', sampleCount: this.totalSamples });
       } catch (error) {
         this._clearFinishTimeout();
         this._finishResolver = null;
         reject(error);
       }
     });
+    return this._finishPromise;
   }
 
   /**
@@ -282,7 +303,10 @@ export class OpusRecorderWrapper {
   _createOpusHeadPage() {
     const sampleRate = this.config?.originalSampleRate || 48000;
     const channels = this.config?.numberOfChannels || 1;
-    const preSkip = 312; // Opus encoder delay (~6.5ms @ 48kHz)
+    const preSkip = this._preSkip;
+    if (!Number.isInteger(preSkip) || preSkip < 0 || preSkip > 65535) {
+      throw new Error('Opus encoder delay is unavailable');
+    }
 
     // OpusHead structure (19 bytes)
     const header = new Uint8Array(19);
@@ -459,12 +483,12 @@ export class OpusRecorderWrapper {
    * @private
    */
   async _fixOggStream(audioPages) {
-    if (!audioPages || audioPages.length === 0) {
-      // Bos kayit - sadece header'lar
-      const emptyHead = this._createOpusHeadPage();
-      const emptyTags = this._createOpusTagsPage();
-      return [emptyHead, emptyTags];
-    }
+    // An empty EOS page may follow an already-flushed audio page. EOS belongs
+    // on the page containing the final retained packet, never on that empty page.
+    audioPages = (audioPages || []).filter(page => page[26] > 0);
+    if (!audioPages.length) throw new Error('Opus encoder produced no audio packets');
+    const endGranule = BigInt(Math.round(this.totalSamples * 48000 / this.config.originalSampleRate) + this._preSkip);
+    const frameSamples = this.config.encoderFrameSize * 48;
 
     // opus-recorder'in serial number'ini ilk page'den oku (offset 14-17)
     const firstPage = audioPages[0];
@@ -483,7 +507,32 @@ export class OpusRecorderWrapper {
       const end = Math.min(start + CHUNK_SIZE, audioPages.length);
 
       for (let idx = start; idx < end; idx++) {
-        const newPage = new Uint8Array(audioPages[idx]);
+        let newPage = new Uint8Array(audioPages[idx]);
+        const originalGranule = new DataView(newPage.buffer).getBigInt64(6, true);
+        const isLast = originalGranule >= endGranule;
+        if (isLast) {
+          // Drop whole padding packets before setting the final granule. Merely
+          // rewriting the final emitted page can move time backwards across pages.
+          const count = newPage[26];
+          let complete = 0;
+          for (let segment = 0; segment < count; segment++) if (newPage[27 + segment] < 255) complete++;
+          let packetEnd = originalGranule - BigInt(complete * frameSamples);
+          let dataBytes = 0;
+          for (let segment = 0; segment < count; segment++) {
+            const length = newPage[27 + segment];
+            dataBytes += length;
+            if (length < 255) packetEnd += BigInt(frameSamples);
+            if (length < 255 && packetEnd >= endGranule) {
+              const trimmed = new Uint8Array(27 + segment + 1 + dataBytes);
+              trimmed.set(newPage.subarray(0, 27 + segment + 1));
+              trimmed[26] = segment + 1;
+              trimmed.set(newPage.subarray(27 + count, 27 + count + dataBytes), 27 + segment + 1);
+              newPage = trimmed;
+              break;
+            }
+          }
+          new DataView(newPage.buffer).setBigInt64(6, endGranule, true);
+        }
 
         // Serial number guncelle (offset 14-17)
         newPage[14] = this._serialNumber & 0xFF;
@@ -499,7 +548,8 @@ export class OpusRecorderWrapper {
         newPage[21] = (newPageSeq >> 24) & 0xFF;
 
         // Son page'e EOS flag ekle
-        if (idx === audioPages.length - 1) {
+        newPage[5] &= ~0x04;
+        if (isLast) {
           newPage[5] |= 0x04; // EOS flag
         }
 
@@ -516,6 +566,7 @@ export class OpusRecorderWrapper {
         newPage[25] = (crc >> 24) & 0xFF;
 
         fixedAudioPages.push(newPage);
+        if (isLast) return [opusHeadPage, opusTagsPage, ...fixedAudioPages];
       }
 
       // Yield to event loop between chunks
@@ -524,7 +575,7 @@ export class OpusRecorderWrapper {
       }
     }
 
-    return [opusHeadPage, opusTagsPage, ...fixedAudioPages];
+    throw new Error('Opus encoder did not flush the complete recording');
   }
 
   /**
@@ -570,6 +621,10 @@ export class OpusRecorderWrapper {
 
       switch (data.message) {
         case 'ready':
+          if (!Number.isInteger(data.preSkip) || data.preSkip < 0 || data.preSkip > 65535) {
+            throw new Error('Opus encoder delay is unavailable');
+          }
+          this._preSkip = data.preSkip;
           this._clearInitTimeout();
           if (this._initResolver) {
             this._initResolver.resolve();
@@ -610,6 +665,10 @@ export class OpusRecorderWrapper {
             this._finishResolver.resolve({
               blob,
               duration,
+              sampleCount: this.totalSamples,
+              sampleRate: this.config.originalSampleRate,
+              channels: this.config.numberOfChannels,
+              encoderPaddingFrames: this.paddingSamples,
               pageCount: this.pages.length,
               encoderType: 'wasm'
             });

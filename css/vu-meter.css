@@ -1,174 +1,195 @@
-/* VU Section icinde */
-.vu-section {
-  margin-top: var(--space-lg);
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border-secondary);
+/* Section spacing belongs to panels.css (console-card-section--meters). */
+/* The primary view confirms sound pickup; measurements live in Audio details. */
+.mic-activity-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-ms);
+  color: var(--text-secondary);
+  font-size: var(--fs-base);
 }
 
-.vu-section + .vu-section {
-  border-top: none;
+.mic-activity-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.mic-activity-status[data-state="detected"]::before {
+  background: var(--vu-local);
+}
+
+.mic-activity-meter {
+  height: 32px;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--vu-track);
+}
+
+.mic-activity-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vu-local);
+  transition: width 0.1s ease-out;
+}
+
+.mic-activity-meter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 2px), var(--bg-secondary) calc(25% - 2px), var(--bg-secondary) 25%);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.audio-level-details {
+  padding-bottom: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.vu-section {
+  --vu-color: var(--vu-local);
+  --vu-height: 16px;
 }
 
 .vu-label {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  margin-bottom: 10px;
   font-weight: 500;
-  letter-spacing: 0.2px;
 }
 
-/* VU label yazıları - ortak stil */
-.vu-label span:last-child {
+.vu-reading {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-/* Local VU label - turuncu */
-.vu-section:not(#remoteVuContainer) .vu-label span:last-child {
-  color: var(--text-secondary);
+.vu-unit {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 400;
 }
 
-/* Local signal-dot - turuncu (varsayılan) */
-.vu-section:not(#remoteVuContainer) .signal-dot {
-  background: var(--color-orange);
-  opacity: 0.6;
-}
-
-.vu-section:not(#remoteVuContainer) .signal-dot.active {
-  opacity: 1;
-}
-
-
-/* ========== VU METER - Modern Design ========== */
 .signal-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: all var(--transition-fast);
   flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--vu-color);
+  opacity: 0.6;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
 }
 
 .signal-dot.active {
-  background: var(--color-orange);
-  box-shadow: var(--shadow-accent-glow);
-  animation: pulse-glow 1.2s ease-in-out infinite;
+  opacity: 1;
 }
 
 .signal-dot.clipping {
   background: var(--accent-danger);
-  box-shadow: 0 0 12px rgba(229, 57, 53, 0.8);
-  animation: pulse-danger 0.4s ease-in-out infinite;
+  opacity: 1;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: var(--shadow-accent-glow); }
-  50% { box-shadow: 0 0 16px rgba(var(--color-orange-rgb), 1), 0 0 28px rgba(var(--color-orange-rgb), 0.6); }
-}
-
-@keyframes pulse-danger {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
+/* A continuous, calibrated track reads as an instrument rather than progress. */
 .vu-meter {
-  height: 18px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  height: var(--vu-height);
   position: relative;
-  border: 1px solid var(--border-secondary);
-}
-
-/* Segment marks make changes in level easier to follow. */
-.vu-meter::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(2.5% - 2px), var(--surface-inset) calc(2.5% - 2px), var(--surface-inset) 2.5%);
-  pointer-events: none;
-}
-
-body[data-app-state="idle"] .vu-meter-peak,
-body[data-app-state="preparing"] .vu-meter-peak {
-  visibility: hidden;
+  background: var(--vu-track);
+  border-radius: 4px;
 }
 
 .vu-meter-bar {
-  /* Parametrik gradient renkleri - DRY */
-  --vu-color-start: var(--vu-green);
-  --vu-color-mid: var(--vu-yellow);
-  --vu-color-high: #f97316;
-  --vu-color-max: var(--accent-danger);
-
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg,
-    var(--vu-color-start) 0% 45%,
-    var(--vu-color-mid) 70%,
-    var(--vu-color-high) 88%,
-    var(--vu-color-max) 100%);
-  background-size: var(--meter-width, 500px) 100%;
-  background-position: left;
-  background-repeat: no-repeat;
-  border-radius: 0;
+  background: var(--vu-color);
+  border-radius: inherit;
   transition: width 0.1s ease-out;
-  will-change: width;
-  box-shadow:
-    0 0 8px rgba(34, 197, 94, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .vu-meter-peak {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: -2px;
+  bottom: -2px;
   left: 0;
-  width: 4px;
-  background: white;
-  border-radius: 2px;
-  will-change: transform;
-  box-shadow:
-    0 0 8px rgba(var(--color-white-rgb), 0.9),
-    0 0 16px rgba(var(--color-white-rgb), 0.5),
-    0 0 2px rgba(var(--color-white-rgb), 1);
-  z-index: 3;
+  width: 2px; /* Keep in sync with VU_METER.PEAK_WIDTH. */
+  background: var(--text-primary);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 2;
 }
 
-/* Remote VU Meter - sadece renk override */
-.remote-bar {
-  --vu-color-start: var(--vu-purple);
-  --vu-color-mid: var(--color-purple-light);
-  --vu-color-high: var(--accent-warning);
+.vu-scale {
+  height: 18px;
+  position: relative;
+  margin-top: var(--space-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Remote dot - #remoteVuContainer context ile specificity artırıldı */
-#remoteVuContainer .remote-dot {
-  background: var(--color-purple-light);
-  opacity: 0.6;
+.vu-scale span {
+  position: absolute;
+  transform: translateX(-50%);
 }
 
-#remoteVuContainer .remote-dot.active {
-  background: var(--color-purple-light);
-  box-shadow: var(--shadow-purple-glow);
-  animation: pulse-glow-purple 1.2s ease-in-out infinite;
-  opacity: 1;
+/* Each main line is anchored to its label and extends through the live track. */
+.vu-scale span::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * (var(--vu-height) + var(--space-xs)));
+  left: 50%;
+  width: 1px;
+  height: var(--vu-height);
+  background: rgba(var(--color-white-rgb), 0.38);
+  box-shadow: 1px 0 rgba(var(--color-black-rgb), 0.15);
+  pointer-events: none;
 }
 
-@keyframes pulse-glow-purple {
-  0%, 100% { box-shadow: var(--shadow-purple-glow); }
-  50% { box-shadow: 0 0 16px rgba(var(--color-purple-rgb), 1), 0 0 28px rgba(var(--color-purple-rgb), 0.6); }
+/* Shorter marks identify the four intermediate 12 dB steps. */
+.vu-scale::before {
+  content: '';
+  position: absolute;
+  top: calc(-8px - var(--space-xs));
+  width: 100%;
+  height: 8px;
+  background-size: 1px 100%;
+  background-repeat: no-repeat;
+  /* Four evenly spaced marks without segmenting the continuous fill. */
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-position: 12.5% 0, 37.5% 0, 62.5% 0, 87.5% 0;
+  opacity: 0.65;
+  pointer-events: none;
 }
 
+.vu-scale span:first-child { left: 0; transform: none; }
+.vu-scale span:nth-child(2) { left: 25%; }
+.vu-scale span:nth-child(3) { left: 50%; }
+.vu-scale span:nth-child(4) { left: 75%; }
+.vu-scale span:last-child { right: 0; transform: none; }
+.vu-scale span:first-child::before { left: 0; }
+.vu-scale span:last-child::before { left: auto; right: 0; box-shadow: none; }
+
+/* Visibility belongs to the existing profile/capture lifecycle via hidden. */
 #remoteVuContainer {
-  display: none;
-  margin-top: var(--space-md);
-}
-
-/* Remote VU label - mor */
-#remoteVuContainer .vu-label span:last-child {
-  color: var(--text-secondary);
+  --vu-color: var(--vu-remote);
+  margin-top: var(--space-lg);
 }

@@ -36,37 +36,26 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--gradient-action);
+  background: var(--action-bg);
   border: none;
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-normal);
+  transition: box-shadow var(--transition-normal), transform var(--transition-fast), background var(--transition-normal), opacity var(--transition-fast);
   flex-shrink: 0;
   position: relative;
-  box-shadow: 0 0 15px rgba(var(--color-pink-rgb), 0.3),
-              0 0 30px rgba(var(--color-purple-rgb), 0.2);
+  box-shadow: none;
 }
 
-.btn-play::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--gradient-shine-strong);
-  pointer-events: none;
-}
-
+/* Playback shares the other action controls' hover treatment. */
 .btn-play:hover:not(:disabled) {
-  transform: scale(1.08);
-  box-shadow: 0 0 20px rgba(var(--color-pink-rgb), 0.5),
-              0 0 40px rgba(var(--color-purple-rgb), 0.35);
+  background: var(--action-hover-bg);
 }
 
 .btn-play:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.98);
 }
 
 .btn-play svg {
@@ -111,10 +100,10 @@
 .progress-bar {
   grid-column: 1;
   grid-row: 1;
-  height: 10px;
-  background: rgba(var(--color-white-rgb), 0.04);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-full);
+  height: 8px;
+  background: var(--track-bg);
+  border: 1px solid var(--track-border);
+  border-radius: var(--track-radius);
   cursor: pointer;
   overflow: hidden;
   position: relative;
@@ -124,7 +113,7 @@
 .progress-fill {
   height: 100%;
   width: 100%;
-  background: var(--gradient-action);
+  background: var(--action-bg);
   border-radius: var(--radius-full);
   transform-origin: left center;
   transform: scaleX(0);
@@ -148,22 +137,33 @@
   padding: 0;
 }
 
-.btn-download {
-  grid-column: 2;
+.player-downloads {
+  grid-column: 1 / -1;
   grid-row: 2;
-  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.player-file-details { flex-basis: 100%; color: var(--text-muted); font-size: var(--fs-xs); overflow-wrap: anywhere; margin: 8px 0 4px; }
+
+.btn-download {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
+  min-height: var(--control-h-s);
+  padding: 0 var(--space-ms);
   background: var(--bg-input);
   color: var(--text-primary);
   text-decoration: none;
   border-radius: var(--radius-md);
   font-size: var(--fs-xs);
   font-weight: 500;
-  transition: all var(--transition-fast);
+  line-height: 1.2;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   border: 1px solid var(--border-primary);
   cursor: pointer;
   overflow: hidden;
@@ -173,9 +173,9 @@
 
 .btn-download:hover {
   background: var(--bg-elevated);
-  border-color: var(--color-orange);
-  color: var(--color-orange);
-  box-shadow: 0 0 12px rgba(var(--color-orange-rgb), 0.2);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  box-shadow: 0 0 12px rgba(var(--accent-primary-rgb), 0.2);
 }
 
 .btn-download svg {
@@ -184,18 +184,21 @@
   height: 14px;
 }
 
-.btn-download.disabled,
-.btn-download[aria-disabled="true"] {
-  pointer-events: none;
-  opacity: var(--opacity-disabled);
-}
+/* Devre disi gorunumu a[aria-disabled="true"] (shared.css) */
 
+/* Bos Player durumu (kart icinde tek kullanim: #noRecording) */
 .empty-state {
   color: var(--text-muted);
   font-size: var(--fs-base);
-  text-align: center;
-  padding: var(--space-xl) var(--space-lg);
-  font-style: italic;
-  opacity: 0.6;
-  letter-spacing: 0.3px;
+  padding: var(--space-md) 0;
+}
+
+@media (max-width: 479px) {
+  .player-filename {
+    font-size: var(--fs-sm);
+  }
+
+  .player-time {
+    font-size: var(--fs-xs);
+  }
 }

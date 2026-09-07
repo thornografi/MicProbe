@@ -5,6 +5,7 @@
 
 import { wrapAsyncHandler } from '../modules/utils.js';
 import { EVENTS } from '../modules/constants.js';
+import { createOverlayController } from '../ui/OverlayController.js';
 
 /**
  * Ana buton handler'larini kaydet
@@ -15,11 +16,13 @@ export function setupButtonHandlers(elements, controllers) {
   const { recordToggleBtn, testBtn } = elements;
   const { recordingController, testRecordingFlow } = controllers;
 
-  // Recording toggle
-  recordToggleBtn.onclick = wrapAsyncHandler(
-    () => recordingController.toggle(),
-    'Recording toggle error'
-  );
+  // Recording toggle (sadece varsa - getEl null donebilir, guard'siz atama tum init'i cokertir)
+  if (recordToggleBtn) {
+    recordToggleBtn.onclick = wrapAsyncHandler(
+      () => recordingController.toggle(),
+      'Recording toggle error'
+    );
+  }
 
   // Test toggle (sadece varsa)
   if (testBtn) {
@@ -31,98 +34,48 @@ export function setupButtonHandlers(elements, controllers) {
 }
 
 /**
- * Drawer controller factory (DRY)
- * @param {HTMLElement} drawerEl - Drawer elementi
- * @param {Object} options - { overlay, lockBody }
- * @returns {Object} Drawer controller
+ * Overlay'leri OverlayController sozlesmesine baglar:
+ * - mobil profil cekmecesi: modal (backdrop, inert arka plan, scroll-lock)
+ * - dev console: modal olmayan yan panel (ESC + kapat butonu)
+ * Tek ESC dinleyicisi ve odak yonetimi controller icindedir (bkz. js/ui/OverlayController.js).
+ * @param {Object} elements
+ * @returns {Object} - { profileDrawerCtrl, devConsoleCtrl }
  */
-export function createDrawerController(drawerEl, options = {}) {
-  const { overlay = null, lockBody = false, triggerEl = null } = options;
-  const setExpanded = (expanded) => {
-    triggerEl?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  };
-
-  return {
-    isOpen: () => drawerEl?.classList.contains('open'),
-    open() {
-      drawerEl?.classList.add('open');
-      overlay?.classList.add('open');
-      setExpanded(true);
-      if (lockBody) document.body.style.overflow = 'hidden';
-    },
-    close() {
-      drawerEl?.classList.remove('open');
-      overlay?.classList.remove('open');
-      setExpanded(false);
-      if (lockBody) document.body.style.overflow = '';
-    },
-    toggle() {
-      this.isOpen() ? this.close() : this.open();
-    },
-    bindButtons(...buttons) {
-      buttons.filter(Boolean).forEach(btn => btn.addEventListener('click', () => this.toggle()));
-    },
-    bindCloseButtons(...buttons) {
-      buttons.filter(Boolean).forEach(btn => btn.addEventListener('click', () => this.close()));
-    }
-  };
-}
-
-/**
- * Drawer handler'larini kaydet
- * @param {Object} elements - Drawer elementleri
- * @returns {Object} - { settingsDrawerCtrl, devConsoleCtrl }
- */
-export function setupDrawerHandlers(elements) {
+export function setupOverlays(elements) {
   const {
-    settingsDrawer,
     drawerOverlay,
-    closeDrawerBtn,
     devConsoleDrawer,
     devConsoleToggle,
     closeConsoleBtn,
     profileSidebar,
     profileMenuBtn,
-    navItems = []
+    navItems = [],
+    inertTargets = []
   } = elements;
 
-  // Drawer controller'lar olustur
-  const settingsDrawerCtrl = createDrawerController(settingsDrawer, { overlay: drawerOverlay, lockBody: true });
-  const profileDrawerCtrl = createDrawerController(profileSidebar, { overlay: drawerOverlay, lockBody: true, triggerEl: profileMenuBtn });
-  const devConsoleCtrl = createDrawerController(devConsoleDrawer);
-
-  // Event listener'lari bagla
-  settingsDrawerCtrl.bindCloseButtons(closeDrawerBtn);
-  profileDrawerCtrl.bindButtons(profileMenuBtn);
-  profileDrawerCtrl.bindCloseButtons(...navItems);
-  drawerOverlay?.addEventListener('click', () => {
-    settingsDrawerCtrl.close();
-    profileDrawerCtrl.close();
+  const profileDrawerCtrl = createOverlayController(profileSidebar, {
+    modal: true,
+    backdropEl: drawerOverlay,
+    triggerEl: profileMenuBtn,
+    closeEls: navItems,
+    inertTargets: () => inertTargets,
+    initialFocus: () => profileSidebar?.querySelector('.nav-item.active') || null
   });
-  devConsoleCtrl.bindButtons(devConsoleToggle);
-  devConsoleCtrl.bindCloseButtons(closeConsoleBtn);
+  profileMenuBtn?.addEventListener('click', () => profileDrawerCtrl.toggle());
 
-  return { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl };
-}
+  // Masaustune genisleyince cekmece halini birak (inert/scroll-lock askida kalmasin)
+  const mobileQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 767px)') : null;
+  mobileQuery?.addEventListener?.('change', (event) => { if (!event.matches) profileDrawerCtrl.close('viewport'); });
 
-/**
- * Keyboard handler kaydet (ESC ile drawer kapat)
- * @param {Object} drawerControllers - { settingsDrawerCtrl, devConsoleCtrl }
- * @returns {Function} - Event handler referansi (cleanup icin)
- */
-export function setupKeyboardHandlers(drawerControllers) {
-  const { settingsDrawerCtrl, profileDrawerCtrl, devConsoleCtrl } = drawerControllers;
+  const devConsoleCtrl = createOverlayController(devConsoleDrawer, {
+    modal: false,
+    triggerEl: devConsoleToggle,
+    closeEls: [closeConsoleBtn],
+    initialFocus: () => closeConsoleBtn
+  });
+  devConsoleToggle?.addEventListener('click', () => devConsoleCtrl.toggle());
 
-  function handleEscapeKey(e) {
-    if (e.key === 'Escape') {
-      settingsDrawerCtrl.close();
-      profileDrawerCtrl?.close();
-      devConsoleCtrl.close();
-    }
-  }
-
-  document.addEventListener('keydown', handleEscapeKey);
-  return handleEscapeKey;
+  return { profileDrawerCtrl, devConsoleCtrl };
 }
 
 /**

@@ -3,6 +3,7 @@
  */
 
 const WAV_WORKER_URL = new URL('../../workers/wav-worker.js', import.meta.url).href;
+const WAV_WORKER_TIMEOUT_MS = 30000;
 
 /**
  * Float32 PCM data'yi Int16'ya donustur
@@ -85,22 +86,31 @@ export async function createWavBlob(pcmChunks, sampleRate, channels = 1) {
   // Int16 donusumu + WAV header → Worker thread
   return new Promise((resolve, reject) => {
     const worker = new Worker(WAV_WORKER_URL);
+    const finish = (error, blob) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      if (error) reject(error);
+      else resolve(blob);
+    };
+    const timeout = setTimeout(() => finish(new Error('WAV encoding timed out')), WAV_WORKER_TIMEOUT_MS);
 
     worker.onmessage = (e) => {
       if (e.data.type === 'done') {
-        worker.terminate();
-        resolve(new Blob([e.data.header, e.data.pcmData], { type: 'audio/wav' }));
+        finish(null, new Blob([e.data.header, e.data.pcmData], { type: 'audio/wav' }));
+      } else if (e.data.error) {
+        finish(new Error('WAV Worker error: ' + e.data.error));
       }
     };
 
     worker.onerror = (err) => {
-      worker.terminate();
-      reject(new Error('WAV Worker error: ' + err.message));
+      finish(new Error('WAV Worker error: ' + err.message));
     };
 
-    worker.postMessage(
-      { type: 'createWav', pcmBuffer: mergedFloat32.buffer, sampleRate, channels },
-      [mergedFloat32.buffer]
-    );
+    try {
+      worker.postMessage(
+        { type: 'createWav', pcmBuffer: mergedFloat32.buffer, sampleRate, channels },
+        [mergedFloat32.buffer]
+      );
+    } catch (error) { finish(error); }
   });
 }

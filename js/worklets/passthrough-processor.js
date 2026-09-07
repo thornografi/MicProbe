@@ -11,6 +11,10 @@ class PassthroughProcessor extends AudioWorkletProcessor {
           this.sendPcm = true;
         } else if (e.data.command === 'disablePcm') {
           this.sendPcm = false;
+        } else if (e.data.command === 'stopPcm') {
+          this.sendPcm = false;
+          // Messages on the same port are ordered: all captured blocks precede this ack.
+          this.port.postMessage({ command: 'pcmStopped' });
         }
       } catch (err) {
         console.error('[Worklet] Port message error:', err);

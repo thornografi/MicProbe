@@ -33,6 +33,18 @@ export default class BasePipeline {
 
     // WASM Opus encoder (ScriptProcessor ve Worklet icin)
     this.opusWorker = null;
+    this.isCapturing = false;
+    this.capturedFrames = 0;
+    this.onCaptureError = null;
+  }
+
+  startCapture() {
+    this.isCapturing = true;
+  }
+
+  stopCapture() {
+    this.isCapturing = false;
+    if (this.nodes.processor) this.nodes.processor.onaudioprocess = null;
   }
 
   /**
@@ -69,6 +81,7 @@ export default class BasePipeline {
    * @returns {Promise<void>}
    */
   async cleanup() {
+    this.isCapturing = false;
     // ScriptProcessor onaudioprocess temizligi (disconnect oncesi)
     if (this.nodes.processor?.onaudioprocess) {
       this.nodes.processor.onaudioprocess = null;
@@ -116,7 +129,7 @@ export default class BasePipeline {
   /**
    * WASM Opus worker'i olustur ve event handler'lari bagla
    * DRY: ScriptProcessor ve Worklet ayni kodu kullanir
-   * @param {number} mediaBitrate - Hedef bitrate (0 ise VBR/default 16000)
+   * @param {number} mediaBitrate - Requested average bitrate; 0 keeps encoder default.
    * @param {number} channels - Kanal sayisi (1=Mono, 2=Stereo, default: 1)
    * @returns {Promise<number>} - Kullanilan bitrate
    */
@@ -125,9 +138,8 @@ export default class BasePipeline {
       throw new Error('WASM Opus not supported');
     }
 
-    // VBR destegi: mediaBitrate === 0 ise VBR (opus-recorder varsayilani kullanir)
-    // mediaBitrate > 0 ise CBR (sabit bitrate)
-    const opusBitrate = mediaBitrate === 0 ? undefined : (mediaBitrate || 16000);
+    // A requested bitrate does not switch the encoder into constant bitrate mode.
+    const opusBitrate = mediaBitrate > 0 ? mediaBitrate : undefined;
     this.opusWorker = await createOpusWorker({
       sampleRate: this.audioContext.sampleRate,
       channels: channels,
@@ -141,6 +153,7 @@ export default class BasePipeline {
 
     this.opusWorker.onError = (error) => {
       log.error(`Opus encoder error (${this.type})`, { error: error.message });
+      this.onCaptureError?.(error);
     };
 
     return opusBitrate;

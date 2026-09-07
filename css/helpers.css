@@ -1,17 +1,6 @@
-/* ========== SVG SPRITE ========== */
-/* display:none kullanilmaz — gradient/filter referanslarini bozabilir */
-.svg-sprite {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-}
-
 /* ========== UI HELPERS ========== */
-.ui-disabled {
-  opacity: var(--opacity-disabled);
-  pointer-events: none;
-}
+/* .svg-sprite kurali variables.css'te: landing ilk boyasinda da 0x0 olmali (CLS).
+   Devre disi gorunumu: native :disabled / a[aria-disabled] / inert (shared.css). */
 
 /* .hidden utility class is in variables.css - DRY */
 
@@ -22,52 +11,15 @@
   display: none;
 }
 
-/* Kilitli ayarlar icin stil - profil tarafindan zorunlu tutulan ayarlar */
-/* Container bazli kilitli ayar gosterimi (drawer icinde) */
-.mode-container.setting-locked,
-.loopback-toggle-container.setting-locked {
-  position: relative;
-  opacity: 0.7;
-}
-
-/* Kilit emojisi kaldirildi - sadece opacity ile gosterim */
-
-.mode-container.setting-locked .segment-btn,
-.mode-container.setting-locked .toggle-slider,
-.mode-container.setting-locked input,
-.loopback-toggle-container.setting-locked .toggle-slider,
-.loopback-toggle-container.setting-locked input {
-  pointer-events: none;
-  cursor: not-allowed;
-}
-
-/* Label bazli kilitli ayar gosterimi - sadece opacity */
-.setting-locked {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
-/* Belirli bir secenek (radio/option) icin disabled gosterimi */
-label.option-disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-label.option-disabled::after {
-  content: ' (N/A)';
-  font-size: 0.75em;
-  color: var(--text-secondary);
-}
-
 /* ========== GLOBAL UI DISABLE (WHITELIST APPROACH) ========== */
 /* Capture sirasinda TUM interactive elementler disabled
    Sadece .always-active class'i olanlar aktif kalir (Stop butonu vb.)
    Yeni element eklendiginde OTOMATIK disabled olur - kod degisikligi GEREKMEZ */
 
-body[data-app-state="recording"],
-body[data-app-state="testing"],
-body[data-app-state="preparing"] {
+/* Kapsam: yalniz app kabugu (header + rail + calisma alani). Overlay'ler (rapor dialog'u, account
+   dialog'u, dev console, toast) ve landing bu kilidin DISINDADIR - kayit sirasinda popup kapatilabilir.
+   idle disindaki her makine fazi (preparing/recording/testing/analysing) kilitler. */
+body[data-app-state]:not([data-app-state="idle"]) :is(.app-header, .app-layout) {
   /* Tum interactive elementler disabled (whitelist haric) */
   button:not(.always-active),
   a:not(.always-active),
@@ -76,7 +28,6 @@ body[data-app-state="preparing"] {
   [role="button"]:not(.always-active),
   .clickable:not(.always-active),
   .nav-item:not(.always-active),
-  .scenario-card:not(.always-active),
   .custom-settings-toggle:not(.always-active) {
     pointer-events: none !important;
     opacity: var(--opacity-disabled);
@@ -106,9 +57,9 @@ body[data-app-state="preparing"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #app-view *,
-  #app-view *::before,
-  #app-view *::after {
+  body.app-mode *,
+  body.app-mode *::before,
+  body.app-mode *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

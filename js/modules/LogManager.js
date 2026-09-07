@@ -11,6 +11,8 @@
  */
 import eventBus from './EventBus.js';
 import { ENCODER_TYPES, IS_DEV, LOG, EVENTS } from './constants.js';
+// Spesifik submodul importu (barrel degil): utils/index.js log.js'i de ceker, dongu riskini onler
+import { downloadBlob } from './utils/download.js';
 
 const LOG_CATEGORIES = {
   ERROR: 'error',
@@ -160,6 +162,7 @@ class LogManager {
     eventBus.on(EVENTS.STREAM_STARTED, (stream) => {
       const track = stream?.getAudioTracks()[0];
       this.log('stream', 'Stream started', {
+        eventType: EVENTS.STREAM_STARTED,
         trackId: track?.id,
         trackLabel: track?.label,
         trackSettings: track?.getSettings()
@@ -167,7 +170,7 @@ class LogManager {
     });
 
     eventBus.on(EVENTS.STREAM_STOPPED, () => {
-      this.log('stream', 'Stream stopped');
+      this.log('stream', 'Stream stopped', { eventType: EVENTS.STREAM_STOPPED });
     });
 
     // Recorder event'leri (encoder-agnostic)
@@ -178,7 +181,7 @@ class LogManager {
         : encoder === ENCODER_TYPES.PCM_WAV
           ? 'PCM/WAV encoder started'
           : 'MediaRecorder started';
-      this.log('recorder', msg, details || null);
+      this.log('recorder', msg, { ...details, eventType: EVENTS.RECORDER_STARTED });
     });
 
     eventBus.on(EVENTS.RECORDER_STOPPED, (details) => {
@@ -188,7 +191,7 @@ class LogManager {
         : encoder === ENCODER_TYPES.PCM_WAV
           ? 'PCM/WAV encoder stopped'
           : 'MediaRecorder stopped';
-      this.log('recorder', msg, details || null);
+      this.log('recorder', msg, { ...details, eventType: EVENTS.RECORDER_STOPPED });
     });
 
     eventBus.on(EVENTS.RECORDING_COMPLETED, (data) => {
@@ -361,17 +364,16 @@ class LogManager {
 
     for (const entry of entries) {
       const category = entry?.category;
-      const message = entry?.message;
       const details = entry?.details || {};
 
       if (category === 'webaudio' && details?.setting === 'webAudioEnabled') {
         lastWebAudioEnabled = !!details.value;
       }
 
-      if (category === 'stream' && message === 'Stream started') {
+      if (category === 'stream' && details.eventType === EVENTS.STREAM_STARTED) {
         streamBalance += 1;
       }
-      if (category === 'stream' && message === 'Stream stopped') {
+      if (category === 'stream' && details.eventType === EVENTS.STREAM_STOPPED) {
         streamBalance -= 1;
         if (streamBalance < 0) {
           addIssue('warn', 'STREAM_BALANCE_NEGATIVE', 'Stream stopped count exceeds started count', {
@@ -381,15 +383,11 @@ class LogManager {
         }
       }
 
-      // Tum encoder tiplerine gore kayit baslangici tespit et
-      const recorderStartMessages = ['MediaRecorder started', 'WASM Opus encoder started', 'PCM/WAV encoder started'];
-      if (category === 'recorder' && recorderStartMessages.includes(message)) {
+      if (category === 'recorder' && details.eventType === EVENTS.RECORDER_STARTED) {
         recordingActive = true;
       }
 
-      // Tum encoder tiplerine gore kayit bitisi tespit et
-      const recorderStopMessages = ['MediaRecorder stopped', 'WASM Opus encoder stopped', 'PCM/WAV encoder stopped'];
-      if (category === 'recorder' && recorderStopMessages.includes(message)) {
+      if (category === 'recorder' && details.eventType === EVENTS.RECORDER_STOPPED) {
         recordingActive = false;
       }
     }
@@ -422,14 +420,7 @@ class LogManager {
    */
   _downloadJSON(data, filename) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
   }
 
   // Loglari JSON olarak export et

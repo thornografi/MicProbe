@@ -4,15 +4,17 @@
  * Bagimliliklar uygulama tarafindan dogrudan verilir.
  *
  * Akis: kayit (7sn konusma) -> stopRecording -> startAnalysing (offline deep analiz +
- * gercek progress bar) -> TEST_COMPLETED -> rapor. Playback (geri dinletme) kaldirildi;
- * yerini kullanicinin duydugu "Analysing" fazi aldi.
+ * gercek progress bar) -> playback yukle (Player.load) -> TEST_COMPLETED -> rapor.
+ * Kayit, analiz bittikten sonra sonuc olarak dinlenebilir (playback karti acilir).
  */
 import eventBus from '../modules/EventBus.js';
 import loopbackManager from '../modules/LoopbackManager.js';
 import deepAnalysisEngine from '../modules/DeepAnalysisEngine.js';
-import { TEST, EVENTS, DEEP_ANALYSIS } from '../modules/constants.js';
-import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState, getStreamErrorMessage } from '../modules/utils.js';
+import { TEST, EVENTS, PIPELINE_TYPES, ENCODER_TYPES } from '../modules/constants.js';
+import { completeRunSnapshot } from '../modules/RunSnapshot.js';
+import { stopStreamTracks, createMediaRecorder, createAndPlayActivatorAudio, cleanupActivatorAudio, log, beginPreparing, endPreparing, resetState, getStreamErrorMessage, formatTimestampYYMMDDHHMMSS, getExtensionForMimeType } from '../modules/utils.js';
 import { requestStream } from '../modules/StreamHelper.js';
+import CaptureGuide from '../modules/CaptureGuide.js';
 
 class TestRecordingFlow {
   /**
@@ -25,13 +27,9 @@ class TestRecordingFlow {
     // Test state
     this.testTimerId = null;
     this.testCountdownInterval = null;
-    this.testMediaRecorder = null;
-    this.testAudioBlob = null;
-    this.testActivatorAudio = null;  // Chrome/WebRTC activator
     this.testPhase = null;  // 'recording' | 'stopping' | 'analysing' | null
-    this.testChunks = [];
+    this._run = null;
   }
-
 
   /**
    * Test toggle (test butonuna tiklandiginda)
@@ -45,8 +43,7 @@ class TestRecordingFlow {
       // Erken durdur -> analize gec (iptal degil)
       await this.stopRecording();
     } else if (this.testPhase === 'stopping' || this.testPhase === 'analysing') {
-      // Durdurma/analiz async surecinde - tiklamayi yut (re-entry onleme; analiz kisa surer,
-      // MAX_WAIT_MS butcesi asilsa bile startAnalysing raporu yine acar)
+      // Finishing a capture and analysing its file share one stop operation.
       return;
     } else {
       await this.startRecording();
@@ -59,6 +56,13 @@ class TestRecordingFlow {
   async startRecording() {
     const constraints = this.deps.getConstraints();
     const opusBitrate = this.deps.getOpusBitrate();
+    const snapshot = this.deps.createRunSnapshot();
+    const run = { snapshot, cancelled: false, finished: false, stream: null, recorder: null, activator: null, chunks: [], analysis: null };
+    run.guide = new CaptureGuide(snapshot);
+    this._run = run;
+    this.runSnapshot = snapshot;
+    this.analysis = null;
+    this._stopPromise = null;
 
     log.stream('Test recording starting', { constraints, opusBitrate, duration: TEST.DURATION_MS });
     eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
@@ -71,40 +75,71 @@ class TestRecordingFlow {
       beginPreparing(this.deps, 'test-recording');
 
       // Mikrofon al
-      this.localStream = await requestStream(constraints);
+      run.stream = await requestStream(constraints);
+      if (!this._isCurrent(run)) { this._disposeRunResources(run); return; }
+      this.localStream = run.stream;
+      this._assertInputAlive(run);
+      run.onTrackEnded = () => {
+        if (!this._isCurrent(run)) return;
+        if (this.testPhase !== 'recording') {
+          this._failCapture(run, new Error('Microphone disconnected before the test could start'));
+          return;
+        }
+        eventBus.emit(EVENTS.UI_MESSAGE, { message: 'Microphone disconnected. Finishing the captured test sample.', tone: 'warning' });
+        this.stopRecording().catch(err => log.error('Test device-ended stop failed', { error: err.message }));
+      };
+      run.stream.getAudioTracks().forEach(track => track.addEventListener('ended', run.onTrackEnded));
 
       // DRY: LoopbackManager.setup() dogrudan kullan
       // Test alici stream'i kaydeder; canli hoparlor cikisi yoktur.
-      const remoteStream = await loopbackManager.setup(this.localStream, {
-        useWebAudio: this.deps.isWebAudioEnabled(),
-        opusBitrate
+      const remoteStream = await loopbackManager.setup(run.stream, {
+        useWebAudio: snapshot.requestedSettings.pipeline !== PIPELINE_TYPES.DIRECT,
+        opusBitrate,
+        pipeline: snapshot.requestedSettings.pipeline,
+        runId: snapshot.runId
+      });
+      if (!this._isCurrent(run)) { this._disposeRunResources(run); return; }
+      this._assertInputAlive(run);
+      this.runSnapshot = run.snapshot = completeRunSnapshot(snapshot, run.stream, {
+        pipeline: loopbackManager.actualPipeline, encoder: null,
+        audioContext: loopbackManager.audioCtx ? {
+          supported: true, sampleRate: loopbackManager.audioCtx.sampleRate,
+          baseLatencyMs: loopbackManager.audioCtx.baseLatency * 1000,
+          outputLatencyMs: loopbackManager.audioCtx.outputLatency == null ? null : loopbackManager.audioCtx.outputLatency * 1000
+        } : null
       });
 
       // DRY: Chrome/WebRTC activator audio helper kullan
-      this.testActivatorAudio = await createAndPlayActivatorAudio(remoteStream, 'Test');
+      run.activator = await createAndPlayActivatorAudio(remoteStream, 'Test');
+      if (!this._isCurrent(run)) { this._disposeRunResources(run); return; }
+      this._assertInputAlive(run);
 
       // DRY: createMediaRecorder helper kullan
-      this.testChunks = [];
-      this.testMediaRecorder = createMediaRecorder(remoteStream);
-      this.testMediaRecorder.ondataavailable = (e) => {
-        if (e.data.size) this.testChunks.push(e.data);
+      const preparation = run.guide.prepare(run.stream);
+      eventBus.emit(EVENTS.STREAM_STARTED, this.localStream);
+      eventBus.emit(EVENTS.LOOPBACK_REMOTE_STREAM, remoteStream);
+      if (!await preparation || !this._isCurrent(run)) return;
+      this._assertInputAlive(run);
+      run.recorder = createMediaRecorder(remoteStream);
+      run.recorder.ondataavailable = (e) => {
+        if (e.data.size) run.chunks.push(e.data);
       };
-      this.testMediaRecorder.start();
+      run.recorder.onerror = event => this._failCapture(run, event.error || new Error('Audio encoder stopped unexpectedly'));
+      run.recorder.start();
+      run.startedAt = performance.now();
 
       // State guncelle - mode zaten set edildi, sadece preparing'i kapat
       this.testPhase = 'recording';
       endPreparing(this.deps);
 
-      // VU Meter icin event'ler
-      eventBus.emit(EVENTS.STREAM_STARTED, this.localStream);
-      eventBus.emit(EVENTS.LOOPBACK_REMOTE_STREAM, remoteStream);
-
       // Timer baslat
-      this._startTimer();
-      eventBus.emit(EVENTS.TEST_RECORDING_STARTED, { durationMs: TEST.DURATION_MS });
-      log.stream(`Test recording started (${TEST.DURATION_MS / 1000}s)`);
+      run.guide.start(run.startedAt, () => this.stopRecording().catch(err => log.error('Guided test stop failed', { error: err.message })));
+      if (!run.guide.guided) this._startTimer(run);
+      eventBus.emit(EVENTS.TEST_RECORDING_STARTED, { durationMs: run.guide.durationMs, runSnapshot: this.runSnapshot });
+      log.stream(`Test recording started (${run.guide.durationMs / 1000}s)`);
 
     } catch (err) {
+      if (!this._isCurrent(run)) { this._disposeRunResources(run); return; }
       const userMessage = getStreamErrorMessage(err);
       log.error('Test recording failed to start', { error: err.message });
       eventBus.emit(EVENTS.UI_MESSAGE, {
@@ -113,86 +148,106 @@ class TestRecordingFlow {
       });
       // Preparing flag'i temizle (UI "Preparing" durumunda takilmasin)
       this.deps.setIsPreparing(false);
-      await this._cleanup();
+      await this._finish(EVENTS.TEST_CANCELLED, run);
     }
   }
 
   /**
    * Test kaydini durdur ve playback'e gec
    */
-  async stopRecording() {
+  stopRecording() {
+    if (this._stopPromise) return this._stopPromise;
+    if (this.testPhase !== 'recording') return Promise.resolve();
+    this._stopPromise = this._stopRecording(this._run);
+    return this._stopPromise;
+  }
+
+  async _stopRecording(run) {
+    if (!this._isCurrent(run)) return;
     // GUARD: stopRecording async surecindeyken (timer fire + erken tiklama yarisi)
     // ikinci kez girilmesin - aksi halde onstop overwrite olur ve ilk promise asla resolve olmaz
     if (this.testPhase === 'stopping') return;
     this.testPhase = 'stopping';
 
     this._clearTimer();
+    run.durationMs = performance.now() - run.startedAt;
+    run.guidedSegments = run.guide.finish(run.durationMs);
 
     log.stream('Test recording stopping', {});
 
     try {
       // onstop handler'i ONCE set et, SONRA stop() cagir (race condition fix)
       // 'inactive' recorder onstop tetiklemez (USB cihaz cekilmesi/ICE kopmasi) -> deadlock onlemek icin direkt resolve
-      const recorder = this.testMediaRecorder;
-      const stopPromise = new Promise(resolve => {
+      const recorder = run.recorder;
+      const stopPromise = new Promise((resolve, reject) => {
+        run.resolveStop = () => { clearTimeout(run.stopTimeout); run.stopTimeout = null; resolve(); };
         if (!recorder || recorder.state === 'inactive') {
-          this.testAudioBlob = this.testChunks.length
-            ? new Blob(this.testChunks, { type: recorder?.mimeType || 'audio/webm' })
-            : null;
-          log.recorder(`MediaRecorder already inactive: ${this.testChunks.length} chunk`);
-          resolve();
+          this._completeRecording(run);
+          log.recorder(`MediaRecorder already inactive: ${run.chunks.length} chunk`);
+          run.resolveStop();
           return;
         }
+        run.stopTimeout = setTimeout(() => reject(new Error('Test recorder completion timed out')), TEST.STOP_WAIT_MS);
         recorder.onstop = () => {
-          this.testAudioBlob = new Blob(this.testChunks, { type: recorder.mimeType || 'audio/webm' });
-          log.recorder(`MediaRecorder onstop: ${this.testChunks.length} chunk, ${this.testAudioBlob.size} bytes`);
-          resolve();
+          this._completeRecording(run);
+          log.recorder(`MediaRecorder onstop: ${run.chunks.length} chunk, ${run.blob?.size || 0} bytes`);
+          run.resolveStop?.();
         };
         recorder.stop();
       });
 
+      this._detachTrackEnded(run);
+      stopStreamTracks(run.stream);
+      eventBus.emit(EVENTS.STREAM_STOPPED);
+      eventBus.emit(EVENTS.TEST_RECORDING_STOPPED, { runSnapshot: run.snapshot, durationMs: run.durationMs });
+
       // onstop'u bekle
       await stopPromise;
-
-      // VU Meter event'leri
-      eventBus.emit(EVENTS.STREAM_STOPPED);
+      run.resolveStop = null;
+      if (!this._isCurrent(run)) return;
 
       // DRY: LoopbackManager.cleanup() dogrudan kullan
       await loopbackManager.cleanup();
-      stopStreamTracks(this.localStream);
+      if (!this._isCurrent(run)) return;
+      stopStreamTracks(run.stream);
       this.localStream = null;
 
-      eventBus.emit(EVENTS.TEST_RECORDING_STOPPED);
       log.stream('Test recording complete, playback starting...');
     } catch (err) {
+      if (!this._isCurrent(run)) return;
       // Kayit sonlandirma hatasi -> raporsuz temiz cikis (sayfa kilitlenmesin)
       log.error('Test stopRecording error', { error: err.message });
       eventBus.emit(EVENTS.UI_MESSAGE, {
         message: 'Test could not finish cleanly. Try running the test again.',
         tone: 'error'
       });
-      await this._finish(EVENTS.TEST_CANCELLED);
+      await this._finish(EVENTS.TEST_CANCELLED, run);
       return;
+    } finally {
+      clearTimeout(run.stopTimeout);
+      run.stopTimeout = null;
     }
 
     // Analize gec (kendi hata yonetimi var)
-    await this.startAnalysing();
+    await this.startAnalysing(run);
   }
 
   /**
-   * Test analiz fazi (playback yerine): offline deep analiz + gercek progress bar.
+   * Test analiz fazi: offline deep analiz + gercek progress bar.
    * Kayit bittikten sonra buffer decode edilip yuksek cozunurluklu spektral analiz yapilir;
-   * progress bar bu gercek isi yansitir, tamamlaninca rapor acilir.
+   * progress bar bu gercek isi yansitir. Analiz tamamlaninca kayit Player'a yuklenir
+   * (sonuc olarak dinlenebilir) ve rapor acilir.
    */
-  async startAnalysing() {
+  async startAnalysing(run = this._run) {
+    if (!this._isCurrent(run)) return;
     // Bos kayit -> raporsuz iptal (eski playback blob guard'i ile ayni davranis)
-    if (!this.testAudioBlob || this.testAudioBlob.size === 0) {
-      log.error('Test analysing skipped: no audio data', { blobExists: !!this.testAudioBlob, blobSize: this.testAudioBlob?.size || 0, chunksCount: this.testChunks?.length || 0 });
+    if (!run.blob || run.blob.size === 0) {
+      log.error('Test analysing skipped: no audio data', { blobExists: !!run.blob, blobSize: run.blob?.size || 0, chunksCount: run.chunks.length });
       eventBus.emit(EVENTS.UI_MESSAGE, {
         message: 'No audio was captured. Check the selected microphone and try the test again.',
         tone: 'error'
       });
-      await this._finish(EVENTS.TEST_CANCELLED);
+      await this._finish(EVENTS.TEST_CANCELLED, run);
       return;
     }
 
@@ -200,56 +255,73 @@ class TestRecordingFlow {
     this.deps.setCurrentMode('test-analysing');
     this.deps.uiStateManager?.updateButtonStates();
     eventBus.emit(EVENTS.TEST_ANALYSING_STARTED);
-    log.stream('Test analysing starting', { blobSize: this.testAudioBlob.size, blobType: this.testAudioBlob.type });
+    log.stream('Test analysing starting', { blobSize: run.blob.size, blobType: run.blob.type });
 
-    // Blob referansini yakala (_cleanup testAudioBlob'u null'lar; deepAnalysisEngine kendi referansini tutar)
-    const blob = this.testAudioBlob;
+    // Analiz ve playback ayni calismanin kayit dosyasini kullanir.
+    const blob = run.blob;
+    const runId = run.snapshot.runId;
 
     try {
-      const analyzePromise = deepAnalysisEngine.analyze(blob, {
+      run.analysis = await deepAnalysisEngine.analyze(blob, {
         source: 'test',
-        onProgress: (ratio) => eventBus.emit(EVENTS.TEST_ANALYSING_PROGRESS, { ratio })
+        runId,
+        guidedSegments: run.guidedSegments,
+        onProgress: (ratio) => {
+          if (this._isCurrent(run)) eventBus.emit(EVENTS.TEST_ANALYSING_PROGRESS, { ratio });
+        }
       });
-
-      // Guvenlik butcesi: analiz asilirsa (worker takilirsa) rapor yine acilir (degrade)
-      await Promise.race([
-        analyzePromise,
-        new Promise(resolve => setTimeout(resolve, DEEP_ANALYSIS.MAX_WAIT_MS))
-      ]);
     } catch (err) {
-      // Analiz hatasi raporu iptal ETMEZ — audioMetrics zaten kayit sirasinda toplandi
+      // A failed file analysis still produces an explicit unavailable-data report.
       log.error('Test analysing error', { error: err.message });
+      run.analysis = { status: 'failed', runId, reason: err.message };
     }
+    if (!this._isCurrent(run)) return;
+    this.analysis = run.analysis;
 
     // Bar'i tamamla ve raporu ac
     eventBus.emit(EVENTS.TEST_ANALYSING_PROGRESS, { ratio: 1 });
-    await this._finish(EVENTS.TEST_COMPLETED);
+
+    // Kaydi sonuc olarak Player'a yukle, sonra calismayi tamamla.
+    // Call sonucu TEST_COMPLETED ile ayni run'a ait analiz ve dosyayi birlestirir.
+    // RECORDING_COMPLETED ayri record analizi baslatacagi icin burada yayinlanmaz.
+    // Playback keeps the measured capture duration, including early stops.
+    const mimeType = run.recording?.mimeType || null;
+    this.deps.player?.load({
+      blob,
+      mimeType,
+      filename: `test_${formatTimestampYYMMDDHHMMSS()}.${getExtensionForMimeType(mimeType, 'bin')}`,
+      durationMs: run.durationMs,
+      runSnapshot: run.snapshot
+    });
+
+    await this._finish(EVENTS.TEST_COMPLETED, run);
   }
 
   /**
    * Test iptal (kayit sirasinda)
    */
   async cancel() {
+    const run = this._run;
+    if (!run || run.finished || run.cancelled) return;
+    run.cancelled = true;
+    deepAnalysisEngine.cancel(run.snapshot.runId);
     this._clearTimer();
 
     log.stream('Test cancelling', {});
 
     try {
       // null-safe: recorder yoksa stop() cagirma (aksi halde throw)
-      if (this.testMediaRecorder && this.testMediaRecorder.state !== 'inactive') {
-        this.testMediaRecorder.stop();
+      if (run.recorder && run.recorder.state !== 'inactive') {
+        run.recorder.stop();
       }
 
       // DRY: Mevcut cleanup fonksiyonlari kullan
       eventBus.emit(EVENTS.STREAM_STOPPED);
-      await loopbackManager.cleanup();
-      stopStreamTracks(this.localStream);
-      this.localStream = null;
     } catch (err) {
       log.error('Test cancel error', { error: err.message });
     } finally {
       log.stream('Test cancelled');
-      await this._finish(EVENTS.TEST_CANCELLED);
+      await this._finish(EVENTS.TEST_CANCELLED, run);
     }
   }
 
@@ -257,7 +329,7 @@ class TestRecordingFlow {
    * Test timer baslat
    * @private
    */
-  _startTimer() {
+  _startTimer(run = this._run) {
     let remaining = TEST.DURATION_MS;
 
     // Ilk countdown
@@ -265,6 +337,7 @@ class TestRecordingFlow {
 
     // Countdown interval (her saniye)
     this.testCountdownInterval = setInterval(() => {
+      if (!this._isCurrent(run)) return;
       remaining -= 1000;
       const remainingSec = Math.ceil(remaining / 1000);
       eventBus.emit(EVENTS.TEST_COUNTDOWN, { remainingSec: remainingSec > 0 ? remainingSec : 0 });
@@ -273,6 +346,7 @@ class TestRecordingFlow {
     // Ana timer (7 sn sonra dur)
     // Fire-and-forget: wrapAsyncHandler kapsaminin DISINDA -> .catch() zorunlu (unhandled rejection + UI kilidi onleme)
     this.testTimerId = setTimeout(() => {
+      if (!this._isCurrent(run)) return;
       this.stopRecording().catch(err => log.error('Test auto-stop failed', { error: err.message }));
     }, TEST.DURATION_MS);
   }
@@ -296,8 +370,12 @@ class TestRecordingFlow {
    * Test kaynaklarini temizle
    * @private
    */
-  async _cleanup() {
-    this._clearTimer();
+  async _cleanup(run = this._run) {
+    if (!run) return;
+    const ownsRun = this._run === run;
+    if (ownsRun) this._clearTimer();
+    this._detachTrackEnded(run);
+    this._disposeRunResources(run);
 
     // Idempotent loopback + mikrofon temizligi - hata/erken cikis yollarinda sizinti onleme.
     // Normal stopRecording yolunda zaten temizlenmis olur; tum cagrilar null-safe oldugundan tekrar zararsiz.
@@ -305,20 +383,13 @@ class TestRecordingFlow {
     // Aksi halde document.body.dataset.appState 'testing'de takilir ve helpers.css tum sayfayi kilitler
     // (RecordingController.stop() ile ayni try/catch/finally deseni).
     try {
-      await loopbackManager.cleanup();
-      stopStreamTracks(this.localStream);
+      if (ownsRun) await loopbackManager.cleanup();
     } catch (err) {
       log.error('Test cleanup error', { error: err.message });
     } finally {
+      run.finished = true;
+      if (this._run !== run) return;
       this.localStream = null;
-      this.testMediaRecorder = null;
-      this.testChunks = [];
-      this.testAudioBlob = null;
-
-      // DRY: Activator audio temizle
-      cleanupActivatorAudio(this.testActivatorAudio);
-      this.testActivatorAudio = null;
-
       this.testPhase = null;
       resetState(this.deps);
     }
@@ -331,9 +402,77 @@ class TestRecordingFlow {
    * @param {string} eventName - EVENTS.TEST_COMPLETED | TEST_CANCELLED
    * @private
    */
-  async _finish(eventName) {
-    await this._cleanup();
-    eventBus.emit(eventName);
+  async _finish(eventName, run = this._run) {
+    if (!run) return;
+    const payload = { runSnapshot: run.snapshot, analysis: run.analysis, recording: run.recording || null };
+    await this._cleanup(run);
+    if (this._run === run) eventBus.emit(eventName, payload);
+  }
+
+  _isCurrent(run) {
+    return !!run && this._run === run && !run.cancelled && !run.finished;
+  }
+
+  // The saved receiver stream is encoded again. These API values describe that
+  // file encoder, not the negotiated RTP codec or measured network throughput.
+  _completeRecording(run) {
+    const recorderMime = run.recorder?.mimeType || null;
+    const mimeType = recorderMime || run.chunks.find(chunk => chunk.type)?.type || null;
+    const reportedBitrate = run.recorder?.audioBitsPerSecond;
+    run.blob = run.chunks.length ? new Blob(run.chunks, { type: mimeType || '' }) : null;
+    run.recording = Object.freeze({
+      durationMs: run.durationMs,
+      blobSize: run.blob?.size ?? null,
+      mimeType,
+      mimeTypeSource: recorderMime ? 'mediarecorder' : mimeType ? 'dataavailable' : null,
+      pipeline: run.snapshot.pipeline ?? null,
+      encoder: ENCODER_TYPES.MEDIARECORDER,
+      encoderReportedBitrate: Number.isFinite(reportedBitrate) && reportedBitrate > 0 ? reportedBitrate : null,
+      durationSource: 'capture-clock',
+      guidedSegments: run.guidedSegments || null
+    });
+  }
+
+  _assertInputAlive(run) {
+    const tracks = run.stream.getAudioTracks();
+    if (!tracks.length || tracks.some(track => track.readyState === 'ended')) {
+      throw new Error('Microphone disconnected before the test could start');
+    }
+  }
+
+  _failCapture(run, error) {
+    if (!this._isCurrent(run)) return;
+    log.error('Test capture failed', { error: error.message, runId: run.snapshot.runId });
+    eventBus.emit(EVENTS.UI_MESSAGE, {
+      message: `Test recording failed: ${error.message}. Check microphone access, then try Test again.`, tone: 'error'
+    });
+    void this.cancel().catch(err => log.error('Test error cleanup failed', { error: err.message }));
+  }
+
+  _detachTrackEnded(run = this._run) {
+    if (!run?.onTrackEnded) return;
+    run.stream?.getAudioTracks().forEach(track => track.removeEventListener('ended', run.onTrackEnded));
+    run.onTrackEnded = null;
+  }
+
+  _disposeRunResources(run) {
+    run.guide?.cancel();
+    clearTimeout(run.stopTimeout);
+    run.stopTimeout = null;
+    this._detachTrackEnded(run);
+    stopStreamTracks(run.stream);
+    cleanupActivatorAudio(run.activator);
+    run.activator = null;
+    if (run.recorder) {
+      run.recorder.ondataavailable = null;
+      run.recorder.onstop = null;
+      run.recorder.onerror = null;
+      if (run.recorder.state !== 'inactive') {
+        try { run.recorder.stop(); } catch (error) { log.error('Test recorder cleanup failed', { error: error.message }); }
+      }
+    }
+    run.resolveStop?.();
+    run.resolveStop = null;
   }
 }
 

@@ -7,7 +7,7 @@
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
 import { AUDIO, VU_METER, EVENTS } from './constants.js';
-import { log, disconnectNodes, createAudioContext, createAnalyserNode, toggleDisplay } from './utils.js';
+import { log, disconnectNodes, createAudioContext, createAnalyserNode, setVisible } from './utils.js';
 
 class VuMeter {
   constructor(config) {
@@ -15,10 +15,16 @@ class VuMeter {
     this.barEl = document.getElementById(config.barId);
     this.peakEl = document.getElementById(config.peakId);
     this.dotEl = document.getElementById(config.dotId);
+    this.readingEl = document.getElementById(config.readingId || 'vuMeterReading');
+    this.activityBarEl = document.getElementById('micActivityBar');
+    this.activityStatusEl = document.getElementById('micActivityStatus');
+    this.detailsEl = document.getElementById('audioDetails');
+    this.activityState = 'idle';
 
     // Remote (codec sonrasi) VU meter elementleri (opsiyonel)
     this.remoteBarEl = document.getElementById(config.remoteBarId || 'remoteVuBar');
     this.remotePeakEl = document.getElementById(config.remotePeakId || 'remoteVuPeak');
+    this.remoteReadingEl = document.getElementById(config.remoteReadingId || 'remoteVuReading');
     this.remoteContainerEl = document.getElementById('remoteVuContainer');
 
     this.analyser = null;
@@ -58,11 +64,10 @@ class VuMeter {
     this.resizeHandler = () => {
       this.meterWidth = this.peakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
       this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
-      // Gradient boyutunu container genisligiyle esitle
-      this.peakEl?.parentElement?.style.setProperty('--meter-width', `${this.meterWidth}px`);
-      this.remotePeakEl?.parentElement?.style.setProperty('--meter-width', `${this.remoteMeterWidth}px`);
     };
     window.addEventListener('resize', this.resizeHandler);
+    // A disclosure can change meter widths without a window resize.
+    this.detailsEl?.addEventListener('toggle', this.resizeHandler);
   }
 
   /**
@@ -74,9 +79,8 @@ class VuMeter {
       window.removeEventListener('resize', this.resizeHandler);
       window.addEventListener('resize', this.resizeHandler);
     }
-    // meterWidth'i guncelle ve CSS variable'i set et (display:none sonrasi dogru olcum)
+    // Container gorunur olduktan sonra cizgi konumu icin genisligi yenile.
     this.meterWidth = this.peakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
-    this.peakEl?.parentElement?.style.setProperty('--meter-width', `${this.meterWidth}px`);
   }
 
   /**
@@ -105,7 +109,7 @@ class VuMeter {
     this.analyser = analyserNode;
 
     // DataArray olustur (pipeline'in audioContext'inden)
-    const bufferLength = this.analyser.frequencyBinCount;
+    const bufferLength = this.analyser.fftSize;
     this._pipelineDataArray = new Float32Array(bufferLength);
 
     this.update();
@@ -162,12 +166,11 @@ class VuMeter {
     if (!stream) return;
 
     // Remote container'i goster
-    toggleDisplay(this.remoteContainerEl, true);
+    setVisible(this.remoteContainerEl, true);
 
     // DOM render sonrasi width hesapla (container artik gorunur)
     requestAnimationFrame(() => {
       this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
-      this.remotePeakEl?.parentElement?.style.setProperty('--meter-width', `${this.remoteMeterWidth}px`);
     });
 
     try {
@@ -193,11 +196,38 @@ class VuMeter {
     }
 
     // Remote VU elementlerini sifirla (container visibility'i UI tarafindan kontrol edilir)
-    if (this.remoteBarEl) this.remoteBarEl.style.width = '0';
-    if (this.remotePeakEl) this.remotePeakEl.style.transform = 'translateX(0)';
+    this._resetMeter(this.remoteBarEl, this.remotePeakEl, this.remoteReadingEl);
     // NOT: Container display'i burada degistirilmez - profil kategorisine gore UI tarafindan yonetilir
 
     this.remotePeakLevel = 0;
+    this._remoteMeterState = { smoothedRms: 0, lastRenderTime: 0 };
+  }
+
+  _resetMeter(barEl, peakEl, readingEl) {
+    if (barEl) {
+      barEl.style.width = '0';
+      barEl.parentElement?.setAttribute('aria-valuenow', String(VU_METER.MIN_DB));
+      barEl.parentElement?.setAttribute('aria-valuetext', 'Not measuring');
+    }
+    if (peakEl) {
+      peakEl.style.transform = 'translateX(0)';
+      setVisible(peakEl, false);
+    }
+    if (readingEl) readingEl.textContent = '—';
+  }
+
+  _renderActivity(level) {
+    if (this.activityBarEl) this.activityBarEl.style.width = `${level ?? 0}%`;
+    // Reuse the signal-presence threshold. This is not a voice or quality assessment.
+    const state = level === null ? 'idle'
+      : level > VU_METER.DOT_ACTIVE_THRESHOLD ? 'detected' : 'waiting';
+    if (this.activityState === state) return;
+    this.activityState = state;
+    if (this.activityStatusEl) {
+      this.activityStatusEl.dataset.state = state;
+      this.activityStatusEl.textContent = state === 'idle' ? 'Ready to check'
+        : state === 'detected' ? 'Sound detected' : 'Waiting for sound';
+    }
   }
 
   // DRY: RMS hesaplama — Float32 [-1,1] araliginda direkt hesap
@@ -225,7 +255,7 @@ class VuMeter {
    * Peak decay: frame-rate bagimsiz (dB/s)
    * @returns {{ level: number, dB: number, rawDb: number, peakLevel: number, peakHoldTime: number }}
    */
-  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth, meterState) {
+  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth, meterState, readingEl) {
     analyser.getFloatTimeDomainData(dataArray);
     const instantRms = this.calculateRMS(dataArray);
 
@@ -245,7 +275,26 @@ class VuMeter {
       ? 20 * Math.log10(meterState.smoothedRms) : VU_METER.MIN_DB;
     const level = Math.max(0, Math.min(100, (dB - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100));
 
-    if (barEl) barEl.style.width = `${level}%`;
+    if (barEl) {
+      barEl.style.width = `${level}%`;
+    }
+
+    // Readout and accessible value share the displayed RMS, at most four updates/s.
+    // Below the existing RMS gate, report its bound rather than a false exact -96 dBFS.
+    if (meterState.readingTime === undefined || now - meterState.readingTime >= 250) {
+      meterState.readingTime = now;
+      const belowSensitivity = meterState.smoothedRms <= VU_METER.RMS_THRESHOLD;
+      const displayDb = Math.max(VU_METER.MIN_DB, Math.min(0, dB));
+      const reading = belowSensitivity
+        ? `≤ ${Math.round(20 * Math.log10(VU_METER.RMS_THRESHOLD))}`.replace('-', '−')
+        : displayDb.toFixed(1).replace('-', '−');
+      if (reading !== meterState.reading) {
+        meterState.reading = reading;
+        if (readingEl) readingEl.textContent = reading;
+        barEl?.parentElement?.setAttribute('aria-valuenow', displayDb.toFixed(1));
+        barEl?.parentElement?.setAttribute('aria-valuetext', `${reading} dBFS`);
+      }
+    }
 
     // Peak hold + frame-rate bagimsiz decay
     if (level > peakLevel) {
@@ -258,6 +307,8 @@ class VuMeter {
     }
 
     if (peakEl) {
+      // This line holds the recent smoothed level; it is not a sample/true-peak reading.
+      setVisible(peakEl, peakLevel > 0);
       const translate = Math.min((peakLevel / 100) * meterWidth, meterWidth - VU_METER.PEAK_WIDTH);
       peakEl.style.transform = `translateX(${translate}px)`;
     }
@@ -271,10 +322,11 @@ class VuMeter {
     const dataArray = this._pipelineDataArray || audioEngine.getDataArray();
     const result = this._renderMeter(
       this.analyser, dataArray, this.barEl, this.peakEl,
-      this.peakLevel, this.peakHoldTime, this.meterWidth, this._localMeterState
+      this.peakLevel, this.peakHoldTime, this.meterWidth, this._localMeterState, this.readingEl
     );
     this.peakLevel = result.peakLevel;
     this.peakHoldTime = result.peakHoldTime;
+    this._renderActivity(result.level);
 
     // Clipping tespiti (peak dB kullan - anlik tepe degeri)
     const maxSample = this.calculatePeak(dataArray);
@@ -299,12 +351,12 @@ class VuMeter {
   updateRemote() {
     if (!this.remoteAnalyser) return;
     if (!this.remoteDataArray) {
-      this.remoteDataArray = new Float32Array(this.remoteAnalyser.frequencyBinCount);
+      this.remoteDataArray = new Float32Array(this.remoteAnalyser.fftSize);
     }
 
     const result = this._renderMeter(
       this.remoteAnalyser, this.remoteDataArray, this.remoteBarEl, this.remotePeakEl,
-      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth, this._remoteMeterState
+      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth, this._remoteMeterState, this.remoteReadingEl
     );
     this.remotePeakLevel = result.peakLevel;
     this.remotePeakHoldTime = result.peakHoldTime;
@@ -334,8 +386,8 @@ class VuMeter {
     }
 
     // Bar'lari sifirla
-    if (this.barEl) this.barEl.style.width = '0';
-    if (this.peakEl) this.peakEl.style.transform = 'translateX(0)';
+    this._resetMeter(this.barEl, this.peakEl, this.readingEl);
+    this._renderActivity(null);
     if (this.dotEl) {
       this.dotEl.className = 'signal-dot';
       this.dotState = 'idle';
@@ -343,7 +395,6 @@ class VuMeter {
 
     this.peakLevel = 0;
     this._localMeterState = { smoothedRms: 0, lastRenderTime: 0 };
-    this._remoteMeterState = { smoothedRms: 0, lastRenderTime: 0 };
 
     // AudioEngine'den disconnect (context acik kalir - tekrar hizli baslatma icin)
     audioEngine.disconnect();
@@ -361,6 +412,7 @@ class VuMeter {
    */
   destroy() {
     this.stop();
+    this.detailsEl?.removeEventListener('toggle', this.resizeHandler);
     eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.off(EVENTS.STREAM_STOPPED, this._onStreamStopped);
     eventBus.off(EVENTS.LOOPBACK_REMOTE_STREAM, this._onLoopbackRemote);

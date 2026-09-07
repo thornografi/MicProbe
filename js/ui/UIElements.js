@@ -32,14 +32,13 @@ function queryAll(selector) {
 // BUTON ELEMENTLERI
 // ============================================
 export const recordToggleBtn = getEl('recordToggle');
-
 export const testBtn = getEl('testBtn');
 export const profileMenuBtn = getEl('profileMenuBtn');
 export const testCountdownEl = getEl('testCountdown');
 export const testProgressFillEl = getEl('testProgressFill');
 export const playBtnEl = getEl('playBtn');
 export const downloadBtnEl = getEl('downloadBtn');
-export const closeDrawerBtn = getEl('closeDrawer');
+export const downloadMp3BtnEl = getEl('downloadMp3Btn');
 export const closeConsoleBtn = getEl('closeConsole');
 export const devConsoleToggle = getEl('devConsoleToggle');
 export const refreshMicsBtn = getEl('refreshMics');
@@ -75,15 +74,16 @@ export const remoteVuContainerEl = getEl('remoteVuContainer');
 // ============================================
 // RAPOR PANEL ELEMENTLERI
 // ============================================
-export const reportPopupBackdropEl = getEl('reportPopupBackdrop');
 export const reportPanelEl = getEl('reportPanel');
 export const reportPopupCloseEl = getEl('reportPopupClose');
+export const reportDownloadBtnEl = getEl('reportDownloadBtn');
 export const reportScoreBadgeEl = getEl('reportScoreBadge');
 export const reportOverallEl = getEl('reportOverall');
 export const reportFindingsEl = getEl('reportFindings');
 export const reportMetricsGridEl = getEl('reportMetricsGrid');
 export const reportRecommendationsEl = getEl('reportRecommendations');
 export const reportDetailedEl = getEl('reportDetailed');
+export const reportDetailedWrapperEl = getEl('reportDetailedWrapper');
 export const premiumOverlayEl = getEl('premiumOverlay');
 export const premiumCtaEl = getEl('premiumCta');
 export const premiumStatusEl = getEl('premiumStatus');
@@ -101,7 +101,6 @@ export const progressBarEl = getEl('progressBar');
 // ============================================
 // DRAWER ELEMENTLERI
 // ============================================
-export const settingsDrawer = getEl('settingsDrawer');
 export const drawerOverlay = getEl('drawerOverlay');
 export const devConsoleDrawer = getEl('devConsole');
 export const profileSidebar = getEl('profileSidebar');
@@ -126,12 +125,43 @@ export const customSettingsGrid = getEl('customSettingsGrid');
 export const pageTitle = getEl('pageTitle');
 export const pageTitleIcon = getEl('pageTitleIcon');
 export const pageSubtitle = getEl('pageSubtitle');
+export const scenarioPicker = getEl('scenarioPicker');
+export const scenarioChoices = getEl('scenarioChoices');
+export const scenarioWorkspace = getEl('scenarioWorkspace');
+export const changeScenarioBtn = getEl('changeScenarioBtn');
 export const userMessageEl = getEl('userMessage');
-export const scenarioBadge = getEl('scenarioBadge');
-export const scenarioTech = getEl('scenarioTech');
+export const captureHintEl = getEl('captureHint');
+export const microphoneHintEl = getEl('microphoneHint');
+
+// ============================================
+// DEV CONSOLE
+// ============================================
+export const clearLogBtn = getEl('clearLogBtn');
+export const copyLogsBtn = getEl('copyLogsBtn');
+export const exportLogsBtn = getEl('exportLogsBtn');
+export const logStatsBtn = getEl('logStatsBtn');
+export const sanityCheckBtn = getEl('sanityCheckBtn');
+export const logFilterButtonsEl = queryEl('.filter-buttons');
+
+// ============================================
+// ACCOUNT / HISTORY DIALOG
+// ============================================
+export const accountDialogEl = getEl('accountDialog');
+export const accountMenuBtnEl = getEl('accountMenuBtn');
+export const reportHistoryBtnEl = getEl('reportHistoryBtn');
+export const accountIdentityEl = getEl('accountIdentity');
+export const accountHistoryListEl = getEl('accountHistoryList');
+export const accountStatusEl = getEl('accountStatus');
+export const accountComparisonEl = getEl('accountComparison');
+export const accountHistoryActionsEl = getEl('accountHistoryActions');
+
+// ============================================
+// OVERLAY INERT HEDEFLERI (mobil profil cekmecesi acikken arka plan)
+// ============================================
+export const mainContentEl = document.querySelector('.main-content');
+export const sharedFooterEl = getEl('sharedFooter');
+export const reportTroubleshootingContextEl = getEl('reportTroubleshootingContext');
 export const headerBrandLink = getEl('appHeaderBrand');
-export const footerBrandLink = queryEl('.site-footer-brand');
-export const footerLinks = queryAll('.site-footer-links a');
 
 // ============================================
 // TIMER ELEMENTLERI
@@ -169,5 +199,4 @@ export const channelCountRadios = queryAll(`input[name="${SETTING_NAMES.CHANNEL_
 // ============================================
 // SENARYO & NAV KOLEKSIYONLARI
 // ============================================
-export const scenarioCards = document.querySelectorAll('.scenario-card');
 export const navItems = queryAll('.nav-item[data-profile]');

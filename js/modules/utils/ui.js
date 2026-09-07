@@ -29,13 +29,16 @@ export function formatTimestampYYMMDDHHMMSS(date = new Date()) {
 }
 
 /**
- * DOM element gorunurlugunu toggle et
- * @param {HTMLElement} element - Hedef element
- * @param {boolean} shouldShow - Goster/gizle
- * @param {string} displayValue - Gosterilecek display degeri (default: 'block')
+ * Tek gorunurluk mekanizmasi: `hidden` attribute (CSS: [hidden]{display:none!important}).
+ * Inline display yazilmaz; elemanin CSS display'i (flex/grid/block) korunur.
+ * @param {HTMLElement} element
+ * @param {boolean} hidden
  */
-export function toggleDisplay(element, shouldShow, displayValue = 'block') {
-  if (element) {
-    element.style.display = shouldShow ? displayValue : 'none';
-  }
+export function setHidden(element, hidden) {
+  if (element) element.hidden = !!hidden;
+}
+
+/** setHidden'in tersi (okunabilirlik): goster/gizle */
+export function setVisible(element, visible) {
+  setHidden(element, !visible);
 }

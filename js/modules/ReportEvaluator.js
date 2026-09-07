@@ -7,20 +7,22 @@
  * Client tarafinda sadece free katman tutulur. Premium detaylar server/Worker
  * endpointinden gelir; odeme yapilmadan client bundle'da uretilmez.
  */
-import { QUALITY } from './constants.js';
+import { QUALITY, VU_METER } from './constants.js';
 
 class ReportEvaluator {
   constructor() {
-    // OCP: kurallar registry — davranis birebir korunur, yeni free-tier kurali registerRule ile eklenir.
-    // Her kural (report) => finding | null. Free katman YALNIZCA audioMetrics (+ codec icin recording/loopback) okur;
-    // system/deepAnalysis'e DOKUNMAZ (premium mantik free bundle'a sizmaz).
+    // Each rule assesses measured audio; premium interpretation stays server-side.
     this._rules = [
       (r) => this._ruleSignal(r),
       (r) => this._ruleNoise(r),
       (r) => this._ruleSnr(r),
       (r) => this._ruleClipping(r),
+      (r) => this._ruleTruePeak(r),
+      (r) => this._ruleHeadroom(r),
       (r) => this._ruleDropout(r),
-      (r) => this._ruleCodec(r)
+      (r) => this._ruleChannelLayout(r),
+      (r) => this._ruleAppliedSettings(r),
+      (r) => this._ruleGainControl(r)
     ];
   }
 
@@ -33,34 +35,111 @@ class ReportEvaluator {
   /**
    * Free katman: Ozet degerlendirme
    * @param {Object} report - DiagnosticReportBuilder.build() ciktisi
-   * @returns {{ overall, findings, summary }}
+   * @returns {{ overall, findings, summary, scopeSummary, scope, assessment }} Olcum kapsami ve yeterlilik durumu dahil.
    */
   evaluateFree(report) {
-    if (!report?.audioMetrics) {
-      return { overall: { score: 'unknown', stars: 0, label: 'No Data', color: 'muted' }, findings: [], summary: 'No test data found.' };
+    if (report?.run?.type === 'troubleshooting') {
+      return { overall: { score: 'unknown', stars: null, label: 'Troubleshooting only', color: 'muted' }, findings: [],
+        summary: 'No audio was recorded for this report.',
+        assessment: { status: 'not-measured' }, scope: 'No microphone, application, network or driver performance was measured in this troubleshooting report.' };
+    }
+    const m = report?.audioMetrics;
+    if (m?.status !== 'measured' || !(m.sampleCount > 0) || !(m.durationMs >= 400)
+      || !Number.isFinite(m.signal?.rmsDb) || !Number.isFinite(m.signal?.peakDb)
+      || m.clipping?.status !== 'measured' || m.clipping.method !== 'sample-saturation'
+      || !Number.isFinite(m.clipping.rate)) {
+      return { overall: { score: 'unknown', stars: null, label: 'Insufficient audio', color: 'muted' }, findings: [],
+        summary: 'There is not enough measured audio to assess this recording. Record a short spoken sample and try again.',
+        assessment: { status: 'insufficient' }, scope: this._buildScope(report) };
     }
     const findings = this._runCoreRules(report);
+    // These rules have no validated perceptual-quality model. Even supplied
+    // speech/noise measurements cannot turn their flags into a five-star rating.
     const overall = this._calculateOverall(findings);
     const summary = this._generateSummary(findings);
-    return { overall, findings, summary };
+    const scope = this._buildScope(report, m);
+    return { overall, findings, summary, scope,
+      scopeSummary: `${m.coverage?.truncated ? `First ${+(m.durationMs / 1000).toFixed(2)} s of saved audio only` : 'Saved audio only'}; speech clarity and recipient audio are unmeasured.`,
+      assessment: { status: 'limited', speech: 'not-measured', recipientAudio: 'not-measured', rootCause: 'undetermined' } };
+  }
+
+  _buildScope(report, metrics) {
+    const context = report?.communicationContext;
+    const usage = { 'voice-call': 'Voice Calls', 'voice-message': 'Voice Messages', recording: 'Recording' }[context?.usage];
+    const access = { mobile: 'Mobile browser (inferred)', desktop: 'Desktop browser (inferred)' }[context?.access?.formFactor];
+    const parts = [usage, access].filter(Boolean);
+    if (metrics) parts.push(`Analysed ${+(metrics.durationMs / 1000).toFixed(2)} seconds of the saved recording${metrics.coverage?.truncated ? ' (first part only)' : ''}`);
+    if (metrics?.guidedNoise) {
+      const reasons = {
+        'guided-prompts-incomplete': 'The guided prompts were interrupted or the page was hidden',
+        'guided-segments-too-short': 'The recording ended before both guided segments were long enough',
+        'guided-level-below-resolution': 'One guided segment had too little recorded signal to estimate a ratio',
+        'quiet-segment-not-steady': 'The quiet segment was not steady enough for the estimate',
+        'speaking-not-separated-from-quiet': 'The speaking segment was not clearly louder than the quiet segment'
+      };
+      parts.push(metrics.guidedNoise.status === 'measured'
+        ? 'Guided levels describe the recorded quiet and speaking segments; they assume you followed the prompts and do not measure microphone self-noise'
+        : `${reasons[metrics.guidedNoise.reason] || 'The guided segments could not be assessed'}. Repeat the guided check and follow the quiet and speaking prompts`);
+      if (metrics.snr?.reason === 'processing-limits-snr-estimate') parts.push('Recorded segment contrast is available, but active or unknown browser processing prevents an SNR estimate');
+      if (metrics.snr?.reason === 'speaking-segment-clipped') parts.push('SNR is unavailable because the speaking segment reached full scale');
+      if (metrics.snr?.status === 'measured') parts.push('Estimated SNR assumes stable background sound and gain; speech is not automatically verified');
+    } else if (metrics && (metrics.noiseFloor?.status !== 'measured' || !Number.isFinite(metrics.noiseFloor.estimatedDb)
+        || metrics.snr?.status !== 'measured' || !Number.isFinite(metrics.snr.estimatedDb))) {
+      parts.push('Noise or signal-to-noise remains unassessed without controlled quiet and speaking segments');
+    }
+    if (report?.run?.type === 'test') parts.push('The local browser call was saved as another recording, so these measurements include that additional encoding');
+    parts.push('Checks describe the saved audio. Speech intelligibility and what a recipient hears in a mobile, desktop or web app are not measured');
+    parts.push('Short loud sounds or another channel can mask quiet speech. Full-scale sample counts do not detect every kind of distortion');
+    parts.push('The operating-system input level, driver processing and audio enhancements are not visible to the browser; a waveform pinned below full scale is the only sign of clipping that happened before capture');
+    if (report?.profile?.approximation || context?.usage === 'voice-call' || context?.usage === 'voice-message') {
+      parts.push('Platform presets are local approximations; native app codecs, processing and networks are not reproduced');
+    }
+    return parts.join('. ') + '.';
   }
 
   // === PRIVATE: Core Rules (OCP registry — davranis birebir) ===
 
   _runCoreRules(report) {
-    return this._rules.map(fn => fn(report)).filter(Boolean);
+    const findings = this._rules.map(fn => fn(report)).filter(Boolean);
+    return findings.filter(f => f.id !== 'LOW_SNR' || !findings.some(other => other.id === 'HIGH_NOISE'));
   }
 
   // Kural 1+2: Sessizlik / Zayif sinyal (mutually exclusive)
   _ruleSignal(report) {
     const m = report.audioMetrics; const Q = QUALITY;
-    if (m.snr?.signalDb < Q.SILENCE_DB) {
-      return { id: 'SILENCE', severity: 'critical', metric: 'signalDb', value: m.snr.signalDb, threshold: Q.SILENCE_DB,
-        message: 'Microphone is nearly silent. Make sure the correct device is selected and not muted.' };
+    // Pauses dilute whole-file RMS. Even the loudest window must be low before
+    // judging the level. Older reports used unequal/non-overlapping windows;
+    // their sample peak is a conservative bound until the audio is reanalysed.
+    // Neither measurement identifies speech or proves that speech is intelligible.
+    const hasWindow = m.signal?.maxBlockRmsStatus === 'measured' && Number.isFinite(m.signal.maxBlockRmsDb);
+    const signalDb = hasWindow ? m.signal.maxBlockRmsDb : m.signal?.peakDb;
+    const metric = hasWindow ? 'maxBlockRmsDb' : 'peakDb';
+    if (!Number.isFinite(signalDb)) return null;
+    if (signalDb < Q.SILENCE_DB) {
+      return { id: 'SILENCE', severity: 'critical', metric, value: signalDb, threshold: Q.SILENCE_DB, basis: 'loudest-window',
+        message: 'Even the loudest part of this recording is very quiet.' };
     }
-    if (m.snr?.signalDb < Q.WEAK_SIGNAL_DB) {
-      return { id: 'WEAK_SIGNAL', severity: 'critical', metric: 'signalDb', value: m.snr.signalDb, threshold: Q.WEAK_SIGNAL_DB,
-        message: 'Microphone signal is very weak. Speak closer to the mic or increase input level.' };
+    // Gated integrated loudness ignores pauses and dilutes one brief loud moment,
+    // so a recording that is quiet almost everywhere is still reported as quiet.
+    // Identical channels are judged by their mono equivalent (BS.1770 sums channel powers).
+    const sustained = this._sustainedLoudness(m);
+    if (sustained !== null && sustained < Q.SUSTAINED_SILENCE_LUFS) {
+      return { id: 'SILENCE', severity: 'critical', metric: 'lufsIntegrated', value: sustained, threshold: Q.SUSTAINED_SILENCE_LUFS,
+        basis: 'integrated-loudness', loudestWindowDb: signalDb,
+        message: 'Apart from a brief louder moment, this recording is very quiet.' };
+    }
+    if (signalDb < Q.WEAK_SIGNAL_DB) {
+      return { id: 'WEAK_SIGNAL', severity: 'warning', metric, value: signalDb, threshold: Q.WEAK_SIGNAL_DB, basis: 'loudest-window',
+        message: 'Even the loudest part of this recording has a low level.' };
+    }
+    if (sustained !== null && sustained < Q.SUSTAINED_WEAK_LUFS) {
+      return { id: 'WEAK_SIGNAL', severity: 'warning', metric: 'lufsIntegrated', value: sustained, threshold: Q.SUSTAINED_WEAK_LUFS,
+        basis: 'integrated-loudness', loudestWindowDb: signalDb,
+        message: 'Apart from a brief louder moment, this recording has a low level.' };
+    }
+    if (m.signal.rmsDb < Q.WEAK_SIGNAL_DB) {
+      return { id: 'LOW_AVERAGE_LEVEL', severity: 'info', metric: 'signalDb', value: m.signal.rmsDb, threshold: Q.WEAK_SIGNAL_DB,
+        message: 'The average level is low, but pauses can lower this average. This observation does not lower the result.' };
     }
     return null;
   }
@@ -69,13 +148,14 @@ class ReportEvaluator {
   _ruleNoise(report) {
     const m = report.audioMetrics; const Q = QUALITY;
     const nf = m.noiseFloor?.estimatedDb;
+    if (m.noiseFloor?.status !== 'measured' || !Number.isFinite(nf)) return null;
     if (nf != null && nf > Q.NOISE_FLOOR_CRITICAL_DB) {
       return { id: 'HIGH_NOISE', severity: 'critical', metric: 'noiseFloor', value: nf, threshold: Q.NOISE_FLOOR_CRITICAL_DB,
-        message: 'Background noise is too high — audio may be unintelligible.' };
+        message: 'The measured noise segment has a high level.' };
     }
     if (nf != null && nf > Q.NOISE_FLOOR_WARNING_DB) {
       return { id: 'HIGH_NOISE', severity: 'warning', metric: 'noiseFloor', value: nf, threshold: Q.NOISE_FLOOR_WARNING_DB,
-        message: 'Background noise is high.' };
+        message: 'The measured noise segment has a high level.' };
     }
     return null;
   }
@@ -84,13 +164,14 @@ class ReportEvaluator {
   _ruleSnr(report) {
     const m = report.audioMetrics; const Q = QUALITY;
     const snr = m.snr?.estimatedDb;
+    if (m.snr?.status !== 'measured' || !Number.isFinite(snr)) return null;
     if (snr != null && snr < Q.SNR_CRITICAL_DB) {
       return { id: 'LOW_SNR', severity: 'critical', metric: 'snr', value: snr, threshold: Q.SNR_CRITICAL_DB,
-        message: 'Signal is buried in noise.' };
+        message: 'The measured speech and noise segments have little level separation.' };
     }
     if (snr != null && snr < Q.SNR_WARNING_DB) {
       return { id: 'LOW_SNR', severity: 'warning', metric: 'snr', value: snr, threshold: Q.SNR_WARNING_DB,
-        message: 'Signal-to-noise ratio is low — audio quality is mediocre.' };
+        message: 'The measured signal-to-noise ratio is low.' };
     }
     return null;
   }
@@ -99,44 +180,99 @@ class ReportEvaluator {
   _ruleClipping(report) {
     const m = report.audioMetrics; const Q = QUALITY;
     const cr = m.clipping?.rate;
+    if (m.clipping?.method !== 'sample-saturation' || !Number.isFinite(cr)) return null;
     if (cr != null && cr > Q.CLIPPING_RATE_CRITICAL) {
       return { id: 'CLIPPING', severity: 'critical', metric: 'clippingRate', value: cr, threshold: Q.CLIPPING_RATE_CRITICAL,
-        message: 'Severe audio clipping. Lower the microphone input level.' };
+        message: 'Many recorded samples reach or exceed full scale.' };
     }
-    if (cr != null && cr > Q.CLIPPING_RATE_WARNING) {
+    if (cr > 0) {
       return { id: 'CLIPPING', severity: 'warning', metric: 'clippingRate', value: cr, threshold: Q.CLIPPING_RATE_WARNING,
-        message: 'Audio is occasionally clipping. Lower the microphone level.' };
+        message: 'Some recorded samples reach or exceed full scale.' };
+    }
+    // A waveform pinned flat at its own ceiling with almost no peak-to-average spread
+    // was limited before the browser received it (interface, driver or system input
+    // level). Sample saturation cannot see that when the level was reduced afterwards.
+    // Pure tones also sit near their ceiling about 30 % of the time with a 3 dB crest;
+    // clipped audio exceeds 45 % even after resampling, and stays flat only when unresampled.
+    const ceiling = m.ceiling, crest = m.signal?.crestFactorDb;
+    if (ceiling?.status === 'measured' && Number.isFinite(ceiling.nearCeilingRate) && Number.isFinite(crest)
+        && crest <= Q.FLAT_TOP_CREST_DB && ceiling.nearCeilingRate >= Q.FLAT_TOP_NEAR_RATE_WARNING) {
+      const critical = ceiling.nearCeilingRate >= Q.FLAT_TOP_NEAR_RATE_CRITICAL || ceiling.flatTopRate >= Q.FLAT_TOP_RATE_CRITICAL;
+      const level = Number.isFinite(ceiling.ceilingDb) ? ceiling.ceilingDb : m.signal.peakDb;
+      return { id: 'PINNED_CEILING', severity: critical ? 'critical' : 'warning', metric: 'nearCeilingRate', value: ceiling.nearCeilingRate,
+        threshold: critical ? Q.FLAT_TOP_NEAR_RATE_CRITICAL : Q.FLAT_TOP_NEAR_RATE_WARNING, ceilingDb: level,
+        flatTopRate: ceiling.flatTopRate, crestFactorDb: crest,
+        message: `The waveform is pinned at a ceiling of ${level} dBFS, below full scale, with a peak-to-average spread of only ${crest} dB. This pattern matches clipping before the browser received the audio (interface gain, driver or system input level), so full-scale sample counts do not show it.` };
     }
     return null;
+  }
+
+  // Kural 5b: Inter-sample peaks above full scale (BS.1770-4 true peak)
+  _ruleTruePeak(report) {
+    const m = report.audioMetrics; const Q = QUALITY;
+    if ((m.clipping?.rate ?? 0) > 0 || m.truePeak?.status !== 'measured' || !Number.isFinite(m.truePeak.db)) return null;
+    if (m.truePeak.db > Q.TRUE_PEAK_WARNING_DBTP) {
+      return { id: 'TRUE_PEAK_OVER', severity: 'warning', metric: 'truePeakDb', value: m.truePeak.db, threshold: Q.TRUE_PEAK_WARNING_DBTP,
+        message: `Inter-sample peaks reach ${m.truePeak.db} dBTP, above full scale, although no stored sample is at full scale. Playback or re-encoding can clip these peaks.` };
+    }
+    return null;
+  }
+
+  // Kural 7: Identical channels (dual-mono) inflate loudness by 3.01 LU
+  _ruleChannelLayout(report) {
+    const m = report.audioMetrics;
+    if (m.channelLayout !== 'dual-mono' || m.channelIdentity?.identical !== true) return null;
+    return { id: 'DUAL_MONO', severity: 'info', metric: 'channelLayout', value: 'dual-mono', threshold: null,
+      lufsIntegrated: m.lufs?.integrated ?? null, lufsMonoEquivalent: m.lufs?.integratedMonoEquivalent ?? null,
+      message: 'Both channels carry the same signal (dual-mono), as a single-input interface delivered as a stereo pair does. Loudness sums channel powers, so the LUFS value reads 3 dB above the equivalent mono signal; level findings use the mono equivalent.' };
+  }
+
+  // Kural 8: The device applied different settings than requested
+  _ruleAppliedSettings(report) {
+    const mismatches = report.profile?.constraintMismatches;
+    if (!Array.isArray(mismatches) || !mismatches.length) return null;
+    const label = { sampleRate: 'sample rate', channelCount: 'channel count', echoCancellation: 'echo cancellation',
+      noiseSuppression: 'noise suppression', autoGainControl: 'automatic gain control' };
+    const text = mismatches.map(item => `${label[item.key] || item.key} ${String(item.applied)} instead of ${String(item.requested)}`).join(', ');
+    return { id: 'SETTINGS_NOT_APPLIED', severity: 'info', metric: 'constraintMismatches', value: mismatches.length, threshold: null,
+      mismatches, message: `The device applied ${text}. Measurements describe the applied settings, not the requested ones.` };
+  }
+
+  // Kural 9: Automatic gain control may also move the system input level
+  _ruleGainControl(report) {
+    if (report.profile?.appliedConstraints?.autoGainControl !== true) return null;
+    return { id: 'AGC_ACTIVE', severity: 'info', metric: 'autoGainControl', value: true, threshold: null,
+      message: 'Automatic gain control was active, so the recorded level does not show the microphone\'s own level. The browser may also adjust the system input level during such runs, which can change later recordings made with processing disabled.' };
+  }
+
+  _sustainedLoudness(m) {
+    const lufs = m.lufs;
+    if (lufs?.status !== 'measured' || lufs.integratedStatus !== 'measured' || !Number.isFinite(lufs.integrated)) return null;
+    return Number.isFinite(lufs.integratedMonoEquivalent) ? lufs.integratedMonoEquivalent : lufs.integrated;
   }
 
   // Kural 6: Dropout
   _ruleDropout(report) {
     const m = report.audioMetrics; const Q = QUALITY;
     const dc = m.dropouts?.count;
+    if (m.dropouts?.status !== 'measured' || !Number.isFinite(dc)) return null;
     if (dc != null && dc >= Q.DROPOUT_COUNT_CRITICAL) {
       return { id: 'DROPOUTS', severity: 'critical', metric: 'dropoutCount', value: dc, threshold: Q.DROPOUT_COUNT_CRITICAL,
-        message: 'Frequent audio dropouts. Microphone connection is unstable.' };
+        message: 'Repeated gaps were found in the measured audio timeline.' };
     }
     if (dc != null && dc >= Q.DROPOUT_COUNT_WARNING) {
       return { id: 'DROPOUTS', severity: 'warning', metric: 'dropoutCount', value: dc, threshold: Q.DROPOUT_COUNT_WARNING,
-        message: 'Audio dropouts detected. Check your connection or USB port.' };
+        message: 'Gaps were found in the measured audio timeline.' };
     }
     return null;
   }
 
-  // Kural 7: Codec kaybi
-  _ruleCodec(report) {
-    const Q = QUALITY;
-    const recDev = report.recording?.bitrateDeviation;
-    const lbDev = report.loopback?.bitrateDeviation;
-    const runType = report.run?.type;
-    const dev = runType === 'test' ? lbDev
-      : runType === 'record' ? recDev
-        : recDev ?? lbDev;
-    if (dev != null && dev < -Q.BITRATE_DEVIATION_WARNING) {
-      return { id: 'CODEC_LOSS', severity: 'warning', metric: 'bitrateDeviation', value: dev, threshold: -Q.BITRATE_DEVIATION_WARNING,
-        message: 'Codec failed to reach target bitrate. Actual audio quality is below desired level.' };
+  _ruleHeadroom(report) {
+    const m = report.audioMetrics;
+    if ((m.clipping?.rate ?? 0) > 0) return null;
+    if (Number.isFinite(m.headroom?.peakDb) && m.headroom.peakDb >= VU_METER.CLIPPING_THRESHOLD_DB) {
+      return { id: 'LOW_HEADROOM', severity: 'info', metric: 'peakDb', value: m.headroom.peakDb, threshold: VU_METER.CLIPPING_THRESHOLD_DB,
+        message: 'Peaks are close to full scale without measured full-scale samples. This alone does not prove distortion or lower the result.' };
     }
     return null;
   }
@@ -148,24 +284,16 @@ class ReportEvaluator {
     const warningCount = findings.filter(f => f.severity === 'warning').length;
 
     if (criticalCount === 0 && warningCount === 0) {
-      return { score: 'good', stars: 5, label: 'Excellent', color: 'success' };
+      return { score: 'limited', stars: null, label: 'Limited audio checks', color: 'muted' };
     }
-
-    // Agirlikli puanlama: her critical = -2, her warning = -0.5
-    const rawScore = 5 - (criticalCount * 2) - (warningCount * 0.5);
-    const stars = Math.max(1, Math.min(5, Math.round(rawScore)));
-
-    if (stars >= 4) return { score: 'good', stars, label: 'Good', color: 'success' };
-    if (stars >= 3) return { score: 'fair', stars, label: 'Fair', color: 'warning' };
-    if (stars >= 2) return { score: 'poor', stars, label: 'Poor', color: 'warning' };
-    return { score: 'critical', stars: 1, label: 'Critical', color: 'danger' };
+    if (criticalCount > 0) return { score: 'critical', stars: null, label: 'Needs attention', color: 'danger' };
+    return { score: 'fair', stars: null, label: 'Review recording', color: 'warning' };
   }
 
   _generateSummary(findings) {
-    if (findings.length === 0) return 'Your audio quality looks good. No issues detected.';
-    const critical = findings.filter(f => f.severity === 'critical');
-    if (critical.length > 0) return critical.map(f => f.message).join(' ');
-    return findings.map(f => f.message).join(' ');
+    const firstIssue = findings.find(f => f.severity === 'critical')
+      || findings.find(f => f.severity === 'warning');
+    return firstIssue?.message || 'No low-level, pinned-ceiling, true-peak or full-scale sample flags were detected.';
   }
 
 }

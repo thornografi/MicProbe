@@ -1,25 +1,27 @@
 /**
- * Spectral Analysis Worker (classic worker)
+ * PCM and Spectral Analysis Worker (module worker)
  *
- * Ham PCM (mono Float32) uzerinde yuksek cozunurluklu pencereli FFT (Welch ortalamasi)
- * uygular; frekans yaniti, band enerjileri, spektral duzluk, noise floor ve peak/rms uretir.
+ * Kanal basina PCM metrikleri ve FFT gucu hesaplanir; kanal dalgalari downmix edilmez.
+ * Spektrum kaydin enerji dagilimidir, mikrofonun frekans cevabi veya gurultusu degildir.
  * Agir DSP isi burada calisir; main thread bloklanmaz. "Analysing" progress bar'ini
  * besleyen gercek is budur (canli 250ms snapshot'tan daha dogru).
  *
  * Mesaj protokolu:
- *   IN:  { type:'analyze', pcm:ArrayBuffer(Float32), sampleRate, fftSize, hopSize,
+ *   IN:  { type:'analyze', runId, channels:ArrayBuffer[](Float32), sampleRate, fftSize, hopSize,
  *          outputBins, progressInterval, bands:{subBass,lowMid,highMid,presence} }
- *   OUT: { type:'progress', ratio }  |  { type:'done', result }  |  { type:'error', reason }
+ *   OUT: { type:'progress', runId, ratio } | { type:'done', runId, result } | { type:'error', runId, reason }
  */
 
-self.onmessage = function (e) {
+import { analyzePcm } from '../modules/utils/pcmAnalysis.js';
+
+if (typeof self !== 'undefined') self.onmessage = function (e) {
   const msg = e.data;
   if (!msg || msg.type !== 'analyze') return;
   try {
-    const result = analyze(msg);
-    self.postMessage({ type: 'done', result });
+    const result = analyze(msg, ratio => self.postMessage({ type: 'progress', runId: msg.runId, ratio }));
+    self.postMessage({ type: 'done', runId: msg.runId, result });
   } catch (err) {
-    self.postMessage({ type: 'error', reason: err && err.message ? err.message : String(err) });
+    self.postMessage({ type: 'error', runId: msg.runId, reason: err && err.message ? err.message : String(err) });
   }
 };
 
@@ -66,19 +68,21 @@ function fft(re, im) {
   }
 }
 
-function analyze(msg) {
-  const samples = new Float32Array(msg.pcm);
+export function analyze(msg, onProgress = () => {}) {
+  const channels = msg.channels.map(buffer => new Float32Array(buffer));
+  const audioMetrics = analyzePcm(channels, msg.sampleRate, { guidedSegments: msg.guidedSegments });
   const sampleRate = msg.sampleRate;
   const fftSize = msg.fftSize;
   const hopSize = msg.hopSize;
   const outputBins = msg.outputBins || 96;
   const progressInterval = msg.progressInterval || 8;
   const bands = msg.bands || {};
-  const n = samples.length;
+  const n = channels[0].length;
   const half = fftSize >> 1;
 
   if (fftSize < 2 || (fftSize & (fftSize - 1)) !== 0) throw new Error('fftSize must be power of 2');
   if (n < fftSize) throw new Error('clip shorter than fftSize');
+  if (!Number.isInteger(hopSize) || hopSize < 1 || outputBins < 2) throw new Error('Invalid spectral options');
 
   // Hann penceresi (bir kez)
   const win = new Float32Array(fftSize);
@@ -87,41 +91,32 @@ function analyze(msg) {
   }
 
   // FFT calisma bufferlari (frame'ler arasi yeniden kullanilir)
-  const re = new Float32Array(fftSize);
-  const im = new Float32Array(fftSize);
+  const re = new Float64Array(fftSize);
+  const im = new Float64Array(fftSize);
   const powerSum = new Float64Array(half);
-  const frameRmsDb = [];
 
   const totalFrames = Math.floor((n - fftSize) / hopSize) + 1;
   let frame = 0;
 
   for (let start = 0; start + fftSize <= n; start += hopSize) {
-    // Ham frame RMS (noise floor icin — pencere UYGULANMADAN)
-    let sq = 0;
-    for (let i = 0; i < fftSize; i++) {
-      const s = samples[start + i];
-      sq += s * s;
-      re[i] = s * win[i];
-      im[i] = 0;
-    }
-    const rms = Math.sqrt(sq / fftSize);
-    frameRmsDb.push(rms > 1e-9 ? 20 * Math.log10(rms) : -180);
-
-    fft(re, im);
-
-    // Guc spektrumu biriktir (yalniz [0, Nyquist))
-    for (let k = 0; k < half; k++) {
-      powerSum[k] += re[k] * re[k] + im[k] * im[k];
+    for (const samples of channels) {
+      for (let i = 0; i < fftSize; i++) {
+        re[i] = samples[start + i] * win[i];
+        im[i] = 0;
+      }
+      fft(re, im);
+      // Welch ortalamasi lineer kanal guclerinden; faz iptali olusmaz.
+      for (let k = 0; k < half; k++) powerSum[k] += re[k] * re[k] + im[k] * im[k];
     }
 
     frame++;
     if (frame % progressInterval === 0) {
-      self.postMessage({ type: 'progress', ratio: frame / totalFrames });
+      onProgress(frame / totalFrames);
     }
   }
 
   // Ortalama guc / bin (Welch)
-  const invFrames = 1 / totalFrames;
+  const invFrames = 1 / (totalFrames * channels.length);
   const pAvg = new Float64Array(half);
   for (let k = 0; k < half; k++) pAvg[k] = powerSum[k] * invFrames;
 
@@ -137,6 +132,7 @@ function analyze(msg) {
   let refPower = 1e-30;
   for (let k = kMin; k <= kMax; k++) if (pAvg[k] > refPower) refPower = pAvg[k];
   const toDbRel = (p) => {
+    if (refPower <= 1e-18) return -120;
     const db = 10 * Math.log10((p + 1e-30) / refPower);
     return db < -120 ? -120 : db;
   };
@@ -146,10 +142,13 @@ function analyze(msg) {
   const binsOut = new Array(outputBins);
   for (let i = 0; i < outputBins; i++) {
     const f = fMin * Math.exp(step * i);
-    let k = Math.round(f / binWidthHz);
-    if (k < 1) k = 1;
-    if (k > half - 1) k = half - 1;
-    binsOut[i] = { hz: Math.round(f), db: +toDbRel(pAvg[k]).toFixed(1) };
+    // Aggregate the full log bucket in linear power. Picking one FFT bin can
+    // omit a narrow tone that falls between two output frequencies.
+    const lo = Math.max(1, Math.min(half - 1, Math.round(f * Math.exp(-step / 2) / binWidthHz)));
+    const hi = Math.max(lo, Math.min(half - 1, Math.round(f * Math.exp(step / 2) / binWidthHz)));
+    let sum = 0;
+    for (let k = lo; k <= hi; k++) sum += pAvg[k];
+    binsOut[i] = { hz: Math.round(f), db: +toDbRel(sum / (hi - lo + 1)).toFixed(1) };
   }
 
   // Band enerjileri (overall ortalama guce gore goreli dB: + vurgulu, - zayif)
@@ -157,7 +156,7 @@ function analyze(msg) {
   for (let k = kMin; k <= kMax; k++) { overallSum += pAvg[k]; overallCount++; }
   const overallMean = overallSum / Math.max(1, overallCount);
   const bandDb = (range) => {
-    if (!range) return null;
+    if (!range || refPower <= 1e-18) return null;
     const lo = Math.max(kMin, Math.floor(range[0] / binWidthHz));
     const hi = Math.min(kMax, Math.ceil(range[1] / binWidthHz));
     if (hi < lo) return null;
@@ -183,21 +182,7 @@ function analyze(msg) {
   }
   const geoMean = Math.exp(lnSum / Math.max(1, cnt));
   const arithMean = arSum / Math.max(1, cnt);
-  const spectralFlatness = +(geoMean / (arithMean + 1e-30)).toFixed(4);
-
-  // Noise floor: frame RMS dB dagiliminin 10. persentili
-  const sorted = frameRmsDb.slice().sort((a, b) => a - b);
-  const p10 = sorted.length ? sorted[Math.floor(sorted.length * 0.10)] : -180;
-
-  // Overall peak / rms (tum sinyal)
-  let totalSq = 0, peak = 0;
-  for (let i = 0; i < n; i++) {
-    const s = samples[i];
-    totalSq += s * s;
-    const a = s < 0 ? -s : s;
-    if (a > peak) peak = a;
-  }
-  const overallRms = Math.sqrt(totalSq / n);
+  const spectralFlatness = refPower > 1e-18 ? +(geoMean / (arithMean + 1e-30)).toFixed(4) : null;
 
   return {
     frequencyResponse: {
@@ -205,12 +190,16 @@ function analyze(msg) {
       binWidthHz: +binWidthHz.toFixed(2),
       fftSize,
       sampleRate,
-      frameCount: totalFrames
+      frameCount: totalFrames,
+      channelCount: channels.length,
+      method: 'welch-channel-power-average',
+      unit: 'dB-relative-to-spectrum-peak'
     },
     bands: bandsOut,
     spectralFlatness,
-    noiseFloorDb: +p10.toFixed(1),
-    peakDb: +(peak > 1e-9 ? 20 * Math.log10(peak) : -180).toFixed(1),
-    rmsDb: +(overallRms > 1e-9 ? 20 * Math.log10(overallRms) : -180).toFixed(1)
+    audioMetrics,
+    lowLevelPercentileDb: audioMetrics.lowLevel.percentileDb,
+    peakDb: audioMetrics.signal.peakDb,
+    rmsDb: audioMetrics.signal.rmsDb
   };
 }
