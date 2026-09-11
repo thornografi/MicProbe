@@ -28,6 +28,7 @@ class RecordingController {
       setIsPreparing: () => {}
     };
     this._stopPromise = null;
+    this._startAttempt = null;
     eventBus.on(EVENTS.RECORDER_STOPPED, () => {
       if (this.deps.getCurrentMode() === 'recording') {
         this.deps.uiStateManager?.stopTimer();
@@ -54,8 +55,11 @@ class RecordingController {
    * Kayit baslatma - toggle mantigi
    */
   async toggle() {
-    // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
-    if (this.deps.getIsPreparing?.()) return;
+    if (this.deps.getIsPreparing?.()) {
+      // Preparation can be cancelled; file finalization still shares one Stop.
+      if (this._startAttempt) await this.stop();
+      return;
+    }
 
     if (this.deps.getCurrentMode() === 'recording') {
       await this.stop();
@@ -68,7 +72,8 @@ class RecordingController {
    * Kayit baslat
    */
   async start() {
-    if (this._stopPromise || this.deps.getIsPreparing?.()) return;
+    if (this._stopPromise || this.deps.getIsPreparing?.() || this.deps.getCurrentMode()) return;
+    const attempt = this._startAttempt = { cancelled: false, snapshot: this.deps.createRunSnapshot?.() };
     const useWebAudio = this.deps.isWebAudioEnabled();
     const constraints = this.deps.getConstraints();
     const pipeline = useWebAudio ? this.deps.getPipeline() : PIPELINE_TYPES.DIRECT;
@@ -79,25 +84,32 @@ class RecordingController {
     eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
 
     try {
-      // Kayit baslarken oynaticiyi durdur
-      this.deps.player?.pause();
-
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
       beginPreparing(this.deps, 'recording');
+
+      if (this.deps.testAccess && !await this.deps.testAccess.begin(attempt.snapshot)) {
+        if (this._startAttempt === attempt) resetState(this.deps);
+        return;
+      }
+      if (attempt.cancelled) { await this.deps.testAccess?.release(attempt.snapshot?.runId); return; }
+      this.deps.player?.pause();
 
       // Normal kayit (Recorder modulu uzerinden)
       const timeslice = this.deps.getTimeslice();
       const mediaBitrate = this.deps.getMediaBitrate();
       const bufferSize = this.deps.getBufferSize();
 
-      const runSnapshot = this.deps.createRunSnapshot?.();
+      const runSnapshot = attempt.snapshot;
       await this.deps.recorder.start(constraints, pipeline, encoder, timeslice, bufferSize, mediaBitrate, runSnapshot);
+      if (attempt.cancelled) { await this.deps.testAccess?.release(runSnapshot?.runId); return; }
 
       // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
       endPreparing(this.deps);
       this.deps.uiStateManager?.startTimer();
 
     } catch (err) {
+      void this.deps.testAccess?.release(attempt.snapshot?.runId);
+      if (attempt.cancelled) return;
       const userMessage = getStreamErrorMessage(err);
       log.error('Recording failed to start', { error: err.message });
       eventBus.emit(EVENTS.UI_MESSAGE, {
@@ -108,6 +120,8 @@ class RecordingController {
       // Temizlik
       resetState(this.deps);
       this.deps.uiStateManager?.stopTimer();
+    } finally {
+      if (this._startAttempt === attempt) this._startAttempt = null;
     }
   }
 
@@ -116,6 +130,7 @@ class RecordingController {
    */
   stop() {
     if (this._stopPromise) return this._stopPromise;
+    if (this._startAttempt) this._startAttempt.cancelled = true;
     this._stopPromise = this._stop().finally(() => { this._stopPromise = null; });
     return this._stopPromise;
   }

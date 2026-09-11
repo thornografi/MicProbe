@@ -3,7 +3,7 @@
  * requestStream fonksiyonu TestRecordingFlow ve Recorder tarafindan kullanilir
  */
 import eventBus from './EventBus.js';
-import { log, stopStreamTracks } from './utils.js';
+import { log, stopStreamTracks, abortable } from './utils.js';
 import { EVENTS } from './constants.js';
 
 const DEFAULT_CONSTRAINTS = {
@@ -17,7 +17,8 @@ const DEFAULT_CONSTRAINTS = {
  * @param {Object} constraints - Audio constraints (EC, NS, AGC)
  * @returns {Promise<MediaStream>} - Mikrofon stream'i
  */
-export async function requestStream(constraints = {}) {
+export async function requestStream(constraints = {}, { signal } = {}) {
+  signal?.throwIfAborted();
   const merged = { ...DEFAULT_CONSTRAINTS, ...constraints };
 
   const deviceLabel = merged.deviceId ? `[${typeof merged.deviceId === 'object' ? merged.deviceId.exact || merged.deviceId : merged.deviceId}]` : '[default]';
@@ -28,10 +29,10 @@ export async function requestStream(constraints = {}) {
 
   let stream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    stream = await abortable(navigator.mediaDevices.getUserMedia({
       audio: merged,
       video: false
-    });
+    }), signal, stopStreamTracks);
 
     const track = stream.getAudioTracks()[0];
     // GUARD: Audio track yoksa hata
@@ -84,6 +85,7 @@ export async function requestStream(constraints = {}) {
     return stream;
   } catch (err) {
     stopStreamTracks(stream);
+    if (signal?.aborted) throw err;
     log.error('Microphone access failed - ' + err.message);
     log.error('getUserMedia error', { error: err.message, name: err.name });
     throw err;

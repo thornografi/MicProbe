@@ -224,7 +224,7 @@ test('normal recording and call reports still retain insufficient-audio guidance
     const input = { ...report(CASES[1][1]), run: { type } };
     const result = evaluatePremiumReport(input);
     assert.equal(result.recommendations[0].id, 'INSUFFICIENT_AUDIO');
-    assert.match(result.recommendations[0].action, /^Record a short spoken sample/);
+    assert.equal(result.recommendations[0].action, '');
     assert.equal(result.recommendations[1].id, 'GUIDE_WINDOWS_LOAD');
     assert.equal(result.metrics[0].value, 'Insufficient audio');
   }
@@ -258,7 +258,7 @@ test('recorded low level automatically selects source-backed Windows or Mac inpu
     assert.match(item.evidence, /^Based on the saved recording and a browser hint/);
     assert.match(item.action, /If you spoke during this recording/);
     assert.match(item.steps.join(' '), /same device used for this recording/);
-    assert.match(item.steps.join(' '), /offers an input-volume control/);
+    assert.match(item.steps.join(' '), /selected input level/);
     assert.doesNotMatch(JSON.stringify(item), /You reported|Based on your description|LatencyMon|Call health|CallKit/);
     assert.equal(new URL(item.sources[0].url).hostname, os === 'windows' ? 'support.microsoft.com' : 'support.apple.com');
   }
@@ -272,8 +272,8 @@ test('sample saturation selects a conditional reduction check, with priority ove
   const measurementFindings = canonicalFindings(input);
   const item = getTroubleshootingGuidance(input, { measurementFindings })[0];
   assert.equal(item.replaces, 'FULL_SCALE_SAMPLES');
-  assert.match(item.action, /If speech sounds distorted/);
-  assert.match(item.steps.join(' '), /lower it slightly only if speech sounds distorted/);
+  assert.match(item.action, /If playback sounds distorted/);
+  assert.match(item.steps.join(' '), /lower one available input-level control/);
   assert.doesNotMatch(item.steps.join(' '), /increase it/);
   assert.equal(getTroubleshootingGuidance(input, {
     measurementFindings: [...measurementFindings, { id: 'LOW_RECORDED_LEVEL' }]
@@ -318,8 +318,7 @@ test('automatic OS advice excludes unknown/mobile systems, non-browser OS choice
 test('invalid audio cannot produce automatic guidance from payload findings and guidance-only history remains unmeasured', () => {
   for (const metrics of [
     { status: 'unavailable' }, { sampleCount: 0 }, { durationMs: 100 },
-    { signal: { rmsDb: NaN, peakDb: -50 } },
-    { clipping: { status: 'unavailable', method: 'sample-saturation', rate: 0 } }
+    { signal: { rmsDb: NaN, peakDb: -50 } }
   ]) {
     const input = automaticReport('windows', metrics);
     input.measurementFindings = [{ id: 'LOW_RECORDED_LEVEL' }];
@@ -332,13 +331,12 @@ test('invalid audio cannot produce automatic guidance from payload findings and 
   assert.deepEqual(getTroubleshootingGuidance(input, { measurementFindings: [{ id: 'LOW_RECORDED_LEVEL' }] }), []);
 });
 
-test('silence-only PCM leads to conditional speaking guidance, never an inferred permission or no-input diagnosis', () => {
+test('silence-only PCM has no inferred permission, hardware or input-gain diagnosis', () => {
   const input = automaticReport('windows', { signal: { rmsDb: -180, peakDb: -180, maxBlockRmsDb: -180 } });
-  const item = getTroubleshootingGuidance(input, { measurementFindings: canonicalFindings(input) })[0];
-  assert.equal(item.replaces, 'LOW_RECORDED_LEVEL');
-  assert.match(item.action, /^If you spoke/);
-  assert.match(item.expected, /contained no speech, its low level does not justify an input-level change/);
-  assert.doesNotMatch(JSON.stringify(item), /permission|no microphone input|muted|microphone access/i);
+  assert.deepEqual(getTroubleshootingGuidance(input, { measurementFindings: canonicalFindings(input) }), []);
+  const finding = evaluatePremiumReport(input).recommendations.find(item => item.id === 'LOW_RECORDED_LEVEL');
+  assert.match(finding.action, /Speech was not verified/);
+  assert.doesNotMatch(JSON.stringify(finding), /permission|no microphone input|muted|microphone access/i);
 });
 
 test('automatic enrichment preserves detailed measurements and Worker output while replacing only its generic finding', async () => {

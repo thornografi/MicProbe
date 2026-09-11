@@ -1,5 +1,6 @@
 // Requires localhost:8080, Playwright and Chrome. Uses a fake microphone and a fixture account.
 const { chromium } = require('playwright');
+const { selectScenario } = require('./scenario-browser-helpers.cjs');
 const assert = require('node:assert/strict');
 const BASE = 'http://localhost:8080';
 
@@ -18,11 +19,12 @@ const BASE = 'http://localhost:8080';
       };
     });
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route(url => url.origin !== BASE, route => route.fulfill({ status: 200, body: '' }));
     await page.route('**/api/account/config', route => route.fulfill({ json: { ok: true, configured: true } }));
-    await page.route('**/api/account/session', route => route.fulfill({ json: { ok: true, user: { id: 'report-fixture-account' }, premium: { unlocked: false } } }));
+    await page.route('**/api/account/session', route => route.fulfill({ json: { ok: true, user: { id: 'report-fixture-account' }, premium: { unlocked: true } } }));
     const savedReports = new Map();
     await page.route('**/api/account/reports', route => {
       const request = route.request();
@@ -34,6 +36,8 @@ const BASE = 'http://localhost:8080';
       return route.fulfill({ json: { ok: true, report: entry } });
     });
     await page.route('**/api/freemius/config', route => route.fulfill({ json: { configured: false, mode: 'sandbox' } }));
+    await page.route('**/api/report/detailed', route => route.fulfill({ json: { ok: true, detailed: { metrics: [], recommendations: [] } } }));
+    await page.route('**/api/reviews/assess', route => route.fulfill({ json: { ok: true } }));
     await page.goto(`${BASE}/#app`);
     await page.waitForFunction(() => document.body.classList.contains('app-mode'));
     await page.locator('#scenarioChoices [data-profile="discord"]').click();
@@ -48,15 +52,24 @@ const BASE = 'http://localhost:8080';
     await page.locator('#testBtn').click();
     await page.waitForFunction(() => window.__reportResults.length === 1, null, { timeout: 20000 });
     assert.equal(await page.locator('#reportPanel').evaluate(node => node.open), false);
+    await page.locator('#inlineResult').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#inlineResult').isVisible(), true);
     assert.equal(await page.locator('#comparePreviousBtn').isVisible(), false);
     const firstId = await page.evaluate(async () => {
       (await import('/js/ui/ReportPanelUI.js')).default.close();
       return window.__reportResults[0].run.id;
     });
-    await page.locator('#customSettingsToggle').click();
+    await page.locator('#showReportBtn').click();
+    assert.equal(await page.locator('#reportSetupBtn').innerText(), 'Adjust test settings');
+    assert.equal(await page.locator('#reportRetestBtn').isVisible(), true);
+    await page.locator('#reportSetupBtn').click();
+    assert.equal(await page.locator('#customSettingsToggle').getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('#reportPanel').evaluate(node => node.open), false);
+    assert.equal(await page.locator('#resultCard').getAttribute('data-run-id'), firstId);
+    assert.equal(await page.evaluate(() => window.__reportStarts.length), 1, 'Returning to settings must not capture');
     await page.locator('#custom-setting-bitrate').selectOption('96000');
-    await page.getByRole('button', { name: 'Test again', exact: true }).click();
+    await page.locator('#showReportBtn').click();
+    await page.locator('#reportRetestBtn').click();
     await page.waitForFunction(() => window.__reportStarts.length === 2, null, { timeout: 10000 });
     assert.equal(await page.locator('#accountMenuBtn').isDisabled(), true, 'History menu is locked during capture');
     assert.equal(await page.locator('#changeScenarioBtn').isDisabled(), true, 'Scenario navigation is locked during capture');
@@ -66,6 +79,7 @@ const BASE = 'http://localhost:8080';
     assert.equal(await page.locator('.nav-item[aria-current]').getAttribute('data-profile'), 'discord');
     // Bypass the native menu lock to exercise the saved-report action's independent ownership guard.
     await page.locator('#accountMenuBtn').dispatchEvent('click');
+    await page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
     const open = page.getByRole('button', { name: 'Open report', exact: true });
     assert.equal(await open.isDisabled(), true, 'Saved reports stay locked when the dialog is opened programmatically');
     // Dispatching bypasses the native disabled check; the action must still reject it.
@@ -91,18 +105,15 @@ const BASE = 'http://localhost:8080';
     assert.equal(state.liveTracks, 0);
     assert.deepEqual(errors, []);
     console.log('PASS: actual Call, history keyboard/programmatic busy guards, next run publication and microphone cleanup');
-    await page.getByRole('button', { name: 'Compare with previous', exact: true }).click();
-    assert.equal(await page.locator('#accountDialog').evaluate(node => node.open), true);
-    assert.equal(await page.locator('#accountHistoryList input[type="checkbox"]:checked').count(), 2);
-    assert.equal(await page.getByRole('heading', { name: 'Compare your two tests' }).isVisible(), true);
-    await page.getByRole('button', { name: 'Close account', exact: true }).click();
-    console.log('PASS: direct retest and same-scenario comparison for a signed-in account');
+    assert.equal(await page.locator('#comparePreviousBtn').count(), 0);
+    assert.equal(savedReports.size, 2, 'Each completed Premium test is archived independently');
+    console.log('PASS: direct retest creates an independent Premium report');
 
     // Permission failures do not publish another history row. An already open
     // dialog must release its busy lock without rebuilding unsaved note inputs.
     for (const [profile, startButton] of [['discord', '#testBtn'], ['raw', '#recordToggle']]) {
       await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.close());
-      await page.locator(`.nav-item[data-profile="${profile}"]`).click();
+      await selectScenario(page, profile);
       await page.evaluate(() => {
         window.__rejectHistoryCapture = null;
         navigator.mediaDevices.getUserMedia = () => new Promise((_resolve, reject) => {
@@ -114,10 +125,12 @@ const BASE = 'http://localhost:8080';
       assert.equal(await page.locator('#accountMenuBtn').isDisabled(), true);
       assert.equal(await page.locator('#changeScenarioBtn').isDisabled(), true);
       await page.locator('#accountMenuBtn').dispatchEvent('click');
-      const card = page.locator('#accountHistoryList .account-report').first();
+      await page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
+      const card = page.locator('#accountHistoryList .account-report').last();
       const openSaved = card.getByRole('button', { name: 'Open report', exact: true });
       assert.equal(await openSaved.isDisabled(), true);
       const draft = `Unsaved note during ${profile} permission prompt`;
+      if (!await card.locator('.account-note').evaluate(node => node.open)) await card.locator('.account-note > summary').click();
       await card.getByRole('textbox').fill(draft);
       await page.evaluate(() => window.__rejectHistoryCapture());
       await page.waitForFunction(async () => {
@@ -129,6 +142,9 @@ const BASE = 'http://localhost:8080';
       assert.equal(await card.getByRole('textbox').inputValue(), draft, 'Releasing the busy lock must retain an unsaved note');
       await openSaved.click();
       assert.equal(await page.locator('#accountDialog').evaluate(node => node.open), false);
+      assert.equal(await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.currentReport.run.id), firstId);
+      assert.equal(await page.locator('#reportRetestBtn').isVisible(), false, 'An older report cannot retest the current settings');
+      assert.equal(await page.locator('#reportSetupBtn').innerText(), 'Back to test');
       assert.equal(await page.evaluate(() => window.__reportResults.length), 3 + (profile === 'raw' ? 1 : 0));
     }
     assert.deepEqual(errors, []);

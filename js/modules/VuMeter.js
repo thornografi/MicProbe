@@ -225,7 +225,7 @@ class VuMeter {
     this.activityState = state;
     if (this.activityStatusEl) {
       this.activityStatusEl.dataset.state = state;
-      this.activityStatusEl.textContent = state === 'idle' ? 'Ready to check'
+      this.activityStatusEl.textContent = state === 'idle' ? 'Not measuring yet'
         : state === 'detected' ? 'Sound detected' : 'Waiting for sound';
     }
   }

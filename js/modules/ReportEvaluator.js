@@ -8,6 +8,8 @@
  * endpointinden gelir; odeme yapilmadan client bundle'da uretilmez.
  */
 import { QUALITY, VU_METER } from './constants.js';
+import { usableReport } from './MeasurementValidity.js';
+import { getConstraintMismatches, getAppliedConstraints } from './CaptureContext.js';
 
 class ReportEvaluator {
   constructor() {
@@ -37,27 +39,35 @@ class ReportEvaluator {
    * @param {Object} report - DiagnosticReportBuilder.build() ciktisi
    * @returns {{ overall, findings, summary, scopeSummary, scope, assessment }} Olcum kapsami ve yeterlilik durumu dahil.
    */
-  evaluateFree(report) {
+  evaluateFree(report, platform = null) {
     if (report?.run?.type === 'troubleshooting') {
       return { overall: { score: 'unknown', stars: null, label: 'Troubleshooting only', color: 'muted' }, findings: [],
         summary: 'No audio was recorded for this report.',
         assessment: { status: 'not-measured' }, scope: 'No microphone, application, network or driver performance was measured in this troubleshooting report.' };
     }
-    const m = report?.audioMetrics;
-    if (m?.status !== 'measured' || !(m.sampleCount > 0) || !(m.durationMs >= 400)
-      || !Number.isFinite(m.signal?.rmsDb) || !Number.isFinite(m.signal?.peakDb)
-      || m.clipping?.status !== 'measured' || m.clipping.method !== 'sample-saturation'
-      || !Number.isFinite(m.clipping.rate)) {
+    const checked = usableReport(report);
+    report = checked.report;
+    const m = report.audioMetrics;
+    if (!checked.valid) {
       return { overall: { score: 'unknown', stars: null, label: 'Insufficient audio', color: 'muted' }, findings: [],
-        summary: 'There is not enough measured audio to assess this recording. Record a short spoken sample and try again.',
+        summary: 'There is not enough measured audio to assess this recording.',
         assessment: { status: 'insufficient' }, scope: this._buildScope(report) };
     }
-    const findings = this._runCoreRules(report);
+    const classified = this._rules.map(rule => rule(report)).filter(Boolean).map(finding => platform?.status === 'compared'
+      && platform.expectedFindingIds?.includes(finding.id)
+      ? { ...finding, severity: 'info', expectation: 'within-reference', message: `${finding.message} This characteristic is within the validated range for this local scenario.` }
+      : finding);
+    const findings = classified.filter(finding => finding.id !== 'LOW_SNR'
+      || !classified.some(other => other.id === 'HIGH_NOISE' && other.expectation !== 'within-reference'));
     // These rules have no validated perceptual-quality model. Even supplied
     // speech/noise measurements cannot turn their flags into a five-star rating.
     const overall = this._calculateOverall(findings);
-    const summary = this._generateSummary(findings);
-    const scope = this._buildScope(report, m);
+    const hasExpected = findings.some(finding => finding.expectation === 'within-reference');
+    const hasWarning = findings.some(finding => ['warning', 'critical'].includes(finding.severity));
+    const summary = !hasWarning && (hasExpected || platform?.hasDeviation) ? platform.summary : this._generateSummary(findings);
+    if (!hasWarning && hasExpected) overall.label = 'Compared findings are expected';
+    if (!hasWarning && platform?.hasDeviation) overall.label = 'Scenario difference found';
+    const scope = [this._buildScope(report, m), platform?.summary].filter(Boolean).join(' ');
     return { overall, findings, summary, scope,
       scopeSummary: `${m.coverage?.truncated ? `First ${+(m.durationMs / 1000).toFixed(2)} s of saved audio only` : 'Saved audio only'}; speech clarity and recipient audio are unmeasured.`,
       assessment: { status: 'limited', speech: 'not-measured', recipientAudio: 'not-measured', rootCause: 'undetermined' } };
@@ -68,7 +78,9 @@ class ReportEvaluator {
     const usage = { 'voice-call': 'Voice Calls', 'voice-message': 'Voice Messages', recording: 'Recording' }[context?.usage];
     const access = { mobile: 'Mobile browser (inferred)', desktop: 'Desktop browser (inferred)' }[context?.access?.formFactor];
     const parts = [usage, access].filter(Boolean);
+    if (report?.profile?.evidence?.summary) parts.push(report.profile.evidence.summary);
     if (metrics) parts.push(`Analysed ${+(metrics.durationMs / 1000).toFixed(2)} seconds of the saved recording${metrics.coverage?.truncated ? ' (first part only)' : ''}`);
+    if (metrics && metrics.clipping?.status !== 'measured') parts.push('Full-scale sample counts are unavailable for this recording');
     if (metrics?.guidedNoise) {
       const reasons = {
         'guided-prompts-incomplete': 'The guided prompts were interrupted or the page was hidden',
@@ -79,10 +91,11 @@ class ReportEvaluator {
       };
       parts.push(metrics.guidedNoise.status === 'measured'
         ? 'Guided levels describe the recorded quiet and speaking segments; they assume you followed the prompts and do not measure microphone self-noise'
-        : `${reasons[metrics.guidedNoise.reason] || 'The guided segments could not be assessed'}. Repeat the guided check and follow the quiet and speaking prompts`);
+        : `${reasons[metrics.guidedNoise.reason] || 'The guided segments could not be assessed'}. A reliable comparison of quiet and speaking levels is unavailable`);
       if (metrics.snr?.reason === 'processing-limits-snr-estimate') parts.push('Recorded segment contrast is available, but active or unknown browser processing prevents an SNR estimate');
       if (metrics.snr?.reason === 'speaking-segment-clipped') parts.push('SNR is unavailable because the speaking segment reached full scale');
       if (metrics.snr?.status === 'measured') parts.push('Estimated SNR assumes stable background sound and gain; speech is not automatically verified');
+      if (metrics.noiseFloor?.status !== 'measured' || metrics.snr?.status !== 'measured') parts.push('Noise or signal-to-noise remains unassessed where the corresponding segment evidence is unavailable');
     } else if (metrics && (metrics.noiseFloor?.status !== 'measured' || !Number.isFinite(metrics.noiseFloor.estimatedDb)
         || metrics.snr?.status !== 'measured' || !Number.isFinite(metrics.snr.estimatedDb))) {
       parts.push('Noise or signal-to-noise remains unassessed without controlled quiet and speaking segments');
@@ -90,7 +103,7 @@ class ReportEvaluator {
     if (report?.run?.type === 'test') parts.push('The local browser call was saved as another recording, so these measurements include that additional encoding');
     parts.push('Checks describe the saved audio. Speech intelligibility and what a recipient hears in a mobile, desktop or web app are not measured');
     parts.push('Short loud sounds or another channel can mask quiet speech. Full-scale sample counts do not detect every kind of distortion');
-    parts.push('The operating-system input level, driver processing and audio enhancements are not visible to the browser; a waveform pinned below full scale is the only sign of clipping that happened before capture');
+    parts.push('The operating-system input level, driver processing and audio enhancements are not visible to the browser');
     if (report?.profile?.approximation || context?.usage === 'voice-call' || context?.usage === 'voice-message') {
       parts.push('Platform presets are local approximations; native app codecs, processing and networks are not reproduced');
     }
@@ -98,11 +111,6 @@ class ReportEvaluator {
   }
 
   // === PRIVATE: Core Rules (OCP registry — davranis birebir) ===
-
-  _runCoreRules(report) {
-    const findings = this._rules.map(fn => fn(report)).filter(Boolean);
-    return findings.filter(f => f.id !== 'LOW_SNR' || !findings.some(other => other.id === 'HIGH_NOISE'));
-  }
 
   // Kural 1+2: Sessizlik / Zayif sinyal (mutually exclusive)
   _ruleSignal(report) {
@@ -180,8 +188,7 @@ class ReportEvaluator {
   _ruleClipping(report) {
     const m = report.audioMetrics; const Q = QUALITY;
     const cr = m.clipping?.rate;
-    if (m.clipping?.method !== 'sample-saturation' || !Number.isFinite(cr)) return null;
-    if (cr != null && cr > Q.CLIPPING_RATE_CRITICAL) {
+    if (m.clipping?.status === 'measured' && cr > Q.CLIPPING_RATE_CRITICAL) {
       return { id: 'CLIPPING', severity: 'critical', metric: 'clippingRate', value: cr, threshold: Q.CLIPPING_RATE_CRITICAL,
         message: 'Many recorded samples reach or exceed full scale.' };
     }
@@ -189,9 +196,9 @@ class ReportEvaluator {
       return { id: 'CLIPPING', severity: 'warning', metric: 'clippingRate', value: cr, threshold: Q.CLIPPING_RATE_WARNING,
         message: 'Some recorded samples reach or exceed full scale.' };
     }
-    // A waveform pinned flat at its own ceiling with almost no peak-to-average spread
-    // was limited before the browser received it (interface, driver or system input
-    // level). Sample saturation cannot see that when the level was reduced afterwards.
+    // A concentrated ceiling can be consistent with limiting/clipping, including
+    // an earlier stage followed by attenuation. It cannot locate that stage or
+    // establish audible distortion from this waveform pattern alone.
     // Pure tones also sit near their ceiling about 30 % of the time with a 3 dB crest;
     // clipped audio exceeds 45 % even after resampling, and stays flat only when unresampled.
     const ceiling = m.ceiling, crest = m.signal?.crestFactorDb;
@@ -202,7 +209,7 @@ class ReportEvaluator {
       return { id: 'PINNED_CEILING', severity: critical ? 'critical' : 'warning', metric: 'nearCeilingRate', value: ceiling.nearCeilingRate,
         threshold: critical ? Q.FLAT_TOP_NEAR_RATE_CRITICAL : Q.FLAT_TOP_NEAR_RATE_WARNING, ceilingDb: level,
         flatTopRate: ceiling.flatTopRate, crestFactorDb: crest,
-        message: `The waveform is pinned at a ceiling of ${level} dBFS, below full scale, with a peak-to-average spread of only ${crest} dB. This pattern matches clipping before the browser received the audio (interface gain, driver or system input level), so full-scale sample counts do not show it.` };
+        message: `Many samples cluster near a ceiling of ${level} dBFS below full scale, with a peak-to-average spread of ${crest} dB. Clipping or limiting can produce this pattern; the recording does not identify where it happened or whether it is audible.` };
     }
     return null;
   }
@@ -229,8 +236,8 @@ class ReportEvaluator {
 
   // Kural 8: The device applied different settings than requested
   _ruleAppliedSettings(report) {
-    const mismatches = report.profile?.constraintMismatches;
-    if (!Array.isArray(mismatches) || !mismatches.length) return null;
+    const mismatches = getConstraintMismatches(report.profile);
+    if (!mismatches.length) return null;
     const label = { sampleRate: 'sample rate', channelCount: 'channel count', echoCancellation: 'echo cancellation',
       noiseSuppression: 'noise suppression', autoGainControl: 'automatic gain control' };
     const text = mismatches.map(item => `${label[item.key] || item.key} ${String(item.applied)} instead of ${String(item.requested)}`).join(', ');
@@ -240,7 +247,7 @@ class ReportEvaluator {
 
   // Kural 9: Automatic gain control may also move the system input level
   _ruleGainControl(report) {
-    if (report.profile?.appliedConstraints?.autoGainControl !== true) return null;
+    if (getAppliedConstraints(report.profile).autoGainControl !== true) return null;
     return { id: 'AGC_ACTIVE', severity: 'info', metric: 'autoGainControl', value: true, threshold: null,
       message: 'Automatic gain control was active, so the recorded level does not show the microphone\'s own level. The browser may also adjust the system input level during such runs, which can change later recordings made with processing disabled.' };
   }
@@ -284,7 +291,7 @@ class ReportEvaluator {
     const warningCount = findings.filter(f => f.severity === 'warning').length;
 
     if (criticalCount === 0 && warningCount === 0) {
-      return { score: 'limited', stars: null, label: 'Limited audio checks', color: 'muted' };
+      return { score: 'limited', stars: null, label: 'No recording warnings found', color: 'muted' };
     }
     if (criticalCount > 0) return { score: 'critical', stars: null, label: 'Needs attention', color: 'danger' };
     return { score: 'fair', stars: null, label: 'Review recording', color: 'warning' };
@@ -293,7 +300,20 @@ class ReportEvaluator {
   _generateSummary(findings) {
     const firstIssue = findings.find(f => f.severity === 'critical')
       || findings.find(f => f.severity === 'warning');
-    return firstIssue?.message || 'No low-level, pinned-ceiling, true-peak or full-scale sample flags were detected.';
+    if (!firstIssue) return 'The available checks found no signs of very low recording level or audio exceeding its recording limits.';
+    // The preview describes the observation. Detailed evidence and possible causes
+    // belong to the Premium findings; never reuse their full messages here.
+    const summaries = {
+      SILENCE: 'Very little sound was captured in this recording.',
+      WEAK_SIGNAL: 'The recording has a low sound level.',
+      HIGH_NOISE: 'The measured noise segment has a high level.',
+      LOW_SNR: 'The recorded speaking and quiet sections have little level separation.',
+      CLIPPING: 'The recording shows signs of possible distortion.',
+      PINNED_CEILING: 'The recording shows signs of possible distortion.',
+      TRUE_PEAK_OVER: 'The recording shows signs of possible distortion.',
+      DROPOUTS: 'Interruptions were detected in the recorded audio.'
+    };
+    return summaries[firstIssue.id] || 'The recording contains a finding that needs attention.';
   }
 
 }

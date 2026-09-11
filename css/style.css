@@ -1,7 +1,7 @@
 /* MicProbe - App Styles (Barrel)
    =======================================
    Tum renkler variables.css'ten gelir; paylasilan bilesenler shared.css'te.
-   Bu dosya yalnizca app (lazy) CSS'ini listeler ve js/landing.js APP_STYLESHEET_HREFS
+   Bu dosya yalnizca app (lazy) CSS'ini listeler ve js/app-styles.js manifest'i
    ile birebir ayni sirada tutulur (css-manifest.test.mjs bunu dogrular).
    <head> sirasi: variables.css -> shared.css -> landing.css; app CSS'i landing.js yukler.
 */

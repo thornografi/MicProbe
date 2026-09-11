@@ -3,6 +3,7 @@
  * Ayar tanimlari ve profil degerleri
  */
 import { PIPELINE_TYPES, ENCODER_TYPES } from './constants.js';
+import { PLATFORM_REFERENCE_VERSION } from './PlatformContext.js';
 
 // Ayar tanimlari (metadata + UI binding)
 export const SETTINGS = {
@@ -142,14 +143,17 @@ const DEFAULT_VALUES = Object.fromEntries(
 );
 
 // Source review dates are separate from publication dates and do not certify client defaults.
-function createProfileEvidence(sources) {
+function createProfileEvidence(sources = [], observations = {}) {
   return {
     schemaVersion: 1,
-    verifiedAt: '2026-09-05',
+    verifiedAt: sources.length ? '2026-09-05' : null,
     classification: 'local-approximation',
     clientVersion: null,
     clientCodec: null,
-    sources
+    sources,
+    basis: 'heuristic',
+    summary: 'Estimated local preset; the platform\'s current web audio behavior has not been verified.',
+    ...observations
   };
 }
 
@@ -173,12 +177,14 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
 
   return {
     id, label, desc, icon, category,
+    referenceVersion: PLATFORM_REFERENCE_VERSION,
     values: overrides === null ? null : { ...DEFAULT_VALUES, ...overrides },
     lockedSettings,
     editableSettings,
     allowedValues, // Profil bazli deger kisitlamalari
     detection, // Teknoloji tespit detaylari
-    evidence: settings.evidence || null,
+    evidence: settings.evidence || (id === 'raw' ? null : createProfileEvidence()),
+    transport: isCallCategory ? { dtx: null, fec: null, ...settings.transport } : null,
     // OCP: Yetenekler profilde tanimli
     canTest: isCallCategory,
     canRecord: !isCallCategory,
@@ -187,9 +193,40 @@ function createProfile(id, label, desc, icon, category, overrides = {}, settings
   };
 }
 
+// Platform observations only replace the fields they establish. Unknown codec/DSP
+// behavior keeps a local baseline; null Opus preferences leave browser defaults intact.
+function createWebCall(id, label, bitrate, evidence = {}, transport = {}) {
+  return createProfile(id, label, 'Local browser call approximation', 'video', 'call',
+    { ec: true, ns: true, agc: true, loopback: true, pipeline: PIPELINE_TYPES.WORKLET,
+      encoder: ENCODER_TYPES.MEDIARECORDER, bitrate, sampleRate: 48000, channelCount: 1 },
+    { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'sampleRate', 'ec', 'ns', 'agc'],
+      editable: ['bitrate'], allowedValues: { bitrate: [16000, 24000, 32000, 48000, 64000] },
+      transport, evidence: createProfileEvidence([], { verifiedAt: null, ...evidence }),
+      detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation',
+        details: 'Local Opus with browser echo cancellation, noise suppression and automatic gain. Bitrate is a ceiling; platform-specific processing and network behavior are not reproduced.' } });
+}
+
 // Davranis bazli profil tanimlari
 // İKİ ANA KATEGORİ: call (sesli görüşme) ve record (kayıt)
 export const PROFILES = {
+  'teams': createWebCall('teams', 'Microsoft Teams', 32000, {
+    basis: 'observed-web', verifiedAt: '2026-09-11', clientCodec: 'audio/opus',
+    observed: { bitrate: 32000, dtx: true },
+    summary: 'Informed by a Teams web test: Opus, a 32 kbps target and DTX enabled. Full defaults and proprietary processing remain unverified; remaining settings are estimated.'
+  }, { dtx: true }),
+  'webex': createWebCall('webex', 'Cisco Webex', 64000, {
+    basis: 'observed-web', verifiedAt: '2026-09-11', clientCodec: 'audio/opus',
+    observed: { bitrate: 64000, dtx: false, fec: true },
+    summary: 'Informed by a Webex web test: Opus, a 64 kbps limit, DTX disabled and FEC enabled. Webex noise removal is not reproduced; remaining settings are estimated.'
+  }, { dtx: false, fec: true }),
+  'zoom': createWebCall('zoom', 'Zoom', 48000, {
+    basis: 'observed-web', verifiedAt: '2026-09-11',
+    observed: { sampleRate: 48000, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    summary: 'Informed by a Zoom web capture at 48 kHz with browser sound enhancements on. Codec and bitrate were not measured; this preset uses an estimated mono Opus path. Zoom-specific processing is not reproduced.'
+  }),
+  'google-meet': createWebCall('google-meet', 'Google Meet', 48000),
+  'whatsapp-call': createWebCall('whatsapp-call', 'WhatsApp Call', 24000),
+  'telegram-call': createWebCall('telegram-call', 'Telegram Call', 24000),
   // ═══════════════════════════════════════════════════════════════
   // 📞 SESLİ GÖRÜŞME (call) - WebRTC Loopback testi ve rapor
   // ═══════════════════════════════════════════════════════════════
@@ -207,21 +244,21 @@ export const PROFILES = {
       ]),
       detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'Discord-style Opus bitrate test with browser noise processing; not an exact Discord client clone' } }),
 
-  'meeting-call': createProfile('meeting-call', 'Meeting Call', 'Default browser meeting call approximation for Zoom, Google Meet, and Microsoft Teams',
+  'meeting-call': createProfile('meeting-call', 'General meeting', 'General browser meeting preset',
     'video', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 48000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'ec', 'ns', 'agc'],
       editable: ['bitrate', 'sampleRate'],
       allowedValues: { bitrate: [32000, 48000, 64000], sampleRate: [16000, 24000, 48000] },
       detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'Default meeting-call behavior: mono Opus with browser EC/NS/AGC enabled' } }),
 
-  'zoom-hifi': createProfile('zoom-hifi', 'Zoom High Fidelity', 'Zoom Original Sound / high fidelity music mode approximation',
+  'zoom-hifi': createProfile('zoom-hifi', 'Music call', 'Higher-bitrate local music test with browser sound enhancements off',
     'music', 'call', { ec: false, ns: false, agc: false, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 96000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'sampleRate', 'ec', 'ns', 'agc'],
       editable: ['bitrate', 'channelCount'],
       allowedValues: { bitrate: [96000, 128000, 192000], channelCount: [1, 2] },
       detection: { method: 'AudioWorklet + WebRTC', source: 'local approximation', details: 'High-fidelity meeting mode: 48kHz, higher Opus bitrate, browser EC/NS/AGC disabled' } }),
 
-  'whatsapp-telegram-call': createProfile('whatsapp-telegram-call', 'WhatsApp / Telegram Call', 'Local voice-call preset; mobile and desktop app codecs and processing are not reproduced',
+  'whatsapp-telegram-call': createProfile('whatsapp-telegram-call', 'Compact call', 'General low-bitrate voice-call preset',
     'phone', 'call', { ec: true, ns: true, agc: true, loopback: true, pipeline: 'worklet', encoder: 'mediarecorder', bitrate: 24000, sampleRate: 48000, channelCount: 1 },
     { locked: ['loopback', 'pipeline', 'encoder', 'channelCount', 'ec', 'ns', 'agc'],
       editable: ['bitrate'],
@@ -261,7 +298,7 @@ export const PROFILES = {
       allowedValues: { mediaBitrate: [0, 16000, 24000, 32000] },  // 0 = VBR (varsayılan)
       detection: { method: 'AudioWorklet + WASM Opus', source: 'local encoder', details: 'MicProbe local Opus encoder; Worklet and its VBR default do not identify a Telegram client implementation' } }),
 
-  'raw': createProfile('raw', 'Raw Recording', 'Worklet + PCM/WAV - uncompressed 16-bit WAV recording',
+  'raw': createProfile('raw', 'Microphone check', 'Worklet + PCM/WAV - uncompressed 16-bit WAV recording',
     'mic', 'record', { ec: false, ns: false, agc: false, pipeline: 'worklet', encoder: 'pcm-wav', loopback: false },
     { locked: ['pipeline', 'encoder'], editable: ['ec', 'ns', 'agc', 'sampleRate', 'channelCount'],
       detection: { method: 'AudioWorklet', source: 'pcm-wav', details: 'AudioWorkletNode + PCM/WAV (16-bit uncompressed)' } })
@@ -274,7 +311,7 @@ export const PROFILE_CATEGORIES = {
     id: 'call',
     label: 'Voice Calls',
     icon: '📞',
-    desc: 'Discord, Zoom/Meet/Teams meetings, Zoom Hi-Fi, WhatsApp/Telegram',
+    desc: 'Teams, Webex, Zoom, Meet, Discord, WhatsApp, Telegram and general call checks',
     order: 1
   },
   record: {
@@ -286,59 +323,8 @@ export const PROFILE_CATEGORIES = {
   }
 };
 
-// Profil bazli Tips mesajlari
-// Her profil icin 3 adimlik rehber (tek satir)
-export const PROFILE_TIPS = {
-  // === CALL Category ===
-  'discord': [
-    { step: 1, text: 'Select <strong>Run Test</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Play back the codec-processed audio' },
-    { step: 3, text: 'Review your result and open the report for details' }
-  ],
-  'meeting-call': [
-    { step: 1, text: 'Select <strong>Run Test</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Listen to your sample and review the result' },
-    { step: 3, text: 'Adjust one setting and test again to compare' }
-  ],
-  'zoom-hifi': [
-    { step: 1, text: 'Select <strong>Run Test</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Listen for room noise and review the result' },
-    { step: 3, text: 'Try mono or stereo, then test again to compare' }
-  ],
-  'whatsapp-telegram-call': [
-    { step: 1, text: 'Select <strong>Run Test</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Check whether speech stays clear after heavier call compression' },
-    { step: 3, text: 'Review measured levels and listen for background noise' }
-  ],
-
-  // === RECORD Category ===
-  'whatsapp-voice': [
-    { step: 1, text: 'Select <strong>Record</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Wait for the recording to finish, then listen to your sample' },
-    { step: 3, text: 'Review your result and open the report for details' }
-  ],
-  'telegram-voice': [
-    { step: 1, text: 'Select <strong>Record</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Wait for the recording to finish, then listen to your sample' },
-    { step: 3, text: 'Adjust one setting and test again to compare' }
-  ],
-  'raw': [
-    { step: 1, text: 'Select <strong>Record</strong> and follow the on-screen steps' },
-    { step: 2, text: 'Wait for the recording to finish, then listen to your sample' },
-    { step: 3, text: 'Review your result before changing your setup' }
-  ],
-
-  // Default (fallback)
-  'default': [
-    { step: 1, text: 'Select a profile from the sidebar' },
-    { step: 2, text: 'Select <strong>Run Test</strong> or <strong>Record</strong>, then follow the on-screen steps' },
-    { step: 3, text: 'Listen to your sample and review the result' }
-  ]
-};
-
 export default {
   SETTINGS,
   PROFILES,
-  PROFILE_CATEGORIES,
-  PROFILE_TIPS
+  PROFILE_CATEGORIES
 };

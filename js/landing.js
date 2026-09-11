@@ -12,6 +12,8 @@
  */
 
 import { createOverlayController } from './ui/OverlayController.js';
+import { appPageTitle } from './modules/utils/ui.js';
+import APP_STYLESHEET_HREFS from './app-styles.js';
 import { initWaveAnimator } from './modules/WaveAnimator.js';
 import { getCurrentMode, getIsPreparing } from './app/AppState.js';
 import { markStartupDiag, markStartupFrameSequence, startStartupDiagnostics } from './modules/StartupDiagnostics.js';
@@ -21,29 +23,19 @@ import { markStartupDiag, markStartupFrameSequence, startStartupDiagnostics } fr
 // ============================================
 let appModule = null;
 let appModulePromise = null;
-let appLoading = false;
+let viewRevision = 0;
 let initialRouteHandled = false;
 let appStylesPromise = null;
 let fontStylesPromise = null;
+const stylesheetLoads = new Map();
+let activeEntry = { url: window.location.href, index: history.state?.micprobeIndex ?? 0 };
+// /app has its own initial metadata in a build; returning home restores this title.
+const LANDING_TITLE = document.querySelector('meta[property="og:site_name"]')
+  ? 'MicProbe — Check your microphone before a call' : document.title;
 
 startStartupDiagnostics();
 
 const FONT_STYLESHEET_HREF = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap';
-
-const APP_STYLESHEET_HREFS = [
-  '/css/layout.css',
-  '/css/header.css',
-  '/css/panels.css',
-  '/css/controls.css',
-  '/css/player.css',
-  '/css/vu-meter.css',
-  '/css/drawers.css',
-  '/css/components.css',
-  '/css/helpers.css',
-  '/css/report.css',
-  '/css/account.css',
-  '/css/troubleshooting.css'
-];
 
 function findStylesheet(href) {
   const absoluteHref = new URL(href, window.location.href).href;
@@ -52,17 +44,18 @@ function findStylesheet(href) {
 }
 
 function loadStylesheet(href, marker = 'appStyle') {
+  if (stylesheetLoads.has(href)) return stylesheetLoads.get(href);
   const existing = findStylesheet(href);
-  if (existing) {
+  if (existing?.sheet) {
     markStartupDiag('stylesheet.reused', { href, marker });
     return Promise.resolve();
   }
 
-  return new Promise((resolve) => {
+  const pending = new Promise((resolve, reject) => {
     const startedAt = performance.now();
     markStartupDiag('stylesheet.requested', { href, marker });
 
-    const link = document.createElement('link');
+    const link = existing || document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
     link.dataset[marker] = 'true';
@@ -81,17 +74,24 @@ function loadStylesheet(href, marker = 'appStyle') {
         ms: Math.round((performance.now() - startedAt) * 10) / 10
       });
       console.error(`[Landing] Failed to load stylesheet: ${href}`);
-      resolve();
+      link.remove();
+      reject(new Error(`Failed to load stylesheet: ${href}`));
     };
-    document.head.appendChild(link);
+    if (!existing) document.head.appendChild(link);
+  }).catch(error => {
+    stylesheetLoads.delete(href);
+    throw error;
   });
+  stylesheetLoads.set(href, pending);
+  return pending;
 }
 
 function ensureFontStylesLoaded() {
   if (!fontStylesPromise) {
     markStartupDiag('fontStyles.ensure.start');
     fontStylesPromise = loadStylesheet(FONT_STYLESHEET_HREF, 'fontStyle')
-      .then(() => markStartupDiag('fontStyles.ensure.end'));
+      .then(() => markStartupDiag('fontStyles.ensure.end'))
+      .catch(() => { fontStylesPromise = null; }); // System fonts remain usable.
   } else {
     markStartupDiag('fontStyles.ensure.reuse');
   }
@@ -102,7 +102,8 @@ function ensureAppStylesLoaded() {
   if (!appStylesPromise) {
     markStartupDiag('appStyles.ensure.start', { count: APP_STYLESHEET_HREFS.length });
     appStylesPromise = Promise.all(APP_STYLESHEET_HREFS.map(href => loadStylesheet(href, 'appStyle')))
-      .then(() => markStartupDiag('appStyles.ensure.end', { count: APP_STYLESHEET_HREFS.length }));
+      .then(() => markStartupDiag('appStyles.ensure.end', { count: APP_STYLESHEET_HREFS.length }))
+      .catch(error => { appStylesPromise = null; throw error; });
   } else {
     markStartupDiag('appStyles.ensure.reuse');
   }
@@ -135,19 +136,6 @@ function loadAppModule(reason = 'demand') {
   return appModulePromise;
 }
 
-function preloadAppModule(reason) {
-  markStartupDiag('appModule.preload.start', { reason });
-  return loadAppModule(reason)
-    .then((module) => {
-      markStartupDiag('appModule.preload.ready', { reason });
-      return module;
-    })
-    .catch((err) => {
-      markStartupDiag('appModule.preload.failed', { reason, error: err.message });
-      return null;
-    });
-}
-
 function loadAppModuleForView() {
   if (appModule) {
     markStartupDiag('showAppView.appImport.reused');
@@ -169,14 +157,6 @@ function schedulePostLoadWarmups() {
       markStartupDiag('warmup.font.idle');
       ensureFontStylesLoaded();
     }, { timeout: 1000 });
-    requestIdle(() => {
-      markStartupDiag('warmup.appStyles.idle');
-      ensureAppStylesLoaded();
-    }, { timeout: 3000 });
-    requestIdle(() => {
-      markStartupDiag('warmup.appModule.idle');
-      preloadAppModule('idle');
-    }, { timeout: 3500 });
   };
 
   if (document.readyState === 'complete') {
@@ -193,15 +173,11 @@ function schedulePostLoadWarmups() {
 /**
  * Show App View with lazy loading
  */
-export async function showAppView() {
-  const trigger = typeof arguments[0] === 'string' ? arguments[0] : 'programmatic';
+export async function showAppView(trigger = 'programmatic', historyMode = 'push') {
 
-  // Prevent double loading
-  if (appLoading) {
-    markStartupDiag('showAppView.ignored.loading', { trigger });
-    return;
-  }
-  appLoading = true;
+  // Imports/styles already share their promises; only the latest navigation may commit.
+  const revision = ++viewRevision;
+  setLoadStatus('loading');
   markStartupDiag('showAppView.start', {
     trigger,
     appModuleLoaded: !!appModule,
@@ -216,6 +192,8 @@ export async function showAppView() {
 
   try {
     await Promise.all([stylesLoad, appLoad]);
+    if (revision !== viewRevision) return;
+    setLoadStatus();
     markStartupDiag('showAppView.readyToSwap');
 
     // Update UI — body.app-mode controls visibility, .hidden only for initial load
@@ -240,39 +218,49 @@ export async function showAppView() {
     // normalize ETME — aksi halde PremiumAccess okumadan önce silinir. Temizligi
     // dogrulama sonrasi PremiumAccess._cleanFreemiusParamsFromUrl() ustleniyor.
     const hasPurchaseRedirect = new URLSearchParams(window.location.search).has('signature');
-    const newUrl = window.location.origin + '/app';
-    if (!hasPurchaseRedirect && window.location.href !== newUrl) {
-      history.pushState({ view: 'app' }, '', newUrl);
-      markStartupDiag('showAppView.route.updated', { url: newUrl });
-    }
+    const hasGoogleReturn = /^#google_(return|error)=/.test(window.location.hash);
+    // Account bootstrap owns the Google return marker, just as billing owns
+    // its signed checkout parameters. Keep it until the session is checked.
+    const newUrl = hasPurchaseRedirect || hasGoogleReturn ? window.location.href : '/app' + window.location.search;
+    updateRoute(newUrl, historyMode);
+    const heading = appView.querySelector('#scenarioPicker:not([hidden]) h1, #scenarioWorkspace:not([hidden]) h1');
+    document.title = appPageTitle(heading);
+    // An owned checkout can open a dialog during startup; keep its focus.
+    if (!document.querySelector('dialog[open]')) heading?.focus({ preventScroll: true });
+    appModule?.syncAccountSignIn?.();
 
     await appModePaintReady;
     markStartupDiag('showAppView.complete');
     window.__micprobeFlushStartupDiagnosticsToLog?.('showAppView.complete');
   } catch (err) {
+    if (revision !== viewRevision) return;
+    setLoadStatus('error');
     markStartupDiag('showAppView.failed', { error: err.message });
     console.error('[Landing] Failed to load app view:', err);
-  } finally {
-    appLoading = false;
   }
 }
 
 /**
  * Show Landing View — aktif operation varsa engelle
  */
-export function showLandingView() {
+export function showLandingView({ hash = '', historyMode = 'push', smooth = false } = {}) {
   // State guard: aktif islem varsa navigasyonu engelle
-  if (getCurrentMode() || getIsPreparing()) {
-    return;
-  }
+  if (isBusy()) return false;
+  ++viewRevision;
+  setLoadStatus();
 
   document.body.classList.remove('app-mode');
+  appModule?.syncAccountSignIn?.();
   if (initialRouteHandled) {
     const landingView = document.getElementById('landing-view');
     landingView.classList.add('view-enter');
     landingView.addEventListener('animationend', () => landingView.classList.remove('view-enter'), { once: true });
   }
-  window.scrollTo(0, 0);
+  const target = hash ? document.getElementById(hash.slice(1)) : document.getElementById('hero-title');
+  const heading = target?.matches('h1, h2') ? target : target?.querySelector('h1, h2');
+  heading?.focus({ preventScroll: true });
+  if (hash) target?.scrollIntoView({ behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
+  else window.scrollTo(0, 0);
 
   // Footer'ı landing-view'a geri taşı
   const footer = document.getElementById('sharedFooter');
@@ -280,10 +268,39 @@ export function showLandingView() {
     document.getElementById('landing-view').appendChild(footer);
   }
 
-  // Update URL to root
-  if (window.location.pathname !== '/') {
-    history.pushState({ view: 'landing' }, '', '/');
+  document.title = LANDING_TITLE;
+  updateRoute('/' + window.location.search + hash, historyMode);
+  return true;
+}
+
+function isBusy() {
+  return getCurrentMode() || getIsPreparing() || appModule?.isWorkflowBusy?.();
+}
+
+// Normalization replaces the current entry; only an explicit new destination pushes.
+function updateRoute(destination, mode) {
+  const url = new URL(destination, window.location.href).href;
+  const push = mode === 'push' && url !== window.location.href;
+  const index = push ? activeEntry.index + 1 : history.state?.micprobeIndex ?? activeEntry.index;
+  history[push ? 'pushState' : 'replaceState']({ ...history.state, micprobeIndex: index }, '', url);
+  activeEntry = { url, index };
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) {
+    const path = document.body.classList.contains('app-mode') ? '/app' : '/';
+    canonical.href = new URL(path, canonical.href).href;
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonical.href);
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', document.title);
   }
+}
+
+function setLoadStatus(state) {
+  const status = document.getElementById('appLoadStatus');
+  status.hidden = !state;
+  document.getElementById('appLoadMessage').textContent = state === 'error'
+    ? 'MicProbe could not open. Check your connection and try again.' : 'Opening MicProbe…';
+  document.getElementById('appLoadRetry').hidden = state !== 'error';
+  document.getElementById('app-view').setAttribute('aria-busy', String(state === 'loading'));
+  if (state === 'error') document.getElementById('appLoadMessage').focus({ preventScroll: true });
 }
 
 // ============================================
@@ -301,21 +318,25 @@ function handleRoute() {
 
   // Path-based routing (preferred)
   if (path === '/app' || path === '/app/') {
-    showAppView('route:/app');
+    showAppView('route:/app', 'replace');
     return;
   }
 
   // Hash-based routing (fallback for static hosting)
   if (hash === '#app') {
-    showAppView('route:#app');
+    showAppView('route:#app', 'replace');
     return;
   }
 
-  // Default: show landing
-  showLandingView();
-  if (!document.body.classList.contains('app-mode') && (hash === '#features' || hash === '#how-it-works')) {
-    document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'instant' });
+  if (isBusy()) {
+    // popstate happens after the address changes. Restore the accepted entry
+    // without adding entries or interrupting capture / pending report analysis.
+    const index = history.state?.micprobeIndex;
+    if (Number.isInteger(index) && index !== activeEntry.index) history.go(activeEntry.index - index);
+    else history.replaceState({ ...history.state, micprobeIndex: activeEntry.index }, '', activeEntry.url);
+    return;
   }
+  showLandingView({ hash: ['#features', '#how-it-works'].includes(hash) ? hash : '', historyMode: 'replace' });
 }
 
 // ============================================
@@ -348,6 +369,7 @@ function initNavbarScroll() {
 function initSmoothScroll() {
   document.querySelectorAll('#landing-view a[href^="#"]:not([download]), #landing-view a[href^="/#"]').forEach(anchor => {
     anchor.addEventListener('click', function(e) {
+      if (!isPlainClick(e)) return;
       const href = new URL(this.getAttribute('href'), window.location.href).hash;
 
       // Skip empty hash and #app (handled by showAppView)
@@ -356,12 +378,14 @@ function initSmoothScroll() {
       const target = document.querySelector(href);
       if (target) {
         e.preventDefault();
-        if (document.body.classList.contains('app-mode')) showLandingView();
-        if (document.body.classList.contains('app-mode')) return;
-        target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+        showLandingView({ hash: href, smooth: true });
       }
     });
   });
+}
+
+function isPlainClick(event) {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
 
 // ============================================
@@ -395,22 +419,9 @@ function bindNavigationEvents() {
     if (!el) return;
 
     const triggerName = el.id || el.className || 'app-trigger';
-    el.addEventListener('pointerenter', () => {
-      markStartupDiag('appTrigger.pointerenter', { trigger: triggerName });
-      ensureAppStylesLoaded();
-      preloadAppModule(`pointerenter:${triggerName}`);
-    }, { once: true, passive: true });
-    el.addEventListener('focus', () => {
-      markStartupDiag('appTrigger.focus', { trigger: triggerName });
-      ensureAppStylesLoaded();
-      preloadAppModule(`focus:${triggerName}`);
-    }, { once: true });
-    el.addEventListener('touchstart', () => {
-      markStartupDiag('appTrigger.touchstart', { trigger: triggerName });
-      ensureAppStylesLoaded();
-      preloadAppModule(`touchstart:${triggerName}`);
-    }, { once: true, passive: true });
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (!isPlainClick(e)) return;
+      e.preventDefault();
       markStartupDiag('appTrigger.click', { trigger: triggerName });
       closeMobileMenu();
       showAppView(`click:${triggerName}`);
@@ -424,6 +435,7 @@ function bindNavigationEvents() {
     document.getElementById('appHeaderBrand')
   ];
   landingViewTriggers.forEach(el => el?.addEventListener('click', (e) => {
+    if (!isPlainClick(e)) return;
     e.preventDefault();
     closeMobileMenu();
     showLandingView();
@@ -432,6 +444,14 @@ function bindNavigationEvents() {
   mobileNav?.querySelectorAll('a, button').forEach(el => {
     el.addEventListener('click', closeMobileMenu);
   });
+
+  document.getElementById('appLoadRetry').addEventListener('click', () => {
+    // A failed module evaluation stays cached for this document. Start a new
+    // document on explicit retry; CSS-only failures can recover in place.
+    if (!appModule) window.location.assign('/app' + window.location.search);
+    else showAppView('retry', window.location.pathname.startsWith('/app') ? 'replace' : 'push');
+  });
+  document.getElementById('appLoadCancel').addEventListener('click', () => showLandingView());
 
 }
 
@@ -479,3 +499,6 @@ if (document.readyState === 'loading') {
 
 // Handle browser back/forward
 window.addEventListener('popstate', handleRoute);
+window.addEventListener('hashchange', () => {
+  if (window.location.href !== activeEntry.url) handleRoute();
+});

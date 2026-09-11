@@ -36,8 +36,10 @@ class TestRecordingFlow {
    * Kayit sirasinda tiklanirsa erken durdur ve analize gec.
    */
   async toggle() {
-    // GUARD: Async islem devam ederken tekrar cagrilmasin (rapid click korunmasi)
-    if (this.deps.getIsPreparing?.()) return;
+    if (this.deps.getIsPreparing?.()) {
+      if (this._isCurrent(this._run) && !this.testPhase) await this.cancel();
+      return;
+    }
 
     if (this.testPhase === 'recording') {
       // Erken durdur -> analize gec (iptal degil)
@@ -54,10 +56,12 @@ class TestRecordingFlow {
    * Test kaydi baslat (7sn loopback buffer)
    */
   async startRecording() {
+    if (this._isCurrent(this._run) || this.deps.getIsPreparing?.() || this.deps.getCurrentMode?.()) return;
     const constraints = this.deps.getConstraints();
     const opusBitrate = this.deps.getOpusBitrate();
     const snapshot = this.deps.createRunSnapshot();
     const run = { snapshot, cancelled: false, finished: false, stream: null, recorder: null, activator: null, chunks: [], analysis: null };
+    run.abort = new AbortController();
     run.guide = new CaptureGuide(snapshot);
     this._run = run;
     this.runSnapshot = snapshot;
@@ -68,14 +72,18 @@ class TestRecordingFlow {
     eventBus.emit(EVENTS.UI_CLEAR_MESSAGE);
 
     try {
-      // Player'i durdur
-      this.deps.player?.pause();
-
       // Preparing state - mode'u hemen set et (UI hangi butonun preparing oldugunu bilsin)
       beginPreparing(this.deps, 'test-recording');
 
+      if (this.deps.testAccess && !await this.deps.testAccess.begin(snapshot)) {
+        await this._finish(EVENTS.TEST_CANCELLED, run);
+        return;
+      }
+      if (!this._isCurrent(run)) { await this.deps.testAccess?.release(snapshot.runId); return; }
+      this.deps.player?.pause();
+
       // Mikrofon al
-      run.stream = await requestStream(constraints);
+      run.stream = await requestStream(constraints, { signal: run.abort.signal });
       if (!this._isCurrent(run)) { this._disposeRunResources(run); return; }
       this.localStream = run.stream;
       this._assertInputAlive(run);
@@ -95,6 +103,7 @@ class TestRecordingFlow {
       const remoteStream = await loopbackManager.setup(run.stream, {
         useWebAudio: snapshot.requestedSettings.pipeline !== PIPELINE_TYPES.DIRECT,
         opusBitrate,
+        opusPreferences: snapshot.transport,
         pipeline: snapshot.requestedSettings.pipeline,
         runId: snapshot.runId
       });
@@ -407,6 +416,7 @@ class TestRecordingFlow {
     const payload = { runSnapshot: run.snapshot, analysis: run.analysis, recording: run.recording || null };
     await this._cleanup(run);
     if (this._run === run) eventBus.emit(eventName, payload);
+    if (eventName === EVENTS.TEST_CANCELLED) void this.deps.testAccess?.release(run.snapshot.runId);
   }
 
   _isCurrent(run) {
@@ -456,6 +466,7 @@ class TestRecordingFlow {
   }
 
   _disposeRunResources(run) {
+    run.abort?.abort(new DOMException('Test start cancelled', 'AbortError'));
     run.guide?.cancel();
     clearTimeout(run.stopTimeout);
     run.stopTimeout = null;

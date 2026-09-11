@@ -3,9 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mic Probe - Diagnose Microphone Issues</title>
-  <meta name="description" content="Test your microphone with behavior-based call and voice-message profiles. WebRTC, codec testing, and practical audio diagnostics.">
-  <link rel="icon" type="image/svg+xml" href="/assets/micprobe-mark.svg">
+  <title>MicProbe — Check your microphone before a call</title>
+  <meta name="description" content="Record a short microphone sample, hear how you sound and get practical guidance before a call or voice message. Your audio stays on your device.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://micprobe.com/">
+  <meta property="og:url" content="https://micprobe.com/">
+  <meta property="og:title" content="MicProbe — Check your microphone before a call">
+  <meta property="og:description" content="Record a short sample, hear how you sound and get practical microphone guidance.">
+  <meta property="og:site_name" content="MicProbe">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://micprobe.com/social-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="MicProbe — Hear your microphone. Record a short sample and find what to improve before a call.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image:alt" content="MicProbe microphone check before a call">
+  <meta name="theme-color" content="#15171c">
+  <link rel="icon" href="/favicon.ico?v=3" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="/favicon-96.png?v=3" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" sizes="180x180">
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"WebSite","@id":"https://micprobe.com/#website","name":"MicProbe","url":"https://micprobe.com/","inLanguage":"en","image":"https://micprobe.com/logo.png"}
+  </script>
   <!-- Fonts are loaded post-load by js/landing.js so local first paint stays fast. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +34,7 @@
   <!-- Critical landing CSS only; app CSS is loaded by js/landing.js when app view is requested. -->
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/shared.css">
-  <script src="/js/footer.js" defer></script>
+  <script type="module" src="/js/footer.js"></script>
   <link rel="stylesheet" href="/css/landing.css">
 
   <!-- Early Error Capture - LogManager yüklenmeden önce hataları yakala -->
@@ -152,20 +173,28 @@
           <a href="#features" class="navbar-link">Features</a>
           <a href="#how-it-works" class="navbar-link">How it works</a>
         </div>
-        <button class="btn btn--primary navbar-cta" id="navbarCta">
-            <svg width="12.57" height="16" viewBox="6.5 5 11 14" fill="currentColor" aria-hidden="true"><use href="#glyph-play"/></svg>
+        <a href="/app" class="btn btn--primary navbar-cta" id="navbarCta">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-mic"/></svg>
             Open MicProbe
-          </button>
+          </a>
       </div>
       <button class="header-menu-btn" id="mobileMenuBtn" aria-label="Open menu" aria-controls="mobileNav" aria-expanded="false">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><use href="#icon-menu"/></svg>
       </button>
     </nav>
 
+    <section id="appLoadStatus" class="app-load-status" aria-label="Open MicProbe" hidden>
+      <p id="appLoadMessage" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
+      <div class="app-load-actions">
+        <button id="appLoadRetry" class="btn btn--primary btn--m" type="button" hidden>Try again</button>
+        <button id="appLoadCancel" class="btn btn--secondary btn--m" type="button">Back to home</button>
+      </div>
+    </section>
+
     <!-- Hero Section -->
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-content">
-        <h1 class="hero-title" id="hero-title">
+        <h1 class="hero-title" id="hero-title" tabindex="-1">
           <span class="hero-title-line">Hear your microphone.</span>
           <span class="hero-title-line">Find what to improve.</span>
         </h1>
@@ -175,19 +204,20 @@
         </p>
 
         <div class="hero-buttons">
-          <button class="btn btn--primary" id="heroLaunchBtn">
-            <svg viewBox="0 0 24 24" fill="currentColor"><use href="#icon-mic"/></svg>
-            Open MicProbe
-          </button>
-          <a href="#features" class="btn btn--secondary">
-            Explore the tests
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <a href="/app" class="btn btn--primary btn--centered-label" id="heroLaunchBtn">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-mic"/></svg>
+            <span class="btn-text">Open MicProbe</span>
+          </a>
+          <a href="#features" class="btn btn--secondary btn--centered-label">
+            <span class="btn-text">Explore the tests</span>
+            <svg class="btn-icon-end" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
             </svg>
           </a>
         </div>
+        <p class="hero-included">Free recording, playback and a brief result. No account needed.</p>
         <p class="hero-scope-note">
-          Scenarios approximate platform audio processing locally; they do not test the actual apps or your connection.
+          Local approximations of audio processing. Actual apps and your internet connection are not tested.
         </p>
         <!-- Decorative waveform around an app launcher; not a measured recording. -->
         <div class="hero-audio-signature">
@@ -205,14 +235,14 @@
             <span class="hero-wave"></span>
             <span class="hero-wave"></span>
           </div>
-          <button class="hero-audio-mark" id="heroMicIcon" type="button" aria-label="Open MicProbe" title="Open MicProbe">
+          <a href="/app" class="hero-audio-mark" id="heroMicIcon" aria-label="Open MicProbe" title="Open MicProbe">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><use href="#icon-mic"/></svg>
-          </button>
+          </a>
         </div>
       </div>
 
       <div class="hero-visual">
-        <img class="hero-photo" src="/assets/landing/microphone-check.webp"
+        <img class="hero-photo" src="/assets/landing/microphone-check-v2.webp"
           width="1536" height="1024" fetchpriority="high"
           alt="A woman listening to her microphone recording at her desk before a call.">
         <section class="hero-report" aria-labelledby="hero-report-title">
@@ -220,7 +250,7 @@
           <h2 class="hero-report-title" id="hero-report-title">Review recording</h2>
           <p class="hero-report-finding">Even the loudest part of this recording has a low level.</p>
           <p class="hero-report-scope">Saved audio only; speech clarity and recipient audio are unmeasured.</p>
-          <p class="hero-report-included">Recording, playback and a brief result are free. No account needed.</p>
+          <p class="hero-report-action">Premium connects measured findings with relevant guidance for this recording.</p>
         </section>
       </div>
     </section>
@@ -228,7 +258,7 @@
     <!-- Features Section -->
     <section class="features" id="features" aria-labelledby="features-title">
       <div class="section-header">
-        <h2 class="section-title" id="features-title">Test the way you use your mic</h2>
+        <h2 class="section-title" id="features-title" tabindex="-1">Test the way you use your mic</h2>
         <p class="section-subtitle">Choose a call or voice-message scenario, then listen to the recorded result.</p>
       </div>
 
@@ -286,7 +316,7 @@
     <!-- How It Works Section -->
     <section class="how-it-works" id="how-it-works" aria-labelledby="how-it-works-title">
       <div class="section-header">
-        <h2 class="section-title" id="how-it-works-title">How it works</h2>
+        <h2 class="section-title" id="how-it-works-title" tabindex="-1">How it works</h2>
         <p class="section-subtitle">Hear the result. Make one change. Check it again.</p>
       </div>
 
@@ -338,7 +368,7 @@
             <p class="site-footer-heading">Information</p>
             <a href="/privacy.html">Privacy</a>
             <a href="/terms.html">Terms</a>
-            <a href="mailto:micprobe@gmail.com" class="site-footer-contact">Support</a>
+            <a href="mailto:support@micprobe.com" class="site-footer-contact">Support</a>
           </div>
         </nav>
       </div>
@@ -355,9 +385,6 @@
             <img class="brand-mark" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
             <span class="brand-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
           </a>
-          <button class="header-menu-btn" id="profileMenuBtn" aria-label="Open profile menu" aria-controls="profileSidebar" aria-expanded="false" hidden>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><use href="#icon-menu"/></svg>
-          </button>
           <div class="workspace-bar">
             <span class="workspace-label"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-signal"/></svg>Microphone diagnostics</span>
             <div class="workspace-account-actions">
@@ -368,72 +395,85 @@
       </header>
 
       <div class="app-layout">
-      <!-- Sidebar -->
-      <aside class="sidebar" id="profileSidebar" aria-label="Profile navigation" hidden>
-        <div class="sidebar-intro">
-          <p class="sidebar-intro-title" id="sidebarIntroTitle">Test scenarios</p>
-          <p class="sidebar-intro-text">Choose a local test for calls, voice messages, or microphone recording.</p>
-        </div>
-        <nav class="sidebar-nav" aria-labelledby="sidebarIntroTitle">
-          <!-- Voice Calls Category -->
-          <div class="nav-section" role="group" aria-labelledby="navSectionCalls">
-            <span class="nav-section-title" id="navSectionCalls">Voice Calls</span>
-            <button class="nav-item nav-item-sub" data-profile="discord" data-description="Voice chat and gaming with a local call preset.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-discord"/></svg></span>
-              <span>Discord</span>
-            </button>
-            <button class="nav-item nav-item-sub" data-profile="meeting-call" title="Zoom · Google Meet · Microsoft Teams" data-description="Everyday meetings on Zoom, Google Meet, or Teams.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-zoom"/></svg></span>
-              <span>Meeting Call</span>
-            </button>
-            <button class="nav-item nav-item-sub" data-profile="zoom-hifi" data-description="Music and higher-fidelity audio with processing off.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-music"/></svg></span>
-              <span>Zoom High Fidelity</span>
-            </button>
-            <button class="nav-item nav-item-sub" data-profile="whatsapp-telegram-call" data-description="Voice calls with a lower-bitrate local preset.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
-              <span>WhatsApp / Telegram Call</span>
-            </button>
-          </div>
-
-          <!-- Voice Messages Category -->
-          <div class="nav-section" role="group" aria-labelledby="navSectionMessages">
-            <span class="nav-section-title" id="navSectionMessages">Voice Messages</span>
-            <button class="nav-item nav-item-sub" data-profile="whatsapp-voice" data-description="A compact voice-message recording.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
-              <span>WhatsApp Voice</span>
-            </button>
-            <button class="nav-item nav-item-sub" data-profile="telegram-voice" data-description="A voice-message recording with variable bitrate.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
-              <span>Telegram Voice</span>
-            </button>
-          </div>
-          <div class="nav-section" role="group" aria-labelledby="navSectionRecording">
-            <span class="nav-section-title" id="navSectionRecording">Microphone Recording</span>
-            <button class="nav-item nav-item-sub" data-profile="raw" data-description="Check your microphone with an uncompressed recording. Browser noise processing starts off.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><use href="#icon-mic" width="24" height="24" x="-2" y="-2"/></svg></span>
-              <span>Raw Recording</span>
-            </button>
-          </div>
-        </nav>
-        <div class="sidebar-note">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-info"/></svg>
-          <p>Local test presets. Actual apps and your internet connection are not tested.</p>
-        </div>
-      </aside>
-
       <!-- Main Content -->
       <main class="main-content">
         <div class="content-container">
           <section class="scenario-picker" id="scenarioPicker" aria-labelledby="scenarioPickerTitle">
             <header class="scenario-picker-header">
               <h1 id="scenarioPickerTitle" tabindex="-1">What would you like to test?</h1>
-              <p>Choose a scenario for your microphone. We’ll guide you through a short recording, then help you understand the result.</p>
+              <p>Choose a simple microphone check or the way you plan to use it.</p>
             </header>
-            <div class="scenario-choices" id="scenarioChoices"></div>
+            <div class="scenario-choices" id="scenarioChoices">
+          <div class="scenario-group" role="group" aria-labelledby="navSectionRecording">
+            <h2 class="nav-section-title" id="navSectionRecording">Not sure where to start?</h2>
+            <button class="nav-item scenario-choice" type="button" data-profile="raw" data-description="Start with a simple recording. Browser sound enhancements are turned off.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><use href="#icon-mic" width="24" height="24" x="-2" y="-2"/></svg></span>
+              <span>Microphone check</span>
+            </button>
+          </div>
+          <div class="scenario-group scenario-group--calls" role="group" aria-labelledby="navSectionCalls">
+            <h2 class="nav-section-title" id="navSectionCalls">Check for a voice call</h2>
+            <div class="scenario-call-choices">
+            <button class="nav-item scenario-choice" type="button" data-profile="discord" data-description="Voice chat and gaming with a local call preset.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-discord"/></svg></span>
+              <span>Discord</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="teams" data-description="Prepare for a meeting in Microsoft Teams.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
+              <span>Microsoft Teams</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="webex" data-description="Prepare for a meeting in Cisco Webex.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
+              <span>Cisco Webex</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="zoom" data-description="Prepare for an everyday Zoom meeting.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-zoom"/></svg></span>
+              <span>Zoom</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="google-meet" data-description="Prepare for a meeting in Google Meet.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
+              <span>Google Meet</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-call" data-description="Hear a compact sample before a WhatsApp call.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
+              <span>WhatsApp Call</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="telegram-call" data-description="Hear a compact sample before a Telegram call.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
+              <span>Telegram Call</span>
+            </button>
+            </div>
+          </div>
+          <div class="scenario-group" role="group" aria-labelledby="navSectionMessages">
+            <h2 class="nav-section-title" id="navSectionMessages">Check a voice message</h2>
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-voice" data-description="A compact voice-message recording.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
+              <span>WhatsApp Voice</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="telegram-voice" data-description="Hear a sample using Telegram-style voice-message settings.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
+              <span>Telegram Voice</span>
+            </button>
+          </div>
+          <div class="scenario-group" role="group" aria-labelledby="navSectionOther">
+            <h2 class="nav-section-title" id="navSectionOther">Other call checks</h2>
+            <button class="nav-item scenario-choice" type="button" data-profile="meeting-call" data-description="A general-purpose browser meeting preset.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
+              <span>General meeting</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="zoom-hifi" data-description="More room for music, with browser sound enhancements off.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-music"/></svg></span>
+              <span>Music call</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-telegram-call" data-description="Explore a lower-bitrate voice call.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
+              <span>Compact call</span>
+            </button>
+          </div>
+            </div>
             <p class="scenario-scope">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-info"/></svg>
-              <span>These are local audio presets, not tests of the actual apps or your internet connection. You can change your scenario at any time before a test.</span>
+              <span>Local presets use browser-test observations where available and estimated settings elsewhere. They do not test the actual apps or your internet connection.</span>
             </p>
           </section>
           <div class="scenario-workspace" id="scenarioWorkspace" hidden>
@@ -446,7 +486,8 @@
                 </svg>
                 <h1 id="pageTitle" tabindex="-1">Microphone test</h1>
               </div>
-              <p class="workspace-description">Record your voice. Hear the result. Review what to improve.</p>
+              <p class="workspace-description">A short guided recording, followed by playback and your result.</p>
+              <p id="scenarioBasis" class="console-description" hidden></p>
               <button id="changeScenarioBtn" class="scenario-change" type="button">Change scenario</button>
               <!-- Top-layer toast (popover): modal/dialog ustunde kalir; canlilik role ile belirlenir (status/alert) -->
               <div id="userMessage" class="user-message" role="status" popover="manual" hidden></div>
@@ -457,7 +498,7 @@
           <div class="test-console">
             <div class="console-row">
               <!-- Control & Signal: mikrofon secimi, aksiyonlar ve canli seviye -->
-              <section class="console-card console-card--primary" aria-label="Test controls and signal levels">
+              <section class="console-card console-card--primary" aria-label="Prepare and test your microphone">
                 <div class="console-card-section">
                   <h2 class="console-card-heading"><label for="micSelector">Microphone input</label></h2>
                   <p id="microphoneHint" class="console-description" role="status" aria-atomic="true">Checking available microphones…</p>
@@ -471,47 +512,11 @@
                       </button>
                     </div>
 
-                    <div class="button-row">
-                      <button id="recordToggle" class="btn btn-action btn-record always-active" title="Record test sample" aria-label="Record test sample" aria-pressed="false">
-                        <svg class="icon-circle" width="16" height="16" viewBox="4 4 16 16" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>
-                        <svg class="icon-square" width="16" height="16" viewBox="6 6 12 12" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                        <span class="btn-text">Record</span>
-                      </button>
-                      <button id="testBtn" class="btn btn-action btn-test always-active" title="Start microphone test" aria-label="Start microphone test" aria-pressed="false">
-                        <svg class="icon-play" width="12.57" height="16" viewBox="6.5 5 11 14" fill="currentColor" aria-hidden="true"><use href="#glyph-play"/></svg>
-                        <svg class="icon-stop" width="16" height="16" viewBox="6 6 12 12" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                        <span class="btn-text">Run Test</span>
-                        <span class="test-countdown" id="testCountdown"></span>
-                        <span class="test-progress-bar" id="testProgressBar"><span class="test-progress-fill" id="testProgressFill"></span></span>
-                      </button>
-                      <div id="recordingTimer" class="recording-timer">0:00</div>
-                    </div>
-                  </div>
-                  <p id="captureHint" class="capture-hint" role="status" aria-atomic="true">We’ll guide you: stay quiet briefly, then read a short sentence. The test stops automatically.</p>
-                  <div class="capture-guide">
-                    <details class="capture-sample">
-                      <summary>Preview what you’ll read</summary>
-                      <p id="captureSampleText"></p>
-                      <p class="capture-hint">Use the same words, microphone distance and room when testing again.</p>
-                    </details>
-                    <p id="captureGuideStatus" class="capture-guide-status" role="status" aria-live="polite" hidden></p>
-                  </div>
-                </div>
-
-                <div class="console-card-section console-card-section--meters">
-                  <h2 class="console-card-heading">Your microphone</h2>
-                  <p id="micActivityStatus" class="mic-activity-status" data-state="idle" role="status">Ready to check</p>
-                  <div class="mic-activity-meter" role="img" aria-label="Microphone activity" aria-describedby="micActivityStatus">
-                    <div id="micActivityBar" class="mic-activity-fill"></div>
-                  </div>
-                  <p class="meter-hint">The bar moves when your microphone picks up sound.</p>
-                </div>
-
                 <div class="settings-strip" id="customSettingsPanel">
                   <button type="button" class="custom-settings-toggle" id="customSettingsToggle" aria-expanded="false" aria-controls="customSettingsContent">
-                    <span>Custom settings</span>
+                    <span>Test settings</span>
                     <span id="settingsModified" class="settings-modified" hidden>Modified</span>
-                    <span class="settings-summary">Fine-tune this scenario</span>
+                    <span class="settings-summary">Optional</span>
                     <svg class="toggle-chevron" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
                   </button>
                   <div class="custom-settings-content collapsed" id="customSettingsContent" inert>
@@ -524,6 +529,44 @@
                     </div>
                   </div>
                 </div>
+
+                    <div class="button-row">
+                      <button id="recordToggle" class="btn btn-action btn--centered-label btn-record always-active" title="Start microphone test" aria-label="Start microphone test" aria-pressed="false">
+                        <svg class="icon-circle" width="16" height="16" viewBox="4 4 16 16" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>
+                        <svg class="icon-square" width="16" height="16" viewBox="6 6 12 12" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span class="btn-text">Start test</span>
+                      </button>
+                      <button id="testBtn" class="btn btn-action btn--centered-label btn-test always-active" title="Start microphone test" aria-label="Start microphone test" aria-pressed="false">
+                        <svg class="icon-play" width="12.57" height="16" viewBox="6.5 5 11 14" fill="currentColor" aria-hidden="true"><use href="#glyph-play"/></svg>
+                        <svg class="icon-stop" width="16" height="16" viewBox="6 6 12 12" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span class="btn-text">Start test</span>
+                        <span class="test-countdown" id="testCountdown"></span>
+                        <span class="test-progress-bar" id="testProgressBar"><span class="test-progress-fill" id="testProgressFill"></span></span>
+                      </button>
+                      <div id="recordingTimer" class="recording-timer">0:00</div>
+                    </div>
+                  </div>
+                  <p id="captureHint" class="capture-hint" role="status" aria-atomic="true">Stay quiet briefly, then read a sentence. The test stops automatically.</p>
+                  <div class="capture-guide">
+                    <p id="captureGuideStatus" class="capture-guide-status" role="status" aria-live="polite" hidden></p>
+                    <details class="capture-sample">
+                      <summary>Preview what you’ll read</summary>
+                      <p id="captureSampleText"></p>
+                      <p class="capture-hint">Use the same words, microphone distance and room when testing again.</p>
+                    </details>
+                  </div>
+                </div>
+
+                <div class="console-card-section console-card-section--meters">
+                  <h2 class="console-card-heading">Your microphone</h2>
+                  <p id="micActivityStatus" class="mic-activity-status" data-state="idle" role="status">Not measuring yet</p>
+                  <div class="mic-activity-meter" role="img" aria-label="Microphone activity" aria-describedby="micActivityStatus">
+                    <div id="micActivityBar" class="mic-activity-fill"></div>
+                  </div>
+                  <p class="meter-hint">Sound activity appears here during the test.</p>
+                </div>
+
+
               </section>
 
               <!-- Keep playback immediately after capture in reading and keyboard order. -->
@@ -561,25 +604,20 @@
                 <p id="noRecording" class="empty-state" hidden>Your sample will appear here, ready to play back and review.</p>
                 <div class="result-actions">
                   <button id="showReportBtn" class="btn-show-report" type="button" hidden aria-haspopup="dialog" aria-controls="reportPanel">Open test report</button>
-                  <button id="retestBtn" class="result-button" type="button" hidden>Test again</button>
-                  <button id="comparePreviousBtn" class="result-button" type="button" hidden>Compare with previous</button>
+                  <button id="retestBtn" class="result-button" type="button" hidden>Test again with these settings</button>
                 </div>
               </section>
 
               <!-- Info: cihaz durumu + kisa rehber -->
-              <aside class="console-card console-card--secondary" aria-label="Audio status and quick guide">
-                <div class="console-card-section">
-                  <h2 class="console-card-heading">How to test</h2>
-                  <ol class="unified-tips" role="list">
-                    <li class="utip"><span class="utip-step" aria-hidden="true">1</span><span class="utip-text">Run a short scenario test</span></li>
-                    <li class="utip"><span class="utip-step" aria-hidden="true">2</span><span class="utip-text">Play back the captured audio</span></li>
-                    <li class="utip"><span class="utip-step" aria-hidden="true">3</span><span class="utip-text">Review the report and fixes</span></li>
-                  </ol>
-                </div>
+              <aside class="console-card console-card--secondary" aria-label="Technical details">
                 <div class="console-card-section">
                   <details id="audioDetails" class="audio-details">
                     <summary>Audio details</summary>
                     <div class="audio-details-content">
+      <button class="dev-console-toggle-btn always-active" id="devConsoleToggle" type="button" title="Toggle developer console" aria-label="Toggle developer console" aria-controls="devConsole" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
+        <span>Console</span>
+      </button>
                   <p class="capture-details-hint">Measured values appear when capture starts.</p>
                   <div class="audio-level-details">
                     <div class="vu-section">
@@ -617,21 +655,30 @@
                       <dd id="infoMicName" class="status-tile-value">--</dd>
                     </div>
                     <div class="status-tile">
-                      <dt class="status-tile-label">Channels</dt>
+                      <dt class="status-tile-label">Input channels</dt>
                       <dd id="infoChannels" class="status-tile-value">--</dd>
+                    </div>
+                    <div class="status-tile">
+                      <dt class="status-tile-label">Input sample rate</dt>
+                      <dd id="infoSampleRate" class="status-tile-value">--</dd>
+                    </div>
+                    <div class="status-tile">
+                      <dt class="status-tile-label">Codec / format</dt>
+                      <dd id="infoCodec" class="status-tile-value">--</dd>
                     </div>
                     <div class="status-tile">
                       <dt class="status-tile-label">Requested bitrate</dt>
                       <dd id="infoTargetBitrate" class="status-tile-value status-tile-value--numeric">--</dd>
                     </div>
                     <div class="status-tile">
-                      <dt class="status-tile-label">Actual bitrate</dt>
+                      <dt id="infoActualBitrateLabel" class="status-tile-label">Measured bitrate</dt>
                       <dd id="infoActualBitrate" class="status-tile-value status-tile-value--numeric">--</dd>
                     </div>
                   </dl>
                   <details class="processing-details">
                     <summary>Processing details</summary>
                     <p id="pageSubtitle" class="scenario-spec"></p>
+                    <p id="scenarioEvidence" class="console-description"></p>
                   </details>
                     </div>
                   </details>
@@ -690,10 +737,7 @@
       </div>
 
       <!-- Developer control shares the desktop rail cell; stays outside capture locks. -->
-      <button class="dev-console-toggle-btn" id="devConsoleToggle" type="button" title="Toggle developer console" aria-label="Toggle developer console" aria-controls="devConsole" aria-expanded="false" hidden>
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
-        <span>Console</span>
-      </button>
+
 
       <!-- Settings model (gizli): profil/ayar durumunun DOM kaynagi.
            Gorunur ayar yuzeyi #customSettingsPanel'dir; Dependencies, ProfileController,
@@ -907,7 +951,6 @@
           </div>
         </div>
       </div>
-      <div id="drawerOverlay" class="drawer-overlay"></div>
 
     </div>
   </div>
@@ -918,15 +961,16 @@
         <div class="report-popup-title">
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
           <span id="reportPopupTitle">Analysis Results</span>
-          <span class="report-score-badge" id="reportScoreBadge"></span>
+          <span class="report-score-badge" id="reportScoreBadge" hidden></span>
         </div>
+        <button class="btn-overlay-close" id="reportPopupClose" type="button" aria-label="Close report" title="Close report">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
         <div class="report-popup-actions">
-          <button class="report-history-button" id="reportHistoryBtn" type="button" aria-haspopup="dialog" aria-controls="accountDialog" hidden>History & Compare</button>
-          <button class="btn-overlay-close" id="reportDownloadBtn" type="button" aria-label="Download summary as PDF (optional)" title="Download summary as PDF (optional)">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          </button>
-          <button class="btn-overlay-close" id="reportPopupClose" type="button" aria-label="Close report" title="Close report">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          <button class="report-history-button" id="reportHistoryBtn" type="button" aria-haspopup="dialog" aria-controls="accountDialog" hidden>Saved reports</button>
+          <button class="report-history-button report-download-button" id="reportDownloadBtn" type="button" aria-label="Download detailed report as PDF" title="Download detailed report as PDF" hidden disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            PDF
           </button>
         </div>
       </div>
@@ -935,15 +979,18 @@
         <div class="report-summary" id="reportSummary">
           <div class="report-overall" id="reportOverall"></div>
         </div>
+        <section id="reportReview" class="report-review" aria-label="Report archive" hidden></section>
         <!-- Premium: Talimatlar ve ayrintilar, yetkili yanit geldikten sonra -->
         <div class="report-detailed-wrapper" id="reportDetailedWrapper">
           <div class="report-detailed" id="reportDetailed" hidden>
-            <div class="report-section-title">What to do</div>
-            <div class="report-recommendations" id="reportRecommendations"></div>
+            <details class="report-evidence">
+              <summary>Measurement guidance</summary>
+              <div class="report-recommendations" id="reportRecommendations"></div>
+            </details>
             <details class="report-evidence">
               <summary>Detailed findings and measurements</summary>
               <div class="report-findings" id="reportFindings"></div>
-              <div class="report-section-title" id="reportMetricsTitle">Detailed Metrics</div>
+              <div class="report-section-title" id="reportMetricsTitle">Detailed measurements</div>
               <div class="report-metrics-grid" id="reportMetricsGrid"></div>
               <div class="report-troubleshooting-context" id="reportTroubleshootingContext"></div>
             </details>
@@ -952,12 +999,16 @@
             <div class="premium-lock-icon">
               <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
             </div>
-            <p class="premium-text">Understand the result and what to do</p>
+            <p class="premium-text">Detailed measurements and PDF export</p>
             <button class="btn btn--primary btn--m" id="premiumCta" type="button">Get Lifetime Premium</button>
-            <p class="premium-text">One payment for lifetime access to instructions and detailed findings in the app. PDF download is optional.</p>
+            <p class="premium-text">Premium includes detailed findings and optional PDF downloads. A recording does not guarantee a diagnosis.</p>
             <p class="premium-status" id="premiumStatus" hidden></p>
           </div>
         </div>
+      </div>
+      <div class="report-workflow-actions">
+        <button id="reportSetupBtn" class="btn btn--secondary btn--m" type="button">Back to test</button>
+        <button id="reportRetestBtn" class="btn btn--primary btn--m" type="button" hidden>Test again with these settings</button>
       </div>
   </dialog>
 
@@ -968,13 +1019,16 @@
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-close"/></svg>
       </button>
     </div>
+    <div class="account-tabs" id="accountTabs" role="tablist" aria-label="Account sections" hidden>
+      <button id="accountTabAccount" type="button" role="tab" aria-controls="accountIdentity" aria-selected="true" data-account-tab="account">Account</button>
+      <button id="accountTabReports" type="button" role="tab" aria-controls="accountReports" aria-selected="false" tabindex="-1" data-account-tab="reports">Saved reports</button>
+    </div>
     <div class="account-dialog-body">
       <section id="accountIdentity" aria-label="Account"></section>
       <p class="account-status" id="accountStatus" role="status" aria-live="polite"></p>
-      <section class="account-history" aria-labelledby="accountHistoryTitle" hidden>
-        <h3 id="accountHistoryTitle">Test history</h3>
+      <section class="account-history" id="accountReports" role="tabpanel" aria-labelledby="accountTabReports" tabindex="0" hidden>
+        <h3 id="accountHistoryTitle">Saved reports</h3>
         <div id="accountHistoryActions"></div>
-        <div class="account-comparison" id="accountComparison"></div>
         <ul class="account-history-list" id="accountHistoryList"></ul>
       </section>
     </div>

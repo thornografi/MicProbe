@@ -8,8 +8,8 @@
    BREAKPOINT REFERANSI (var() @media icinde calismadigi icin literal; tek kaynak burasi,
    micprobe-ui-state skill tablosu ile ayni):
      xs : (max-width: 479px)
-     sm : (max-width: 767px)                          mobil kabuk, tek kolon, gutter 16
-     md : (min-width: 768px) and (max-width: 1023px)  rail 216
+     sm : (max-width: 767px)                          mobil tek kolon, gutter 16
+     md : (max-width: 1023px)                         mobil/tablet kabuk ve profil cekmecesi
      lg : (min-width: 768px) and (max-width: 1199px)  konsol tek kolon
      xl : (min-width: 1200px)                         rail 248, konsol iki kolon
 
@@ -116,6 +116,7 @@
   /* ========== OVERLAY (modal / drawer) - tek gorsel sozlesme ========== */
   --overlay-w-sm: 640px;              /* rapor: okunabilir satirlar + baslik eylemleri */
   --overlay-w-lg: 900px;              /* account / history dialog'u */
+  --overlay-viewport-gap: var(--space-2xl);
   --drawer-w: 400px;                  /* dev console */
   --overlay-radius: var(--radius-xl);
   --overlay-bg: #1d2027;
@@ -225,7 +226,11 @@
 
   /* App icerik kolonu ust siniri: page-header ve test-console ayni genislikte,
      content-container icinde ortalanir (simetrik gutter) */
-  --app-content-max: 1440px;
+  --app-content-max: 960px;
+}
+
+@media (max-height: 479px) {
+  :root { --overlay-viewport-gap: var(--space-sm); }
 }
 
 /* Keep text readable while sharing the landing's brand colors. */

@@ -6,6 +6,8 @@
  * Bir platform istemcisinin tum ses zincirini yeniden olusturmaz.
  */
 
+import { abortable } from './utils/async.js';
+
 // opus-recorder worker path
 const OPUS_ENCODER_WORKER_URL = new URL('../workers/opus-encoder-worker.js', import.meta.url).href;
 
@@ -47,6 +49,7 @@ export function isWasmOpusSupported() {
  * @returns {Promise<OpusRecorderWrapper>}
  */
 export async function createOpusWorker(options = {}) {
+  options.signal?.throwIfAborted();
   const {
     sampleRate = 48000,
     channels = 1,
@@ -77,7 +80,7 @@ export async function createOpusWorker(options = {}) {
 
   const wrapper = new OpusRecorderWrapper();
   try {
-    await wrapper.init(initConfig);
+    await abortable(wrapper.init(initConfig), options.signal);
   } catch (error) {
     wrapper.terminate();
     throw error;

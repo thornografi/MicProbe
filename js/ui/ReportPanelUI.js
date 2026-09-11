@@ -14,9 +14,11 @@ import accountAccess from '../modules/AccountAccess.js';
 import checkoutStateSnapshot from '../modules/CheckoutStateSnapshot.js';
 import profileController from '../controllers/ProfileController.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
+import { formatMeasurementValue, formatReportScope } from '../modules/MeasurementValue.js';
 import { describeTroubleshootingContext } from '../modules/TroubleshootingContext.js';
 import { log } from '../modules/utils.js';
 import { createOverlayController } from './OverlayController.js';
+import { ReportAssessmentUI } from './ReportAssessmentUI.js';
 import {
   reportPanelEl,
   reportPopupCloseEl,
@@ -59,6 +61,16 @@ class ReportPanelUI {
     this._detailedReport = null;
     this._premiumRequestId = 0;
     this._pendingPremiumReport = null;
+    this._isDownloadingPdf = false;
+    this.assessmentPanel = new ReportAssessmentUI({ root: document.getElementById('reportReview'),
+      createElement: (...args) => this._createElement(...args),
+      onSummary: summary => this._applySummary(summary),
+      onSaved: () => {
+        this._clearPremiumDetails(); this._renderPremiumDetails();
+        this.workflow?.onReportSaved?.();
+      },
+      isSaved: runId => this.workflow?.isReportSaved?.(runId),
+      waitForAccess: report => this.workflow?.waitForReportAccess?.(report) });
 
     // Rapor butonu (tekrar acma)
     this.showReportBtn?.addEventListener('click', () => {
@@ -71,13 +83,17 @@ class ReportPanelUI {
     this.inlineTitleEl = document.getElementById('inlineResultTitle');
     this.inlineSummaryEl = document.getElementById('inlineResultSummary');
     this.retestBtn = document.getElementById('retestBtn');
-    this.comparePreviousBtn = document.getElementById('comparePreviousBtn');
+    this.reportSetupBtn = document.getElementById('reportSetupBtn');
+    this.reportRetestBtn = document.getElementById('reportRetestBtn');
     this.inlineReport = null;
     this.retestBtn?.addEventListener('click', () => {
-      if (!this.retestBtn.disabled) this.workflow?.onRetest?.(this.inlineReport);
+      if (!this.workflow?.getIsBusy?.() && this._canRetest(this.inlineReport)) this.workflow?.onRetest?.(this.inlineReport);
     });
-    this.comparePreviousBtn?.addEventListener('click', () => {
-      if (!this.comparePreviousBtn.disabled) this.workflow?.onCompare?.(this.inlineReport);
+    this.reportRetestBtn?.addEventListener('click', () => {
+      if (!this.workflow?.getIsBusy?.() && this._canRetest(this.currentReport)) this.workflow?.onRetest?.(this.currentReport);
+    });
+    this.reportSetupBtn?.addEventListener('click', () => {
+      if (!this.workflow?.getIsBusy?.()) this.workflow?.onSetup?.();
     });
     this._workflowSubscriptions = [
       eventBus.on(EVENTS.PLAYER_RESET, () => this._clearInlineResult()),
@@ -110,6 +126,7 @@ class ReportPanelUI {
 
   open() {
     if (this.overlay?.isOpen()) return;
+    this.syncWorkflowActions();
     this.overlay?.open({ opener: this.showReportBtn });
     if (this.currentReport && premiumAccess.isUnlocked() && !this._lastDetailed) this._renderPremiumDetails();
   }
@@ -125,6 +142,7 @@ class ReportPanelUI {
   clearReport() {
     this.close();
     this.currentReport = null;
+    this.assessmentPanel?.setReport(null, false);
     this._clearPremiumDetails();
     this.scoreBadgeEl?.replaceChildren();
     this.overallEl?.replaceChildren();
@@ -139,18 +157,38 @@ class ReportPanelUI {
     this.syncWorkflowActions();
   }
 
+  acceptSavedEvaluation(runId, evaluation) {
+    if (!evaluation || this.currentReport?.run?.id !== runId || !premiumAccess.isUnlocked()
+      || this.currentReport.savedEvaluation?.evaluatedAt === evaluation.evaluatedAt) return;
+    this.currentReport.savedEvaluation = structuredClone(evaluation);
+    this._applySummary(evaluation.public);
+    this._clearPremiumDetails();
+    this._renderPremiumDetails();
+  }
+
+  _canRetest(report) {
+    // History can open a different report without replacing the loaded sample.
+    return !!report && report === this.inlineReport && !!this.workflow?.canRetest?.(report);
+  }
+
   syncWorkflowActions() {
     const busy = !!this.workflow?.getIsBusy?.();
     const report = this.inlineReport;
     if (this.showReportBtn) this.showReportBtn.disabled = busy;
     if (this.retestBtn) {
-      this.retestBtn.hidden = !report;
+      this.retestBtn.hidden = !this._canRetest(report);
       this.retestBtn.disabled = busy;
     }
-    if (this.comparePreviousBtn) {
-      this.comparePreviousBtn.hidden = !report || !this.workflow?.canCompare?.(report);
-      this.comparePreviousBtn.disabled = busy;
+    const canRetestCurrent = this._canRetest(this.currentReport);
+    if (this.reportRetestBtn) {
+      this.reportRetestBtn.hidden = !canRetestCurrent;
+      this.reportRetestBtn.disabled = busy;
     }
+    if (this.reportSetupBtn) {
+      this.reportSetupBtn.textContent = canRetestCurrent ? 'Adjust test settings' : 'Back to test';
+      this.reportSetupBtn.disabled = busy;
+    }
+    this.assessmentPanel?.render();
   }
 
   _clearInlineResult() {
@@ -161,6 +199,7 @@ class ReportPanelUI {
   }
 
   destroy() {
+    this.assessmentPanel?.setReport(null, false);
     this._premiumRequestId++;
     eventBus.off(EVENTS.DIAGNOSTIC_REPORT_READY, this._onReportReady);
     this.premiumCtaEl?.removeEventListener('click', this._onPremiumClick);
@@ -194,7 +233,7 @@ class ReportPanelUI {
   }
 
   async _startPremiumCheckout() {
-    if (!this.premiumCtaEl) return;
+    if (!this.premiumCtaEl || this._hasInsufficientAudio()) return;
     if (premiumAccess.isUnlocked()) {
       this.premiumCtaEl.disabled = true;
       this._setPremiumStatus('Loading your instructions…');
@@ -229,7 +268,7 @@ class ReportPanelUI {
       this.premiumCtaEl.textContent = originalText;
       this._setPremiumStatus(err.message === 'account_sign_in_required'
         ? 'Sign in to keep your lifetime purchase with your account.'
-        : err.message === 'purchase_verification_pending' ? 'Your purchase is waiting for verification. Retry purchase verification from Account & History.'
+        : err.message === 'purchase_verification_pending' ? 'Your purchase is waiting for verification. Retry purchase verification from Account.'
         : err.message === 'public_checkout_required' ? 'Open the public MicProbe site to purchase. Your test is preserved here.'
           : 'Checkout could not be opened. Please try again.');
       log.warning('Freemius checkout could not start', { error: err.message });
@@ -244,10 +283,17 @@ class ReportPanelUI {
   }
 
   _syncPremiumState(state = premiumAccess.getState()) {
+    this.assessmentPanel?.setReport(this.currentReport, premiumAccess.isUnlocked());
+    const insufficient = this._hasInsufficientAudio();
+    if (this.wrapperEl) this.wrapperEl.hidden = insufficient;
+    if (insufficient) {
+      this._clearPremiumDetails();
+      return;
+    }
     const pending = !!state.pending;
     this._setPremiumPrompt(
-      pending ? 'Purchase verification pending' : 'Understand the result and what to do',
-      pending ? 'Your purchase is linked. You do not need to buy again.' : 'One payment for lifetime access to instructions and detailed findings in the app. PDF download is optional.',
+      pending ? 'Purchase verification pending' : 'Detailed measurements and PDF export',
+      pending ? 'Your purchase is linked. You do not need to buy again.' : 'Premium includes the detailed findings for this recording and optional PDF downloads. A recording does not guarantee a diagnosis.',
       pending ? 'Retry purchase verification' : 'Get Lifetime Premium'
     );
     if (premiumAccess.isUnlocked()) {
@@ -260,6 +306,24 @@ class ReportPanelUI {
     this._clearPremiumDetails();
     if (this.premiumOverlayEl) this.premiumOverlayEl.hidden = false;
     this._setPremiumStatus(pending ? 'We could not confirm purchase access yet. Retry when connected; your report is preserved.' : state.lastError || '');
+  }
+
+  _freeResult(report = this.currentReport) {
+    const calculated = reportEvaluator.evaluateFree(report, this._platformSummary);
+    const accepted = report === this.currentReport ? this._acceptedSummary : report?.savedEvaluation?.public;
+    return accepted ? { ...calculated, ...accepted, findings: this._lastDetailed?.findings || calculated.findings } : calculated;
+  }
+
+  _applySummary(summary) {
+    if (!this.currentReport || !summary) return;
+    this._acceptedSummary = summary;
+    this._platformSummary = summary.platform;
+    this._renderScoreBadge(summary.overall);
+    this._renderOverall(summary.overall, summary.summary, summary.scope, summary.assessment, summary.scopeSummary);
+    if (this.inlineReport?.run?.id === this.currentReport.run?.id) {
+      this.inlineTitleEl.textContent = summary.overall.label;
+      this.inlineSummaryEl.textContent = [summary.summary, summary.scopeSummary].filter(Boolean).join(' ');
+    }
   }
 
   _setPremiumStatus(message) {
@@ -277,16 +341,23 @@ class ReportPanelUI {
 
   // === PRIVATE: Render ===
 
+  _hasInsufficientAudio() {
+    // Reuse the evaluator's completeness decision; no parallel audio thresholds.
+    return !!this.currentReport && this._freeResult().assessment?.status === 'insufficient';
+  }
+
   _renderReport(report) {
     if (!report) return;
     const ownerId = report.run?.accountOwnerId;
     if (ownerId && ownerId !== accountAccess.getState().user?.id) return;
     // A report owns its snapshot even if the caller later reuses its objects.
     this.currentReport = structuredClone(report);
+    this._acceptedSummary = report.savedEvaluation?.public || null;
+    this._platformSummary = this._acceptedSummary?.platform || null;
     this.panelEl?.classList?.toggle('report-popup--guidance', report.run?.type === 'troubleshooting');
     this._clearPremiumDetails();
 
-    const free = reportEvaluator.evaluateFree(this.currentReport);
+    const free = this._freeResult();
 
     // Score badge
     this._renderScoreBadge(free.overall);
@@ -305,40 +376,41 @@ class ReportPanelUI {
       this.inlineSummaryEl.textContent = [free.summary, free.scopeSummary].filter(Boolean).join(' ');
       this.inlineResultEl.hidden = false;
       if (this.showReportBtn) this.showReportBtn.hidden = false;
-      this.syncWorkflowActions();
       if (isNewResult && !document.querySelector('dialog[open]')) {
-        this.resultCard.scrollIntoView({ block: 'nearest' });
+        this.resultCard.scrollIntoView({ block: 'start' });
       }
     }
+    this.syncWorkflowActions();
 
     log.ui('Report popup rendered', { score: free.overall.score, findingCount: free.findings.length });
   }
 
   async _renderPremiumDetails() {
-    if (!this.currentReport) {
+    if (!this.currentReport || this._hasInsufficientAudio()) {
       this._clearPremiumDetails();
       return;
     }
 
     const report = this.currentReport;
-    if (this._pendingPremiumReport === report) return;
+    if (this._pendingPremiumReport === report || (this._detailedReport === report && this._lastDetailed)) return;
     this._pendingPremiumReport = report;
     const requestId = ++this._premiumRequestId;
     this._setDetailedState('loading');
     try {
-      const detailed = await premiumAccess.fetchDetailedReport(report);
+      const detailed = report.savedEvaluation?.detailed || await premiumAccess.fetchDetailedReport(report);
       if (requestId !== this._premiumRequestId || report !== this.currentReport || !premiumAccess.isUnlocked()) return;
       this._setDetailedState('ready');
       this._lastDetailed = detailed;
+      this._applySummary(detailed.summary || { ...reportEvaluator.evaluateFree(report, detailed.platform), platform: detailed.platform });
       this._detailedReport = report;
       if (this.detailedEl) this.detailedEl.hidden = false;
       if (this.premiumOverlayEl) this.premiumOverlayEl.hidden = true;
       this._setPremiumStatus('');
-      this._renderFindings(reportEvaluator.evaluateFree(report));
+      this._renderFindings(this._freeResult());
       this._renderTroubleshootingContext();
       this._renderMetrics(detailed.metrics);
       this._renderRecommendations(detailed.recommendations);
-      if (this.downloadBtn) this.downloadBtn.title = this.downloadBtn.ariaLabel = 'Download full report as PDF (optional)';
+      this._syncPdfDownload();
     } catch (err) {
       if (requestId !== this._premiumRequestId || report !== this.currentReport || !premiumAccess.isUnlocked()) return;
       this._setDetailedState('error');
@@ -375,28 +447,41 @@ class ReportPanelUI {
     this.metricsGridEl?.replaceChildren();
     this.recommendationsEl?.replaceChildren();
     if (this.wrapperEl?.getAttribute?.('data-state') !== 'error') this._setDetailedState('idle');
-    if (this.downloadBtn) this.downloadBtn.title = this.downloadBtn.ariaLabel = 'Download summary as PDF (optional)';
+    this._syncPdfDownload();
+  }
+
+  _canDownloadPdf() {
+    return !!this.currentReport && premiumAccess.isUnlocked()
+      && this._detailedReport === this.currentReport && !!this._lastDetailed;
+  }
+
+  _syncPdfDownload() {
+    if (!this.downloadBtn) return;
+    const available = this._canDownloadPdf();
+    this.downloadBtn.hidden = !available;
+    this.downloadBtn.disabled = !available || this._isDownloadingPdf;
   }
 
   /**
    * Raporu PDF olarak indir (jsPDF lazy-load - butona basilana kadar yuklenmez).
-   * Premium kilitli veya detay fetch edilememisse PDF free-tier icerikle uretilir.
+   * Yalniz aktif Premium ve ayni rapora ait yuklenmis detaylar PDF'e aktarilir.
    */
   async _downloadPdf() {
-    if (!this.currentReport || !this.downloadBtn) return;
+    if (!this.downloadBtn || this._isDownloadingPdf || !this._canDownloadPdf()) return;
 
-    this.downloadBtn.disabled = true;
+    this._isDownloadingPdf = true;
+    this._syncPdfDownload();
     const report = this.currentReport;
-    const free = reportEvaluator.evaluateFree(report);
-    const detailed = this._detailedReport === report ? this._lastDetailed : null;
+    const free = this._freeResult();
+    const detailed = this._lastDetailed;
+    const ownerId = premiumAccess.getState().userId;
+    // Keep the clicked report, but recheck its owner's access across both lazy imports.
+    const canDownload = () => premiumAccess.isUnlocked() && premiumAccess.getState().userId === ownerId;
     try {
       const { downloadReportPdf } = await import('../modules/ReportPdfExporter.js');
-      await downloadReportPdf({
-        report,
-        free,
-        detailed: premiumAccess.isUnlocked() ? detailed : null
-      });
-      log.ui('Report PDF downloaded', { sessionId: report.sessionId, runId: report.run?.id });
+      if (!canDownload()) return;
+      const downloaded = await downloadReportPdf({ report, free, detailed, canDownload });
+      if (downloaded) log.ui('Report PDF downloaded', { sessionId: report.sessionId, runId: report.run?.id });
     } catch (err) {
       log.error('Report PDF download failed', { error: err.message });
       eventBus.emit(EVENTS.UI_MESSAGE, {
@@ -404,7 +489,8 @@ class ReportPanelUI {
         tone: 'error'
       });
     } finally {
-      this.downloadBtn.disabled = false;
+      this._isDownloadingPdf = false;
+      this._syncPdfDownload();
     }
   }
 
@@ -416,6 +502,7 @@ class ReportPanelUI {
   }
 
   _renderOverall(overall, summary, scope, assessment, scopeSummary) {
+    scope = formatReportScope(scope);
     if (!this.overallEl) return;
 
     const emoji = overall.score === 'good' ? '\u2713' : overall.score === 'fair' ? '!'
@@ -485,7 +572,7 @@ class ReportPanelUI {
     }
 
     const cards = metrics.map(m => {
-      const val = m.value != null ? m.value : '--';
+      const val = m.value != null ? formatMeasurementValue(m.value) : '--';
       const card = this._createElement('div', 'metric-card');
       card.dataset.rating = m.rating || 'info';
 
@@ -548,13 +635,11 @@ class ReportPanelUI {
         const item = this._createElement('div', 'rec-item rec-item--rich');
         const head = this._createElement('div', 'rec-head');
         head.append(this._createElement('span', 'rec-icon', '\u2192'));
-        head.append(this._createElement('span', 'rec-reason', r.reason || r.message || ''));
-        if (r.confidence) {
-          head.append(this._createElement('span', `rec-confidence rec-confidence--${r.confidence}`, r.confidence));
-        }
+        head.append(this._createElement('span', 'rec-action', r.action || r.reason || r.message || ''));
         item.append(head);
+        if (r.action && (r.reason || r.message)) item.append(this._createElement('div', 'rec-reason', r.reason || r.message));
         if (r.evidence) item.append(this._createElement('div', 'rec-evidence', r.evidence));
-        if (r.action) item.append(this._createElement('div', 'rec-action', r.action));
+        if (r.confidence) item.append(this._createElement('span', `rec-confidence rec-confidence--${r.confidence}`, `Confidence: ${r.confidence}`));
         if (Array.isArray(r.steps) && r.steps.length) {
           const steps = this._createElement('ol', 'rec-steps');
           steps.append(...r.steps.map(step => this._createElement('li', '', step)));

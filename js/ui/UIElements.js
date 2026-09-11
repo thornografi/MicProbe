@@ -33,7 +33,6 @@ function queryAll(selector) {
 // ============================================
 export const recordToggleBtn = getEl('recordToggle');
 export const testBtn = getEl('testBtn');
-export const profileMenuBtn = getEl('profileMenuBtn');
 export const testCountdownEl = getEl('testCountdown');
 export const testProgressFillEl = getEl('testProgressFill');
 export const playBtnEl = getEl('playBtn');
@@ -101,9 +100,7 @@ export const progressBarEl = getEl('progressBar');
 // ============================================
 // DRAWER ELEMENTLERI
 // ============================================
-export const drawerOverlay = getEl('drawerOverlay');
 export const devConsoleDrawer = getEl('devConsole');
-export const profileSidebar = getEl('profileSidebar');
 
 // ============================================
 // SECTION ELEMENTLERI
@@ -152,7 +149,6 @@ export const reportHistoryBtnEl = getEl('reportHistoryBtn');
 export const accountIdentityEl = getEl('accountIdentity');
 export const accountHistoryListEl = getEl('accountHistoryList');
 export const accountStatusEl = getEl('accountStatus');
-export const accountComparisonEl = getEl('accountComparison');
 export const accountHistoryActionsEl = getEl('accountHistoryActions');
 
 // ============================================

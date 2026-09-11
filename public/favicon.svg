@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 32 34" fill="none">
+  <title>MicProbe</title>
+  <g stroke="#B892F4" stroke-linecap="round">
+    <path d="M6.5 6a13.4 13.4 0 0 1 19 0" stroke-width="1.8" opacity=".65"/>
+    <path d="M10 9.5a8.5 8.5 0 0 1 12 0" stroke-width="1.8" opacity=".85"/>
+    <rect x="12" y="12" width="8" height="11" rx="4" fill="#B892F4" stroke="none"/>
+    <path d="M9 20v1a7 7 0 0 0 14 0v-1M16 28v2.5M12 30.5h8" stroke-width="2.4"/>
+  </g>
+</svg>

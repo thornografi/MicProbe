@@ -2,7 +2,7 @@
 export class AccountAccess {
   constructor({ request = (...args) => fetch(...args) } = {}) {
     this.request = request;
-    this.state = { ready: false, configured: null, user: null, premium: { unlocked: false }, error: '' };
+    this.state = { ready: false, configured: null, user: null, purchaseLinked: false, premium: { unlocked: false }, error: '' };
     this.listeners = new Set();
     this.intentListeners = new Set();
     this.revision = 0;
@@ -33,7 +33,7 @@ export class AccountAccess {
     if (!['sign_in_required', 'account_changed', 'premium_access_required'].includes(code)) return;
     if (code === 'sign_in_required' && expectedOwner === this.state.user?.id) {
       ++this.revision;
-      this.state = { ...this.state, user: null, premium: { unlocked: false }, error: '' };
+      this.state = { ...this.state, user: null, purchaseLinked: false, premium: { unlocked: false }, error: '' };
       this._notify();
     }
     return this.refresh({ sessionOnly: true });
@@ -42,7 +42,8 @@ export class AccountAccess {
   async api(path, { method = 'GET', body } = {}) {
     const checkOwner = !['/config', '/session', '/google'].includes(path.split('?')[0]);
     const expectedOwner = this.state.user?.id || 'anonymous';
-    const response = await this.request(`/api/account${path}`, {
+    let response;
+    try { response = await this.request(`/api/account${path}`, {
       method,
       credentials: 'same-origin',
       signal: AbortSignal.timeout(15000),
@@ -50,7 +51,10 @@ export class AccountAccess {
         'Content-Type': 'application/json', 'X-MicProbe-Request': '1'
       } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    });
+    }); } catch (error) {
+      const code = error.name === 'TimeoutError' ? 'network_timeout' : 'network_unavailable';
+      throw Object.assign(new Error(code), { code });
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) {
       if (checkOwner) await this.refreshRejectedAccess(payload.error, expectedOwner);
@@ -81,11 +85,13 @@ export class AccountAccess {
       if (revision !== this.revision) return this.getState();
       this.state = {
         ready: true, configured: config.configured === true,
-        user: session.user || null, premium: session.premium || { unlocked: false }, error: ''
+        user: session.user || null, purchaseLinked: !!session.user && session.purchaseLinked === true,
+        premium: session.premium || { unlocked: false }, error: ''
       };
     } catch (error) {
       if (revision !== this.revision) return this.getState();
-      // A failed check never grants access from an old, unverified session.
+      // Keep the known owner's purchase-management entry on connection failure.
+      // It grants no Premium access; the portal endpoint rechecks ownership.
       this.state = { ...this.state, ready: true,
         premium: { unlocked: false, pending: !!this.state.premium?.pending }, error: error.message };
     }
@@ -93,16 +99,28 @@ export class AccountAccess {
     return this.getState();
   }
   getSignInConfig() { return this.api('/config'); }
-  async signInWithGoogle(credential) {
-    await this.api('/google', { method: 'POST', body: { credential } });
+  async signInWithGoogle(credential, { rememberMe = false } = {}) {
+    let signedIn;
+    try {
+      signedIn = await this.api('/google', { method: 'POST', body: { credential, rememberMe: rememberMe === true } });
+    } catch (error) {
+      if (!error.status || error.status >= 500) {
+        // A lost reply may follow a committed session. Never replay the token
+        // or continue checkout on an identity we cannot correlate to this reply.
+        const state = await this.refresh({ sessionOnly: true });
+        if (state.user && !state.error) throw new Error('sign_in_check_account');
+      }
+      throw error;
+    }
     const state = await this.refresh();
     if (!state.user || state.error) throw new Error('account_unavailable');
+    if (signedIn.user?.id && signedIn.user.id !== state.user.id) throw new Error('account_changed');
     return state;
   }
   async logout() {
     await this.api('/logout', { method: 'POST', body: {} });
     ++this.revision;
-    this.state = { ...this.state, user: null, premium: { unlocked: false }, error: '' };
+    this.state = { ...this.state, user: null, purchaseLinked: false, premium: { unlocked: false }, error: '' };
     globalThis.google?.accounts?.id?.disableAutoSelect();
     this.clearIntent();
     this._notify();

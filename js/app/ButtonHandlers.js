@@ -35,37 +35,17 @@ export function setupButtonHandlers(elements, controllers) {
 
 /**
  * Overlay'leri OverlayController sozlesmesine baglar:
- * - mobil profil cekmecesi: modal (backdrop, inert arka plan, scroll-lock)
  * - dev console: modal olmayan yan panel (ESC + kapat butonu)
  * Tek ESC dinleyicisi ve odak yonetimi controller icindedir (bkz. js/ui/OverlayController.js).
  * @param {Object} elements
- * @returns {Object} - { profileDrawerCtrl, devConsoleCtrl }
+ * @returns {Object} - { devConsoleCtrl }
  */
 export function setupOverlays(elements) {
   const {
-    drawerOverlay,
     devConsoleDrawer,
     devConsoleToggle,
-    closeConsoleBtn,
-    profileSidebar,
-    profileMenuBtn,
-    navItems = [],
-    inertTargets = []
+    closeConsoleBtn
   } = elements;
-
-  const profileDrawerCtrl = createOverlayController(profileSidebar, {
-    modal: true,
-    backdropEl: drawerOverlay,
-    triggerEl: profileMenuBtn,
-    closeEls: navItems,
-    inertTargets: () => inertTargets,
-    initialFocus: () => profileSidebar?.querySelector('.nav-item.active') || null
-  });
-  profileMenuBtn?.addEventListener('click', () => profileDrawerCtrl.toggle());
-
-  // Masaustune genisleyince cekmece halini birak (inert/scroll-lock askida kalmasin)
-  const mobileQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 767px)') : null;
-  mobileQuery?.addEventListener?.('change', (event) => { if (!event.matches) profileDrawerCtrl.close('viewport'); });
 
   const devConsoleCtrl = createOverlayController(devConsoleDrawer, {
     modal: false,
@@ -75,7 +55,7 @@ export function setupOverlays(elements) {
   });
   devConsoleToggle?.addEventListener('click', () => devConsoleCtrl.toggle());
 
-  return { profileDrawerCtrl, devConsoleCtrl };
+  return { devConsoleCtrl };
 }
 
 /**

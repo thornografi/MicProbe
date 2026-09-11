@@ -1,5 +1,6 @@
 // First-use navigation and remembered choices; microphone capture is never requested.
 const { chromium } = require('playwright');
+const { selectScenario } = require('./scenario-browser-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -19,6 +20,7 @@ const KEY = 'micprobe.lastScenario';
       navigator.mediaDevices.getUserMedia = async () => { window.__captureRequests++; throw new Error('Unexpected capture'); };
     }, { key: KEY, preference });
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     page.on('pageerror', error => errors.push(error.message));
     await page.route(url => url.origin !== BASE, route => route.fulfill({ body: '' }));
     await page.route('**/api/account/**', route => route.fulfill({ json: { ok: true, configured: false, user: null } }));
@@ -32,7 +34,7 @@ const KEY = 'micprobe.lastScenario';
     for (const route of ['/app', '/app/', '/#app', '/']) {
       const { context, page } = await open(route);
       assert(await page.locator('#scenarioPicker').isVisible(), route);
-      assert.equal(await page.locator('#scenarioChoices button').count(), 7);
+      assert.equal(await page.locator('#scenarioChoices button').count(), 13);
       assert.equal(await page.locator('#scenarioChoices [aria-current]').count(), 0);
       assert.equal(await page.locator('#scenarioWorkspace').isVisible(), false);
       assert.equal(await page.locator('#testBtn').isEnabled(), false);
@@ -44,6 +46,7 @@ const KEY = 'micprobe.lastScenario';
     const { context, page } = await open();
     for (const width of [320, 390, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: overflow`);
       assert(await page.locator('#scenarioChoices button').evaluateAll(nodes => nodes.every(node => {
         const rect = node.getBoundingClientRect();
@@ -65,7 +68,7 @@ const KEY = 'micprobe.lastScenario';
       assert.equal(await page.evaluate(() => document.activeElement.id), 'scenarioPickerTitle');
       assert.equal(await page.locator('#scenarioChoices [aria-current]').getAttribute('data-profile'), id);
     }
-    console.log('PASS 11 widths, all seven scenarios, correct actions and keyboard focus');
+    console.log('PASS 11 widths, all scenarios, correct actions and keyboard focus');
 
     await page.locator('#scenarioChoices [data-profile="discord"]').press('Enter');
     await page.locator('#customSettingsToggle').click();
@@ -73,7 +76,7 @@ const KEY = 'micprobe.lastScenario';
     await page.locator('#changeScenarioBtn').click();
     await page.locator('#scenarioChoices [data-profile="discord"]').click();
     assert.equal(await page.locator('#customSettingsGrid [data-setting="bitrate"]').inputValue(), '96000');
-    await page.locator('.nav-item[data-profile="telegram-voice"]').click();
+    await selectScenario(page, 'telegram-voice');
     await page.reload();
     await page.waitForFunction(() => document.body.classList.contains('app-mode'));
     assert.equal(await page.locator('#scenarioPicker').isVisible(), false);
@@ -81,7 +84,7 @@ const KEY = 'micprobe.lastScenario';
     assert.equal(await page.evaluate(() => window.__captureRequests), 0);
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'selected-desktop.png'), fullPage: true });
     await context.close();
-    console.log('PASS Enter activation, same-scenario settings preserved and sidebar choice restored after reload');
+    console.log('PASS Enter activation, same-scenario settings preserved and scenario choice restored after reload');
 
     for (const id of ['removed-profile', '__proto__']) {
       const { context, page } = await open('/app', id);

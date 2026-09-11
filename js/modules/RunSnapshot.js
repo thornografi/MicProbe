@@ -1,20 +1,28 @@
 import { createCommunicationContext } from './CommunicationContext.js';
 import { createTroubleshootingContext } from './TroubleshootingContext.js';
+import { capturePlatformRuntime } from './PlatformContext.js';
+import { captureEnvironment } from './EnvironmentContext.js';
 
 // A run owns the settings selected before permission/setup and the settings the device delivered.
 let nextRun = 0;
 
 export function createRunSnapshot({ profile = {}, requestedSettings = {}, captureGuide = null, troubleshooting = {}, navigator: navigatorInfo = globalThis.navigator } = {}) {
+  const environment = captureEnvironment(navigatorInfo);
+  const communicationContext = createCommunicationContext({ profile, environment });
   return Object.freeze({
     runId: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${++nextRun}`,
     profileId: profile.id ?? null,
     profileLabel: profile.label ?? null,
+    profileReferenceVersion: profile.referenceVersion ?? null,
     category: profile.category ?? null,
     captureGuide: captureGuide ? Object.freeze({ ...captureGuide }) : null,
-    communicationContext: createCommunicationContext({ profile, navigator: navigatorInfo }),
-    troubleshooting: createTroubleshootingContext({ input: troubleshooting, navigator: navigatorInfo }),
+    communicationContext,
+    environment,
+    captureRuntime: capturePlatformRuntime(navigatorInfo, communicationContext.access.formFactor, environment),
+    troubleshooting: createTroubleshootingContext({ input: troubleshooting, environment }),
     detection: profile.detection ? { ...profile.detection } : null,
     evidence: profile.evidence ? Object.freeze(structuredClone(profile.evidence)) : null,
+    transport: profile.transport ? Object.freeze({ ...profile.transport }) : null,
     requestedSettings: Object.freeze(structuredClone(requestedSettings))
   });
 }

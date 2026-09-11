@@ -1,31 +1,33 @@
 /* ========== APP HEADER ========== */
-/* Kabuk, marka blogu (.brand-lockup) ve menu butonu (.header-menu-btn) shared.css
+/* Kabuk, marka blogu (.brand-lockup) shared.css
    HEADER BASE bolumunden gelir; burada yalniz app-shell grid yerlesimi ve workspace duzeni var. */
 /* A single full-width header connects the brand, navigation and workspace. */
 .app-header {
   grid-area: 1 / 1 / 2 / -1;
   position: relative;
   border-bottom: 1px solid var(--border-primary);
-  /* Grid kabugunda sidebar ile ayni katman; base sticky z-index degeri burada gerekmez */
+  /* Grid kabugundaki header normal akis icinde kalir */
   z-index: 1;
 }
 
 .app-header-content {
   display: grid;
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   justify-content: flex-start;
   min-height: 100%;
   position: relative;
   padding: 0;
   width: 100%;
+  max-width: calc(var(--app-content-max) + 2 * var(--workspace-gutter));
+  margin-inline: auto;
   background: transparent;
 }
 
-/* Marka blogu rail sutununda; hover/disabled davranisi HEADER BASE bolumunde */
+/* Marka blogu icerikle hizali; hover/disabled davranisi HEADER BASE bolumunde */
 .app-header .brand-lockup {
   justify-self: start;
-  padding-inline: 24px;
+  padding-inline: var(--workspace-gutter);
 }
 
 /* Klavye odak halkasi: tek global kural shared.css'te (:focus-visible) */
@@ -113,7 +115,7 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   border-radius: var(--radius-md);
   border: 1px solid var(--accent-danger-muted);
-  background: rgba(229, 57, 53, 0.1);
+  background: linear-gradient(rgba(229, 57, 53, 0.1), rgba(229, 57, 53, 0.1)), var(--overlay-bg);
   color: var(--text-primary);
   font-size: var(--fs-sm);
   font-weight: 500;
@@ -146,41 +148,41 @@ body:not(.app-mode) .user-message:popover-open {
 
 .user-message[data-tone="warning"] {
   border-color: rgba(255, 152, 0, 0.28);
-  background: rgba(255, 152, 0, 0.1);
+  background: linear-gradient(rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.1)), var(--overlay-bg);
 }
 
 .user-message[data-tone="success"] {
   border-color: rgba(34, 197, 94, 0.28);
-  background: rgba(34, 197, 94, 0.1);
+  background: linear-gradient(rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.1)), var(--overlay-bg);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .app-header-content {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-sm);
     padding-inline: var(--space-md);
   }
 
-  .app-header .header-menu-btn {
-    grid-area: 1 / 1;
-  }
 
   .app-header .brand-lockup {
     --brand-mark-size: 28px;
     --brand-gap: 8px;
     --brand-title-size: 20px;
-    grid-area: 1 / 2;
+    grid-area: 1 / 1;
     padding: 0;
   }
 
   .workspace-bar {
-    grid-area: 1 / 3;
+    grid-area: 1 / 2;
     padding: 0;
   }
 
   .workspace-label {
     display: none;
   }
+
+
+
 
   .page-header {
     padding-bottom: 24px;

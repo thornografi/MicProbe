@@ -3,6 +3,17 @@
    ============================================ */
 
 /* --- Show Report Button --- */
+.report-review:not([hidden]) { margin-bottom: var(--space-lg); }
+.report-review p { margin-block: var(--space-sm); }
+.report-review-status { color: var(--text-secondary); }
+.report-review-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-block: var(--space-md); }
+.report-review-question { border: 0; padding: 0; min-width: 0; margin-top: var(--space-md); }
+.report-review-question legend { font-weight: 600; margin-bottom: var(--space-sm); }
+.report-review-answer { display: flex; flex-direction: column; gap: var(--space-xs); margin-block: var(--space-md); }
+.report-review-answer select { width: 100%; min-width: 0; }
+.report-review-answers, .report-review-comparison { margin-top: var(--space-md); }
+.report-review summary { cursor: pointer; }
+
 .btn-show-report {
   display: inline-flex;
   align-items: center;
@@ -63,8 +74,8 @@
   color: inherit;
   width: min(var(--overlay-w-sm), calc(100% - 2 * var(--space-md)));
   max-width: none;
-  max-height: calc(100vh - 2 * var(--space-2xl));
-  max-height: calc(100dvh - 2 * var(--space-2xl));
+  max-height: calc(100vh - 2 * var(--overlay-viewport-gap));
+  max-height: calc(100dvh - 2 * var(--overlay-viewport-gap));
   flex-direction: column;
   background-color: var(--overlay-bg);
   border: 1px solid var(--overlay-border);
@@ -79,14 +90,32 @@
   animation: reportSlideUp var(--transition-slow);
 }
 
+.report-workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-ms);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.report-workflow-actions .btn {
+  white-space: normal;
+  height: auto;
+  min-height: var(--control-h-m);
+}
+
+.report-workflow-actions [hidden] { display: none; }
+
 /* --- Header --- */
 /* Overlay header sozlesmesi: 16/24 dolgu, min 64px, baslik 16/600 (account ve dev console ile ayni) */
 .report-popup-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: var(--space-sm);
   min-height: var(--overlay-header-h);
   padding: var(--overlay-header-pad);
@@ -105,7 +134,7 @@
 }
 
 .report-popup-actions {
-  margin-left: auto;
+  grid-column: 1 / -1;
 }
 
 .report-popup-title svg {
@@ -115,9 +144,12 @@
 
 .report-popup-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
 }
+
+.report-download-button { gap: var(--space-sm); }
 
 /* Kapat/indir ikon butonlari: .btn-overlay-close (variables.css) */
 
@@ -413,7 +445,7 @@
   font-size: var(--fs-sm);
 }
 
-/* Zengin oneri kalemi: neden (head) + aksiyon (alt satir) dikey */
+/* Lead with the action; its reason and confidence provide supporting context. */
 .rec-item--rich {
   flex-direction: column;
   align-items: stretch;
@@ -423,22 +455,27 @@
 .rec-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-sm);
 }
 
-.rec-reason {
+.rec-action {
   flex: 1;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1.6;
 }
 
-.rec-action {
+.rec-reason {
   margin-left: calc(var(--fs-sm) + var(--space-sm));
   color: var(--text-secondary);
-  font-size: var(--fs-xs);
-  line-height: 1.4;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
 }
 
 .rec-confidence {
+  align-self: flex-start;
+  margin-left: calc(var(--fs-sm) + var(--space-sm));
   flex-shrink: 0;
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -510,14 +547,26 @@
 
 @media (max-width: 767px) {
   .report-popup-header,
-  .report-popup-body {
+  .report-popup-body,
+  .report-workflow-actions {
     padding: var(--space-md);
   }
 }
 
 @media (max-width: 479px) {
+  .report-workflow-actions .btn { width: 100%; }
+
   .report-overall {
     flex-direction: column;
     gap: var(--space-sm);
   }
+}
+
+/* Short windows need reading space without shrinking the action targets. */
+@media (max-height: 479px) {
+  .report-popup-header,
+  .report-workflow-actions { padding-block: var(--space-sm); }
+  .report-popup-body { padding: var(--space-md); }
+  .report-workflow-actions { flex-wrap: nowrap; }
+  .report-workflow-actions .btn { flex: 1; min-width: 0; width: auto; padding-inline: var(--space-sm); }
 }

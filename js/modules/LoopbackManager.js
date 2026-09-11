@@ -34,7 +34,7 @@ class LoopbackManager {
    * @param {number} bitrate - Hedef bitrate (bps)
    * @returns {string} Modifiye edilmis SDP
    */
-  setOpusBitrate(sdp, bitrate, channelCount = 1) {
+  setOpusBitrate(sdp, bitrate, channelCount = 1, preferences = {}) {
     const lines = sdp.split('\r\n');
 
     // Opus payload type'ini bul (a=rtpmap:111 opus/48000/2)
@@ -53,13 +53,21 @@ class LoopbackManager {
     }
 
     let found = false;
-    const parameters = `maxaveragebitrate=${Math.max(6000, Math.min(510000, bitrate))};stereo=${channelCount === 2 ? 1 : 0};sprop-stereo=${channelCount === 2 ? 1 : 0}`;
+    const requested = {
+      maxaveragebitrate: Math.max(6000, Math.min(510000, bitrate)),
+      stereo: channelCount === 2 ? 1 : 0,
+      'sprop-stereo': channelCount === 2 ? 1 : 0
+    };
+    for (const [key, parameter] of [['dtx', 'usedtx'], ['fec', 'useinbandfec']]) {
+      if (typeof preferences?.[key] === 'boolean') requested[parameter] = Number(preferences[key]);
+    }
+    const parameters = Object.entries(requested).map(([key, value]) => `${key}=${value}`).join(';');
     const modifiedLines = lines.map(line => {
       // Opus fmtp satirini bul (payload type ile eslesme)
       if (line.startsWith(`a=fmtp:${opusPayloadType} `)) {
         found = true;
         const existing = line.slice(line.indexOf(' ') + 1).split(';')
-          .filter(part => !/^(maxaveragebitrate|stereo|sprop-stereo)\s*=/i.test(part.trim()));
+          .filter(part => !Object.hasOwn(requested, part.split('=')[0].trim().toLowerCase()));
         return `a=fmtp:${opusPayloadType} ${[...existing, parameters].filter(Boolean).join(';')}`;
       }
       return line;
@@ -79,7 +87,7 @@ class LoopbackManager {
    * @throws {Error} ICE baglantisi basarisiz olursa veya remote stream olusturulamazsa
    */
   async setup(localStream, options = {}) {
-    const { useWebAudio = false, opusBitrate = 32000, pipeline = PIPELINE_TYPES.STANDARD, runId = null } = options;
+    const { useWebAudio = false, opusBitrate = 32000, opusPreferences = null, pipeline = PIPELINE_TYPES.STANDARD, runId = null } = options;
     const channelCount = localStream.getAudioTracks()[0]?.getSettings?.().channelCount === 2 ? 2 : 1;
 
     // cleanup detaches its resources before waiting; a later setup owns a new version.
@@ -106,7 +114,7 @@ class LoopbackManager {
     let sendStream = localStream;
     if (useWebAudio) {
       const acOptions = getAudioContextOptions(localStream);
-      const context = await createAudioContext(acOptions);
+      const context = await createAudioContext(acOptions, { signal: operation.signal });
       if (this._setupAbort !== operation || operation.signal.aborted) {
         await context.close().catch(() => {});
         throw new Error('Loopback setup cancelled');
@@ -119,7 +127,7 @@ class LoopbackManager {
       dest.channelCountMode = 'explicit';
       this.sendDestination = dest;
       if (pipeline === PIPELINE_TYPES.WORKLET) {
-        await ensurePassthroughWorklet(this.audioCtx);
+        await ensurePassthroughWorklet(this.audioCtx, operation.signal);
         assertCurrent();
         this.sendWorklet = createPassthroughWorkletNode(this.audioCtx, channelCount);
         src.connect(this.sendWorklet);
@@ -186,7 +194,7 @@ class LoopbackManager {
     assertCurrent();
 
     // Offer SDP'yi Opus bitrate ile modifiye et
-    const modifiedOfferSdp = this.setOpusBitrate(offer.sdp, opusBitrate, channelCount);
+    const modifiedOfferSdp = this.setOpusBitrate(offer.sdp, opusBitrate, channelCount, opusPreferences);
     const modifiedOffer = { type: offer.type, sdp: modifiedOfferSdp };
 
     log.stream(`Loopback: Opus bitrate ayarlandi - ${opusBitrate / 1000} kbps`, { opusBitrate, sdpModified: modifiedOfferSdp !== offer.sdp });
@@ -200,7 +208,7 @@ class LoopbackManager {
     assertCurrent();
 
     // Answer SDP'yi de Opus bitrate ile modifiye et
-    const modifiedAnswerSdp = this.setOpusBitrate(answer.sdp, opusBitrate, channelCount);
+    const modifiedAnswerSdp = this.setOpusBitrate(answer.sdp, opusBitrate, channelCount, opusPreferences);
     const modifiedAnswer = { type: answer.type, sdp: modifiedAnswerSdp };
 
     await pc2.setLocalDescription(modifiedAnswer);

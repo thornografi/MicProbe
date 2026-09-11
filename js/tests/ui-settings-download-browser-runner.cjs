@@ -10,6 +10,7 @@ const BASE = 'http://localhost:8080';
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     const errors = [], failedAssets = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => {
@@ -31,7 +32,7 @@ const BASE = 'http://localhost:8080';
     assert.doesNotMatch(await page.locator('.console-card-section--meters').innerText(), /dBFS|After processing/);
 
     async function assertMetersStopped() {
-      assert.equal(await page.locator('#micActivityStatus').innerText(), 'Ready to check');
+      assert.equal(await page.locator('#micActivityStatus').innerText(), 'Not measuring yet');
       assert.equal(await page.locator('#micActivityBar').evaluate(node => node.style.width || '0%'), '0%');
       for (const id of ['vuMeterReading', 'remoteVuReading']) {
         assert.equal(await page.locator(`#${id}`).textContent(), '—');
@@ -106,9 +107,9 @@ const BASE = 'http://localhost:8080';
     await assertMetersStopped();
     assert.equal(await page.locator('#reportPanel').evaluate(node => node.open), false, 'Fresh results must not interrupt playback with a modal');
     assert.equal(await page.locator('#inlineResult').isVisible(), true);
-    assert.equal(await page.locator('#playerFilename').innerText(), 'Raw Recording');
+    assert.equal(await page.locator('#playerFilename').innerText(), 'Microphone check');
     assert.doesNotMatch(await page.locator('#playerMeta').innerText(), /audio\/|KB/);
-    assert.match(await page.locator('#captureHint').innerText(), /stops automatically/);
+    assert.match(await page.locator('#captureHint').innerText(), /Listen to your sample/);
     await page.getByRole('button', { name: 'Open test report', exact: true }).click();
     assert.equal(await page.locator('#reportPanel').evaluate(node => node.open), true);
     await page.getByRole('button', { name: 'Close report', exact: true }).click();
@@ -187,6 +188,9 @@ const BASE = 'http://localhost:8080';
     await page.locator('#custom-setting-bitrate').selectOption('96000');
     assert.equal(await page.locator('#infoTargetBitrate').innerText(), 'Max 96 kbps');
     await page.locator('#testBtn').click();
+    // Meters also run during preparation. Wait for capture before using Finish,
+    // otherwise the same button correctly cancels setup and publishes no report.
+    await page.waitForFunction(() => document.body.dataset.appState === 'testing');
     await page.waitForFunction(() => [...document.querySelectorAll('.vu-meter')]
       .every(meter => Number(meter.getAttribute('aria-valuenow')) > -80));
     assert.match(await page.locator('#remoteVuReading').innerText(), /−\d+\.\d/);

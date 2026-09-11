@@ -133,7 +133,7 @@ export default class BasePipeline {
    * @param {number} channels - Kanal sayisi (1=Mono, 2=Stereo, default: 1)
    * @returns {Promise<number>} - Kullanilan bitrate
    */
-  async _initOpusWorker(mediaBitrate = 0, channels = 1, application = 2048) {
+  async _initOpusWorker(mediaBitrate = 0, channels = 1, application = 2048, signal) {
     if (!isWasmOpusSupported()) {
       throw new Error('WASM Opus not supported');
     }
@@ -144,7 +144,8 @@ export default class BasePipeline {
       sampleRate: this.audioContext.sampleRate,
       channels: channels,
       bitrate: opusBitrate,
-      encoderApplication: application
+      encoderApplication: application,
+      signal
     });
 
     this.opusWorker.onProgress = (progress) => {

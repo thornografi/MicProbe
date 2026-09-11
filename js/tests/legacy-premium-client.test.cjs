@@ -11,6 +11,7 @@ function fixture(request = async () => Response.json({ ok: true })) {
   const source = fs.readFileSync(require.resolve('../modules/PremiumAccess.js'), 'utf8').replace(/^import .*;$/gm, '')
     .replace('export default premiumAccess;', 'premiumAccess;');
   const premium = vm.runInNewContext(source, {
+    projectArchiveReport: require("../modules/ArchiveReport.js").projectArchiveReport,
     URL, Date, AbortSignal, fetch: request, localStorage: storage, sessionStorage: storage,
     window: { location: { href: 'https://micprobe.example/app', origin: 'https://micprobe.example' } },
     log: { warning() {}, ui() {}, error() {} }, eventBus: { emit: (...args) => messages.push(args) }, EVENTS: {},

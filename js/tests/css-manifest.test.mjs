@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 // CSS yukleme sozlesmesi: <head> sirasi (variables -> shared -> landing) ve
-// app CSS listesinin iki kaynagi (css/style.css barrel'i, js/landing.js loader'i) ayni.
+// app CSS sirasi, native yukleme listesi ve derleme barrel'inde aynidir.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (file) => readFileSync(path.join(root, file), 'utf8');
 
@@ -27,13 +27,12 @@ test('static pages load the shared foundation (variables + shared) and nothing a
   }
 });
 
-test('style.css barrel and landing.js APP_STYLESHEET_HREFS list the same app CSS in the same order', () => {
+test('native lazy styles and the build barrel have the same order', () => {
   const barrel = [...read('css/style.css').matchAll(/@import url\('([^']+)'\)/g)].map(m => m[1]);
-  const loaderSource = read('js/landing.js');
-  const block = loaderSource.slice(loaderSource.indexOf('APP_STYLESHEET_HREFS'), loaderSource.indexOf('];', loaderSource.indexOf('APP_STYLESHEET_HREFS')));
-  const loader = [...block.matchAll(/'\/css\/([^']+)'/g)].map(m => m[1]);
+  const loader = [...read('js/app-styles.js').matchAll(/'\/css\/([^']+)'/g)].map(m => m[1]);
   assert.ok(barrel.length > 0);
   assert.deepEqual(loader, barrel);
+  assert.equal(new Set(barrel).size, barrel.length);
   assert.ok(!barrel.includes('variables.css') && !barrel.includes('shared.css') && !barrel.includes('landing.css'),
     'head stylesheets are not part of the lazy app list');
 });

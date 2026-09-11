@@ -1,5 +1,6 @@
 // Native Chrome codecs/decoder + synthetic WebAudio input; no physical microphone or account writes.
 const { chromium } = require('playwright');
+const { selectScenario } = require('./scenario-browser-helpers.cjs');
 const assert = require('node:assert/strict');
 const BASE = 'http://localhost:8080';
 
@@ -9,6 +10,7 @@ const BASE = 'http://localhost:8080';
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage(), errors = [];
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     page.on('pageerror', error => errors.push(error.message));
     await page.route(url => url.origin !== BASE, route => route.fulfill({ body: '', contentType: 'text/css' }));
     await page.route('**/api/account/**', route => route.fulfill({ json: { ok: true, configured: false, user: null } }));
@@ -45,7 +47,7 @@ const BASE = 'http://localhost:8080';
     });
     assert.equal(await page.locator('#guidedNoiseTest').count(), 0, 'The test must not ask users to configure noise measurement');
     for (const profile of ['raw', 'telegram-voice', 'discord']) {
-      await page.locator(`.nav-item[data-profile="${profile}"]`).click();
+      await selectScenario(page, profile);
       const before = await page.evaluate(() => window.__reports.length);
       const action = profile === 'discord' ? '#testBtn' : '#recordToggle';
       await page.locator(action).click();
@@ -53,6 +55,10 @@ const BASE = 'http://localhost:8080';
       await page.waitForFunction(() => /Getting|Input detected/.test(document.querySelector('#captureGuideStatus').textContent));
       assert.match(await page.locator('#captureGuideStatus').innerText(), /Getting|Input detected/);
       await page.waitForFunction(() => window.__guideStages.at(-1) === 'quiet', null, { timeout: 15000 });
+      await page.waitForFunction(() => window.__guideStages.at(-1) === 'speak');
+      assert.equal(await page.locator('.capture-sample > summary').innerText(), 'Read this aloud');
+      assert(await page.evaluate(() => document.querySelector('#captureGuideStatus').getBoundingClientRect().bottom
+        <= document.querySelector('#captureSampleText').getBoundingClientRect().top), 'Instruction precedes the sentence');
       await page.waitForFunction(count => window.__reports.length > count, before, { timeout: 25000 });
       const report = await page.evaluate(() => window.__reports.at(-1));
       assert.equal(report.profile.id, profile);
@@ -62,7 +68,7 @@ const BASE = 'http://localhost:8080';
       assert.equal(report.audioMetrics.snr.status, profile === 'raw' ? 'measured' : 'unavailable');
       assert.equal(await page.locator(action).isEnabled(), true);
       assert.equal(await page.evaluate(() => window.__sources.at(-1).track.readyState), 'ended');
-      assert.equal(await page.locator('#captureSampleText').isVisible(), true);
+      assert.equal(await page.locator('#captureSampleText').isVisible(), false);
       await page.evaluate(async () => { await Promise.all(window.__sources.filter(source => source.ac.state !== 'closed').map(source => source.ac.close())); });
       console.log(`PASS ${profile}: preparation, guided cues, native encoding, decoded measurement, report and cleanup`);
     }
@@ -77,7 +83,7 @@ const BASE = 'http://localhost:8080';
     console.log('PASS early Finish rejects incomplete guided segments');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-    assert.equal(await page.locator('#captureGuideStatus').isVisible(), true);
+    assert.equal(await page.locator('#captureGuideStatus').isVisible(), false);
     console.log('PASS mobile guidance and no horizontal overflow');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

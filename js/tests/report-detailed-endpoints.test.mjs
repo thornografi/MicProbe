@@ -110,7 +110,7 @@ for (const kind of ['Node', 'Worker']) for (const accountMode of [false, true]) 
       assert.equal(rejected.status, 400, JSON.stringify(invalid));
       assert.equal((await rejected.json()).error, 'missing_report');
     }
-    const measured = await send({ run: { id: 'measured', type: 'record' }, audioMetrics: {} });
+    const measured = await send({ version: '2.0', generatedAt: '2026-09-11T12:00:00Z', run: { id: 'measured', type: 'record' }, audioMetrics: {} });
     assert.equal(measured.status, 200);
     assert.equal((await measured.json()).detailed.recommendations[0].id, 'INSUFFICIENT_AUDIO');
   });

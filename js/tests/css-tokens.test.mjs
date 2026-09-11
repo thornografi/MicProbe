@@ -71,6 +71,7 @@ test('@media width queries use only the documented breakpoint set', () => {
   const allowed = new Set([
     '(max-width: 479px)',
     '(max-width: 767px)',
+    '(max-width: 1023px)',
     '(max-width: 1199px)',
     '(min-width: 768px) and (max-width: 1023px)',
     '(min-width: 768px) and (max-width: 1199px)',

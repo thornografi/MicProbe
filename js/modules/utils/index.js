@@ -12,7 +12,7 @@
 export { log } from './log.js';
 
 // UI helpers
-export { formatTime, formatTimestampYYMMDDHHMMSS, setHidden, setVisible } from './ui.js';
+export { formatTime, formatTimestampYYMMDDHHMMSS, setHidden, setVisible, appPageTitle } from './ui.js';
 
 // Stream helpers
 export { stopStreamTracks, getStreamErrorMessage, wrapAsyncHandler, emitStreamWithAnalyser } from './stream.js';
@@ -39,6 +39,7 @@ export { float32ToInt16, createWavHeader, createWavBlob } from './wav.js';
 
 // State helpers
 export { beginPreparing, endPreparing, resetState } from './state.js';
+export { abortable } from './async.js';
 
 // Pipeline helpers
 export {

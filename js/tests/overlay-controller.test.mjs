@@ -112,6 +112,26 @@ test('focus returns to the previously focused element, or the trigger when it is
   globalThis.document.activeElement = body;
 });
 
+test('explicit opener restores focus when the browser did not focus the clicked button', t => {
+  const { body } = harness(t);
+  body.focus = () => {}; // WebKit can leave BODY active when a pointer opens the dialog.
+  const opener = fakeElement();
+  const closeBtn = fakeElement();
+  const ctrl = createOverlayController(fakeDialog(), { initialFocus: () => closeBtn });
+  ctrl.open({ opener });
+  assert.equal(globalThis.document.activeElement, closeBtn);
+  ctrl.close();
+  assert.equal(globalThis.document.activeElement, opener);
+
+  const previous = fakeElement();
+  globalThis.document.activeElement = previous;
+  opener.visible = false;
+  ctrl.open({ opener });
+  ctrl.close();
+  assert.equal(globalThis.document.activeElement, previous, 'A hidden opener falls back to the previous control');
+  ctrl.destroy();
+});
+
 test('modal overlays lock scroll with a counter and inert targets with refcounts', t => {
   const { html } = harness(t);
   const main = fakeElement();
@@ -157,6 +177,19 @@ test('dialog adapter: native close event drops the stack entry and ESC is left t
   ctrl.close();
   assert.equal(dialog.open, false);
   assert.equal(getOpenOverlayCount(), 0);
+});
+
+test('an old queued native close cannot detach a reopened dialog from its controller', t => {
+  const { html } = harness(t), dialog = fakeDialog();
+  dialog.close = () => { dialog.open = false; };
+  const ctrl = createOverlayController(dialog, { adapter: 'dialog' });
+  ctrl.open(); ctrl.close(); ctrl.open();
+  dialog.dispatch('close');
+  assert.equal(getOpenOverlayCount(), 1);
+  assert.equal(html.classes.has('is-scroll-locked'), true);
+  ctrl.close();
+  assert.equal(dialog.open, false); assert.equal(getOpenOverlayCount(), 0);
+  dialog.dispatch('close'); ctrl.destroy();
 });
 
 test('closing an overlay that is no longer on top does not steal focus from the overlay above it', t => {

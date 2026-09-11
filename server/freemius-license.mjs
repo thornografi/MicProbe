@@ -24,14 +24,15 @@ export async function readBoundedBillingJson(message, maximum = 256 * 1024) {
 }
 
 export function createFreemiusLicenses(config, fetchImpl = fetch) {
-  async function api(resource, { fields, method = 'GET', body } = {}) {
+  async function api(resource, { fields, method = 'GET', body, signal = AbortSignal.timeout(10000) } = {}) {
     if (!config.apiToken || !config.productId) throw billingProblem('billing_not_configured', 503);
     const url = new URL(`https://api.freemius.com/v1/products/${encodeURIComponent(config.productId)}/${resource}`);
     if (fields) url.searchParams.set('fields', fields);
     let response;
     try {
       response = await fetchImpl(url, {
-        method, redirect: 'error', signal: AbortSignal.timeout(10000),
+        // Manual mode works on Workers and keeps credentials off redirect targets.
+        method, redirect: 'manual', signal,
         headers: { Authorization: `Bearer ${config.apiToken}`, Accept: 'application/json',
           ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {})

@@ -1,0 +1,2 @@
+[plugins."freemius@personal".mcp_servers.freemius]
+enabled = true

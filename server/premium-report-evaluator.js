@@ -1,5 +1,9 @@
 // Private premium rules shared by the Node server and the bundled Worker adapter.
-const { getTroubleshootingGuidance } = require('./troubleshooting-guidance.js');
+const { getTroubleshootingGuidance, inputLevelInstruction } = require('./troubleshooting-guidance.js');
+const { getConstraintMismatches, projectCaptureContext, getAppliedConstraints } = require('../js/modules/CaptureContext.js');
+const { normalizeEnvironment, OS_NAMES, BROWSER_NAMES } = require('../js/modules/EnvironmentContext.js');
+const { usableReport, countsAsCompletedTest } = require('../js/modules/MeasurementValidity.js');
+const { assessPlatformExpectations, applyPlatformExpectations, publicPlatformAssessment } = require('./platform-expectations.js');
 // Thresholds mirror js/modules/constants.js QUALITY; the client bundle is not importable here.
 const QUALITY = { WEAK_SIGNAL_DB: -45, SILENCE_DB: -55, SNR_WARNING_DB: 10, NOISE_FLOOR_WARNING_DB: -30, SUSTAINED_WEAK_LUFS: -40,
   SUSTAINED_SILENCE_LUFS: -55, FLAT_TOP_CREST_DB: 8, FLAT_TOP_NEAR_RATE_WARNING: 0.4, FLAT_TOP_NEAR_RATE_CRITICAL: 0.5,
@@ -15,7 +19,7 @@ const pinnedCeiling = m => m?.ceiling?.status === 'measured' && finite(m.ceiling
     ? 'critical' : 'warning') : null;
 const finite = Number.isFinite;
 const measured = (m, key) => m?.status === 'measured' && finite(m[key]) ? m[key] : null;
-const percent = (value) => finite(value) ? +(value * 100).toFixed(1) : null;
+const percent = (value) => finite(value) ? value * 100 : null;
 const rate = (v, good, warn) => !finite(v) ? 'info' : v >= good ? 'good' : v >= warn ? 'fair' : 'poor';
 const reverse = (v, good, warn) => !finite(v) ? 'info' : v <= good ? 'good' : v <= warn ? 'fair' : 'poor';
 
@@ -37,10 +41,7 @@ function metric(key, label, value, unit = '', rating = 'info') {
 }
 
 function sufficient(report) {
-  const m = report?.audioMetrics;
-  return m?.status === 'measured' && m.sampleCount > 0 && m.durationMs >= 400
-    && finite(m.signal?.rmsDb) && finite(m.signal?.peakDb)
-    && m.clipping?.status === 'measured' && m.clipping.method === 'sample-saturation' && finite(m.clipping.rate);
+  return usableReport(report).valid;
 }
 
 function formatDetailedMetrics(report) {
@@ -99,10 +100,16 @@ function formatDetailedMetrics(report) {
       .map(key => `${SETTING_LABELS[key]} ${String(values[key])}`).join(', ') || null : null;
   metrics.push(
     metric('requestedSettings', 'Requested Capture Settings', settingText(profile.requestedConstraints)),
-    metric('appliedSettings', 'Applied Capture Settings', settingText(profile.appliedConstraints), '',
-      Array.isArray(profile.constraintMismatches) && profile.constraintMismatches.length ? 'fair' : 'info'),
+    metric('appliedSettings', 'Applied Capture Settings', settingText(getAppliedConstraints(profile)), '',
+      getConstraintMismatches(profile).length ? 'fair' : 'info'),
     metric('osInputLevel', 'System Input Level', 'Not visible to the browser'),
     metric('osProcessing', 'Driver / OS Enhancements', 'Not visible to the browser')
+  );
+  const environment = normalizeEnvironment(report.environment);
+  metrics.push(
+    metric('captureOs', 'Recording System (Browser Hint)', environment.os === 'unknown' ? null : OS_NAMES[environment.os]),
+    metric('captureBrowser', 'Recording Browser (Browser Hint)', environment.browser === 'unknown' ? null
+      : `${BROWSER_NAMES[environment.browser]}${environment.browserMajor ? ` ${environment.browserMajor}` : ''}`)
   );
   const file = report.recording;
   metrics.push(
@@ -120,6 +127,8 @@ function formatDetailedMetrics(report) {
     metrics.push(
       metric('senderCodec', 'Local RTP Sender Codec', typeof lb.senderCodec?.mimeType === 'string' ? lb.senderCodec.mimeType : null),
       metric('receiverCodec', 'Local RTP Receiver Codec', typeof lb.receiverCodec?.mimeType === 'string' ? lb.receiverCodec.mimeType : null),
+      metric('requestedDtx', 'Requested Opus DTX', lb.requestedOpus ? (typeof lb.requestedOpus.dtx === 'boolean' ? (lb.requestedOpus.dtx ? 'On' : 'Off') : 'Browser default') : null),
+      metric('requestedFec', 'Requested Opus FEC', lb.requestedOpus ? (typeof lb.requestedOpus.fec === 'boolean' ? (lb.requestedOpus.fec ? 'On' : 'Off') : 'Browser default') : null),
       metric('rtt', 'Local Loopback RTT', lb.rttMs, 'ms'),
       metric('jitter', 'Local Receiver Jitter', lb.jitterMs, 'ms'),
       metric('packetLoss', 'Local Packet Loss', percent(lb.packetLossRate), '%'),
@@ -136,7 +145,7 @@ function recommendation(id, reason, action, options = {}) {
 
 function analyzeMeasurements(report) {
   const m = report.audioMetrics;
-  const c = report.profile?.appliedConstraints || report.profile?.constraints || {};
+  const c = getAppliedConstraints(report.profile);
   const noise = measured(m.noiseFloor, 'estimatedDb');
   const snr = measured(m.snr, 'estimatedDb');
   const recs = [];
@@ -145,16 +154,13 @@ function analyzeMeasurements(report) {
       ? 'Recorded quiet and speaking levels are available. Active or unknown browser processing prevents an SNR estimate.'
       : m.guidedNoise ? 'This guided recording did not provide enough usable quiet and speaking data for an SNR estimate.'
         : 'Noise floor and signal-to-noise need separate quiet and speaking segments. Quiet sections alone cannot identify microphone noise.',
-    m.snr?.reason === 'processing-limits-snr-estimate'
-      ? 'Compare another test using the same settings, room and microphone distance. Your current settings allow a comparison of the quiet and speaking levels.'
-      : 'Test again. Stay quiet when asked, then read the sentence at your usual distance until the test finishes.', { category: 'environment' }));
+    'Other valid findings still apply. Missing SNR alone does not require another recording.', { category: 'observation' }));
   if (noise !== null && noise > QUALITY.NOISE_FLOOR_WARNING_DB) recs.push(recommendation('MEASURED_NOISE',
     'The measured noise segment has a high level.',
-    c.noiseSuppression === false ? 'Compare a repeat with noise suppression enabled, keeping distance and gain the same.'
-      : 'Compare the same speaking level in a quieter setting.', { category: 'environment', relatedSetting: 'ns' }));
+    'If background sound is intrusive, reduce nearby noise sources. Noise suppression can also affect speech, so its benefit is not established by this level alone.', { category: 'environment', relatedSetting: 'ns', severity: 'warning' }));
   if (snr !== null && snr < QUALITY.SNR_WARNING_DB) recs.push(recommendation('MEASURED_LOW_SNR',
     'The measured speech and noise segments have little level separation.',
-    'Repeat at the same speaking level with less background sound.', { category: 'environment' }));
+    'Reducing nearby background sound may help preserve speech without increasing input gain.', { category: 'environment', severity: 'warning' }));
   // Older maxima include unequal/non-overlapping windows. Use their sample peak
   // conservatively; neither measurement detects speech or its intelligibility.
   const loudestDb = m.signal.maxBlockRmsStatus === 'measured' && finite(m.signal.maxBlockRmsDb)
@@ -170,18 +176,22 @@ function analyzeMeasurements(report) {
       : sustainedSilent ? `Apart from a brief louder moment, this recording is very quiet (${sustained} LUFS gated loudness).`
         : windowWeak ? 'Even the loudest part of this recording has a low level.'
           : `Apart from a brief louder moment, this recording has a low level (${sustained} LUFS gated loudness).`,
-    'Listen to the spoken parts and compare a repeat at a closer speaking distance or a higher input level.',
-    { severity: windowSilent || sustainedSilent ? 'critical' : 'warning' }));
+    'If speech in this recording sounds quiet, check microphone position and the selected input level. The recording alone does not identify the cause.',
+    { severity: windowSilent || sustainedSilent ? 'critical' : 'warning',
+      basis: windowSilent || windowWeak ? 'loudest-window' : 'integrated-loudness',
+      nearSilent: windowSilent || sustainedSilent, evidencePaths: [
+        ...(windowSilent || windowWeak ? [m.signal.maxBlockRmsStatus === 'measured' ? 'signal.maxBlockRmsDb' : 'signal.peakDb'] : []),
+        ...(sustainedSilent || sustainedWeak ? [finite(m.lufs?.integratedMonoEquivalent) ? 'lufs.integratedMonoEquivalent' : 'lufs.integrated'] : [])] }));
   else if (m.signal.rmsDb < QUALITY.WEAK_SIGNAL_DB) recs.push(recommendation('LOW_AVERAGE_LEVEL',
     'The average level is low. Pauses can lower it, and short loud sounds or another channel can mask quiet speech. Speech level was not assessed.',
     'Judge the spoken parts during playback before changing any setting.', { category: 'observation' }));
   if (m.clipping?.method === 'sample-saturation' && measured(m.clipping, 'rate') > 0) {
     recs.push(recommendation('FULL_SCALE_SAMPLES', 'Some saved samples reach or exceed full scale. This alone does not prove audible distortion.',
-      'Listen for distortion, then compare a repeat at a greater speaking distance or with a lower input level, if available.', { severity: 'warning' }));
+      'If speech sounds distorted, reduce one available input-level control or increase speaking distance slightly. Do not increase gain to compensate for quiet sections.', { severity: 'warning' }));
   } else if (pinnedCeiling(m)) {
     recs.push(recommendation('PINNED_CEILING',
-      `The waveform is pinned at a ceiling of ${finite(m.ceiling.ceilingDb) ? m.ceiling.ceilingDb : m.signal.peakDb} dBFS, below full scale, with a peak-to-average spread of only ${m.signal.crestFactorDb} dB. This matches clipping before the browser received the audio; full-scale sample counts cannot show it because the level was reduced afterwards.`,
-      'Listen for distortion. Lower the interface or microphone gain first; the system input level below 100% only hides clipping, it does not remove it.',
+      `Many samples cluster near a ceiling of ${finite(m.ceiling.ceilingDb) ? m.ceiling.ceilingDb : m.signal.peakDb} dBFS, with a peak-to-average spread of ${m.signal.crestFactorDb} dB. Clipping or limiting can produce this pattern, but the recording does not identify where it happened or whether it is audible.`,
+      'If playback sounds distorted, lower an available input-level control slightly. This pattern does not locate the stage causing the ceiling.',
       { severity: pinnedCeiling(m), relatedSetting: 'input-gain' }));
   } else if (finite(m.headroom?.peakDb) && m.headroom.peakDb >= QUALITY.HEADROOM_INFO_DB) {
     recs.push(recommendation('LOW_HEADROOM', 'Peaks are close to full scale without measured full-scale samples. This does not prove distortion or lower the result.',
@@ -190,42 +200,66 @@ function analyzeMeasurements(report) {
   if (!(measured(m.clipping, 'rate') > 0) && finite(measured(m.truePeak, 'db')) && m.truePeak.db > QUALITY.TRUE_PEAK_WARNING_DBTP) {
     recs.push(recommendation('TRUE_PEAK_OVER',
       `Inter-sample peaks reach ${m.truePeak.db} dBTP, above full scale, although no stored sample is at full scale.`,
-      'Playback or re-encoding can clip these peaks. Compare a repeat with slightly more headroom if you hear distortion.', { severity: 'warning' }));
+      'Playback or re-encoding can clip these peaks. A little more headroom can help; increasing gain would reduce it.', { severity: 'warning' }));
   }
   if (m.channelLayout === 'dual-mono' && m.channelIdentity?.identical === true) recs.push(recommendation('DUAL_MONO',
     `Both channels carry the same signal, so the integrated loudness of ${m.lufs?.integrated} LUFS reads 3 dB above its mono equivalent of ${m.lufs?.integratedMonoEquivalent} LUFS. A single-input interface delivered as a stereo pair usually causes this.`,
     'No change is needed. Compare loudness figures with mono recordings using the mono equivalent.', { category: 'observation' }));
-  const mismatches = Array.isArray(report.profile?.constraintMismatches) ? report.profile.constraintMismatches : [];
+  const mismatches = getConstraintMismatches(report.profile);
+  const capabilities = projectCaptureContext(report).captureContext.capabilities;
+  const unsupported = mismatches.filter(item => {
+    const key = { sampleRate: 'sampleRateRange', channelCount: 'channelCountRange', echoCancellation: 'ecSupported',
+      noiseSuppression: 'nsSupported', autoGainControl: 'agcSupported' }[item.key];
+    const supported = capabilities[key];
+    return Array.isArray(supported) ? !supported.includes(item.requested)
+      : supported && (item.requested < supported.min || item.requested > supported.max);
+  });
   if (mismatches.length) recs.push(recommendation('SETTINGS_NOT_APPLIED',
-    `The device applied ${mismatches.map(item => `${SETTING_LABELS[item.key] || item.key} ${String(item.applied)} instead of ${String(item.requested)}`).join(', ')}.`,
-    'Measurements describe the applied settings. Change the device or its system format if the requested value matters for your comparison.',
+    `The device applied ${mismatches.map(item => `${SETTING_LABELS[item.key]} ${String(item.applied)} instead of ${String(item.requested)}`).join(', ')}.${unsupported.length
+      ? ` The capture device did not report support for the requested ${unsupported.map(item => SETTING_LABELS[item.key]).join(', ')}.` : ''}`,
+    unsupported.length ? 'Use a supported setting or another input device if that format or processing option is required. Changing system input volume cannot enable an unsupported capture setting.'
+      : 'Measurements describe the applied settings. Check the device or its system format if the requested value is required; the recording does not establish why it was not applied.',
     { relatedSetting: mismatches[0].key }));
   if (c.autoGainControl === true) recs.push(recommendation('AGC_SYSTEM_LEVEL',
     'Automatic gain control was active, so the recorded level does not show the microphone\'s own level. The browser may also adjust the system input level during such runs.',
     'Check the system input level before comparing with a recording made with processing disabled.', { category: 'observation', relatedSetting: 'agc' }));
   if (m.silence?.totalDurationMs > 0) recs.push(recommendation('LOW_LEVEL_SECTIONS',
     'This recording contains low-level sections. Pauses and audio gaps can both look quiet.',
-    'Listen to those sections and repeat the same phrase if sound disappeared while you were speaking.', { category: 'observation' }));
+    '', { category: 'observation' }));
   if (m.coverage?.truncated) recs.push(recommendation('PARTIAL_RECORDING',
     'Only the first part of this recording was analysed.',
-    'Use a shorter recording that includes the sound you want to compare.'));
+    'The unanalysed remainder cannot support additional findings.', { category: 'observation' }));
   const usage = report.communicationContext?.usage;
   if (report.run?.type === 'test' || report.profile?.approximation || usage === 'voice-call' || usage === 'voice-message') recs.push(recommendation('LOCAL_TEST_SCOPE',
     'This is a local browser preset. Mobile, desktop and web app codecs and processing can differ; their exact behavior is not reproduced.',
-    usage === 'voice-message' ? 'Compare this recording with a short voice message sent through your actual app.'
-      : 'Compare playback here with a short call or voice message in your actual app.', { category: 'profile' }));
+    '', { category: 'profile' }));
+  const peakRisk = recs.some(item => ['FULL_SCALE_SAMPLES', 'PINNED_CEILING', 'TRUE_PEAK_OVER'].includes(item.id));
+  for (const item of recs) {
+    if (['FULL_SCALE_SAMPLES', 'PINNED_CEILING'].includes(item.id)) item.action = inputLevelInstruction(report, true);
+    if (item.id === 'LOW_RECORDED_LEVEL' && !peakRisk && !item.nearSilent) item.action = inputLevelInstruction(report);
+    if (item.id === 'LOW_RECORDED_LEVEL' && (peakRisk || item.nearSilent)) item.action = peakRisk
+      ? 'Quiet sections coexist with a peak warning. Increasing input gain could worsen the peaks.'
+      : 'Speech was not verified in this recording. This low level alone does not establish a microphone fault or justify increasing gain.';
+    if (item.category === 'observation') item.action = '';
+  }
   return recs;
 }
 
 function analyzeSystemSignals(report) {
   const observed = report.system?.correlation?.findings || [];
+  const { system } = projectCaptureContext(report);
   const recs = [];
-  if (observed.some(f => f.id === 'CPU_LIKELY' || f.id === 'NETWORK_LIKELY')) recs.push(recommendation('TIMING_VARIATION',
+  const legacy = !report.system?.runId;
+  if ((system.tabWasHidden !== true && system.mainThreadJitter?.spikeCount > 0)
+    || (legacy && observed.some(f => f.id === 'CPU_LIKELY' || f.id === 'NETWORK_LIKELY'))) recs.push(recommendation('TIMING_VARIATION',
     'Browser or transport timing varied during the run. These observations do not identify CPU load or a network fault.',
-    'Repeat with fewer busy tabs and compare playback; change one condition at a time.', { category: 'system' }));
-  if (observed.some(f => f.id === 'TAB_HIDDEN')) recs.push(recommendation('TAB_HIDDEN',
-    'The test tab was hidden during part of the run.',
-    'Keep it visible when comparing browser timing. Saved-audio measurements still describe the recorded file.', { category: 'system' }));
+    '', { category: 'observation' }));
+  if (system.tabWasHidden === true || (legacy && observed.some(f => f.id === 'TAB_HIDDEN'))) recs.push(recommendation('TAB_HIDDEN',
+    'The recording tab was in the background during part of the run. Scheduling delays during that period are not reliable evidence of CPU load; saved-audio measurements still describe the recorded file.',
+    '', { category: 'observation' }));
+  if (system.network?.concealedSamples > 0) recs.push(recommendation('LOCAL_CONCEALMENT',
+    'The local call test concealed some audio samples. This is an observation of the local browser transport, not the internet connection or audio received in your actual app.',
+    '', { category: 'observation' }));
   return recs;
 }
 
@@ -242,9 +276,12 @@ function analyzeSpectrum(report) {
   return recs;
 }
 
-function evaluatePremiumReport(report) {
-  const measurementFindings = report?.run?.type !== 'troubleshooting' && sufficient(report) ? analyzeMeasurements(report) : [];
-  const guidance = getTroubleshootingGuidance(report, { measurementFindings });
+function evaluatePremiumReport(report, catalogs) {
+  report = usableReport(report).report;
+  const platform = assessPlatformExpectations(report, catalogs);
+  const measurementFindings = report?.run?.type !== 'troubleshooting' && sufficient(report)
+    ? applyPlatformExpectations(analyzeMeasurements(report), platform) : [];
+  const guidance = getTroubleshootingGuidance(report, { measurementFindings: measurementFindings.filter(item => item.expectation !== 'within-reference') });
   // A guidance-only run never claims an audio assessment, even if an imported
   // payload accidentally carries metrics from an earlier recording.
   if (report?.run?.type === 'troubleshooting') return {
@@ -255,14 +292,22 @@ function evaluatePremiumReport(report) {
       { category: 'troubleshooting', evidence: 'No audio or system performance was measured for this guidance-only report.' })]
   };
   if (!sufficient(report)) return { metrics: formatDetailedMetrics(report), recommendations: [
-    recommendation('INSUFFICIENT_AUDIO', 'There is not enough measured audio to assess this recording.',
-      'Record a short spoken sample and try again.'), ...guidance
+    recommendation('INSUFFICIENT_AUDIO', 'There is not enough consistent measured audio to assess this recording.',
+      '', { category: 'observation' }), ...guidance
   ] };
+  const metricPaths = { maxBlockRms: 'signal.maxBlockRmsDb', lufsIntegrated: 'lufs.integrated', lufsMonoEquivalent: 'lufs.integratedMonoEquivalent',
+    crestFactor: 'signal.crestFactorDb', nearCeiling: 'ceiling.nearCeilingRate', clipping: 'clipping.rate', truePeak: 'truePeak.db', noiseFloor: 'noiseFloor.estimatedDb', snr: 'snr.estimatedDb' };
   return {
-    metrics: formatDetailedMetrics(report),
+    platform: publicPlatformAssessment(platform),
+    platformAssessment: platform,
+    metrics: [...formatDetailedMetrics(report).map(item => platform.comparisons.some(value => value.path === metricPaths[item.key] && value.status === 'within')
+      ? { ...item, rating: 'info', expectation: 'within-reference' } : item),
+      ...platform.comparisons.map(item => metric(`reference:${item.path}`, `Validated range: ${item.label}`,
+        `${item.unit === 'ratio' ? percent(item.min) : item.min} to ${item.unit === 'ratio' ? percent(item.max) : item.max}`, item.unit === 'ratio' ? '%' : item.unit))],
     recommendations: [...guidance, ...measurementFindings.filter(finding => !guidance.some(step => step.replaces === finding.id)),
-      ...analyzeSystemSignals(report), ...analyzeSpectrum(report)]
+      ...analyzeSystemSignals(report), ...analyzeSpectrum(report),
+      ...(platform.target?.platform ? [recommendation('PLATFORM_EXPECTATION', platform.summary, '', { category: 'observation' })] : [])]
   };
 }
 
-module.exports = { evaluatePremiumReport, isDetailedReportInput };
+module.exports = { evaluatePremiumReport, isDetailedReportInput, hasSufficientAudio: countsAsCompletedTest, analyzeMeasurements };

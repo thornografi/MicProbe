@@ -1,4 +1,4 @@
-/* MicProbe - App Styles (Sidebar Layout)
+/* MicProbe - App Styles (Single Workspace)
    =======================================
    Tum renkler variables.css'ten gelir.
    Bu dosya sadece app-specific layout ve component stilleri icerir.
@@ -11,11 +11,10 @@
   min-height: 100vh;
 }
 
-/* Shared header and footer enclose the scenario rail and working area. */
+/* One centered task surface, with a shared header and footer. */
 .app-shell {
-  --rail-width: var(--sidebar-width);
   display: grid;
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--header-height) 1fr auto;
   min-height: 100vh;
   position: relative;
@@ -25,86 +24,7 @@
   display: contents;
 }
 
-/* ========== SIDEBAR (rail nav) ========== */
-.sidebar {
-  grid-area: 2 / 1 / 3 / 2;
-  background: rgba(var(--bg-primary-rgb), 0.22);
-  border-right: 1px solid var(--border-secondary);
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  z-index: 1;
-  font-family: var(--font-sans);
-  contain: layout style;
-  /* Reserve room for the console trigger sharing this grid cell. */
-  padding-bottom: calc(var(--control-h-m) + var(--space-lg));
-}
-
-/* Ust bosluk .content-container ile ayni akiskan deger: rail basligi ile sayfa basligi ayni y'de baslar */
-.sidebar-intro {
-  padding: var(--padding-fluid) var(--space-lg) var(--space-lg);
-}
-
-.sidebar-intro-title {
-  margin: 0 0 var(--space-sm);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.sidebar-intro-text {
-  max-width: 28ch;
-  font-size: var(--fs-xs);
-  line-height: 1.6;
-  color: var(--text-muted);
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: 0 var(--space-ms) var(--space-lg);
-  overflow-y: auto;
-}
-
-.nav-section {
-  margin-bottom: 24px;
-}
-
-.nav-section + .nav-section {
-  padding-top: 4px;
-}
-
-.nav-section-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  margin-bottom: 4px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-ms);
-  width: 100%;
-  min-height: var(--control-h-m);
-  margin-bottom: var(--space-xs);
-  padding: var(--space-sm) var(--space-ms);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--fs-base);
-  font-weight: 500;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-  text-align: left;
-  user-select: none;
-}
-
+/* Shared icons in the single scenario chooser. */
 .nav-icon {
   display: grid;
   place-items: center;
@@ -121,60 +41,8 @@
   fill: currentColor;
 }
 
-.nav-item:hover {
-  background: rgba(var(--color-white-rgb), 0.04);
-  color: var(--text-primary);
-}
-
-.nav-item:hover svg {
-  opacity: 0.9;
-  color: var(--color-purple-light);
-}
-
-.nav-item.active {
-  background: rgba(var(--color-purple-rgb), 0.14);
-  color: var(--profile-accent);
-}
-
-/* Aktif durum agirlik+renk ile; font ailesi degismez (state gecisinde genislik ziplamasi olmaz) */
-.nav-item.active span {
-  font-weight: 600;
-}
-
-.nav-item.active svg {
-  opacity: 1;
-  color: inherit;
-}
-
-/* Kategori basliklari hiyerarsiyi kurar; profil satirlari ayni hizada kalir. */
-.nav-item-sub {
-  margin-left: 0;
-}
-
-/* Tum nav ikonlari 20px; glif basina optik dengeleme sprite viewBox'unda (index.html sembolleri)
-   ve #icon-mic icin <use width/height> ile yapilir - CSS'te ikon bazli boyut istisnasi yok. */
-.sidebar-note {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-  margin: 0 var(--space-lg) var(--space-lg);
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--border-secondary);
-  color: var(--text-muted);
-  font-size: var(--fs-xs);
-  line-height: 1.6;
-}
-
-.sidebar-note svg {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-}
-
-/* ========== MAIN CONTENT (calisma alani) ========== */
 .main-content {
-  grid-area: 2 / 2 / 3 / 3;
+  grid-area: 2 / 1 / 3 / -1;
   display: flex;
   flex-direction: column;
   background: transparent;
@@ -195,18 +63,24 @@
   min-height: 0;
 }
 
-/* Only placement belongs to the app shell; footer content uses shared.css everywhere. */
+/* Footer destinations are shared; its content follows the workspace edges. */
 .app-shell .site-footer {
   grid-area: 3 / 1 / 4 / -1;
   margin-top: 0;
+  padding-block: var(--space-lg);
+  padding-inline: var(--workspace-gutter);
 }
+
+/* The workspace keeps all shared destinations in a compact footer. */
+.app-shell .site-footer-content { max-width: var(--app-content-max); grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }
+.app-shell .site-footer-identity { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); }
+.app-shell .site-footer-description { font-size: var(--fs-sm); max-width: none; }
+.app-shell .site-footer-meta { margin-left: auto; }
+.app-shell .site-footer-links { grid-column: 1; display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-xl); }
+.app-shell .site-footer-group { flex-direction: row; flex-wrap: wrap; gap: 0 var(--space-lg); }
 
 /* ========== RESPONSIVE ========== */
 
-/* First use has one clear destination; the scenario rail returns with the test. */
-.app-shell:has(#scenarioPicker:not([hidden])) {
-  grid-template-columns: 0 minmax(0, 1fr);
-}
 
 .scenario-workspace {
   width: 100%;
@@ -215,7 +89,7 @@
 
 .scenario-picker {
   width: 100%;
-  max-width: 1040px;
+  max-width: var(--app-content-max);
   margin: var(--space-lg) auto;
 }
 
@@ -242,17 +116,25 @@
 
 .scenario-choices {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: var(--space-xl) var(--space-2xl);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xl);
 }
 
 .scenario-group:first-child {
-  grid-row: span 2;
+  grid-column: 1 / -1;
 }
 
 .scenario-group {
   min-width: 0;
 }
+
+.scenario-group--calls { grid-column: 1 / -1; }
+.scenario-call-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-xl);
+}
+.scenario-call-choices .scenario-choice { margin-bottom: 0; }
 
 .scenario-group h2 {
   margin: 0 0 var(--space-ms);
@@ -350,23 +232,13 @@
   text-decoration: none;
 }
 
-/* Breakpoint seti variables.css basliginda (xs 479 · sm 767 · md 768-1023 · lg 768-1199 · xl 1200+).
-   Rail 768-1023'te 216px; daha genis ekranlarda 264-320px arasinda olceklenir.
-   Konsol 1199'a kadar tek kolon kalir (panels.css). */
-@media (min-width: 768px) and (max-width: 1023px) {
-  .app-shell {
-    --rail-width: var(--sidebar-width-compact);
-  }
-
-  /* Compact rail: nav metni intro/note ile ayni 24px hattinda kalir (12 + 12) */
-  .sidebar .nav-item {
-    gap: var(--space-sm);
-  }
-}
-
-/* Mobil: grid kabugu dikey akisa doner - ust bar tam genislik (hamburger + ortali marka),
-   sidebar sabit konumlu cekmece, footer tam genislik */
+/* The same chooser and task order remain on phones. */
 @media (max-width: 767px) {
+  .app-shell .site-footer-identity { display: grid; justify-items: start; }
+  .app-shell .site-footer-meta { margin-left: 0; }
+  .app-shell .site-footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .site-footer-group { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; }
+
   .scenario-picker {
     margin: var(--space-sm) auto;
   }
@@ -381,46 +253,15 @@
   }
 
   .scenario-group:first-child {
-    grid-row: auto;
+    grid-column: auto;
   }
+  .scenario-call-choices { grid-template-columns: minmax(0, 1fr); }
+}
 
-  .app-shell {
-    display: flex;
-    flex-direction: column;
-    background: none;
-  }
-
-  .app-layout {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .main-content {
-    flex: 1;
-    margin-left: 0;
-  }
-
-  .sidebar {
-    position: fixed;
-    padding-bottom: 0;
-    top: var(--header-height); /* variables.css :root */
-    width: min(var(--sidebar-width), calc(100vw - 48px));
-    height: calc(100vh - var(--header-height));
-    height: calc(100dvh - var(--header-height));
-    left: calc(-1 * var(--sidebar-width));
-    visibility: hidden;
-    z-index: var(--z-drawer);
-    background: var(--overlay-bg);
-    transition: left var(--transition-slow), visibility var(--transition-slow);
-    box-shadow: var(--drawer-shadow);
-  }
-
-  .sidebar.open {
-    left: 0;
-    visibility: visible;
-  }
-
+@media (max-width: 1023px) {
+  .app-shell { --workspace-gutter: var(--space-md); }
+  /* Keep the same single-column grid across resizes; switching the shell to
+     flex can collapse its contained main surface during breakpoint layout. */
   /* Mobil gutter tek deger: header, icerik ve footer 16px */
   .content-container {
     padding: var(--space-lg) var(--space-md);

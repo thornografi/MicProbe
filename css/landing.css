@@ -1,5 +1,27 @@
 /* MicProbe - Landing Page Styles */
 
+/* Available before application CSS/JavaScript, including failed downloads. */
+.app-load-status {
+  position: fixed;
+  z-index: var(--z-drawer-overlay);
+  inset-inline: var(--page-gutter);
+  bottom: var(--space-lg);
+  width: fit-content;
+  max-width: calc(100% - 2 * var(--page-gutter));
+  margin-inline: auto;
+  padding: var(--space-lg);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+
+.app-load-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
 /* ========== LANDING VIEW ========== */
 #landing-view {
   min-height: 100vh;
@@ -88,7 +110,7 @@
 }
 
 .navbar-cta svg {
-  width: 12.57px;
+  width: 16px;
   height: 16px;
 }
 
@@ -114,7 +136,7 @@
 }
 
 .hero-title {
-  font-size: clamp(2.2rem, 3.6vw, 4rem);
+  font-size: clamp(2rem, 4vw, 3.5rem);
   font-weight: 500;
   font-family: var(--font-ui-accent);
   line-height: 1.15;
@@ -180,10 +202,17 @@
 .hero-scope-note {
   max-width: 580px;
   margin-top: var(--space-md);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.hero-included {
+  margin-top: var(--space-ms);
+  color: var(--text-secondary);
   font-size: var(--fs-base);
   line-height: 1.6;
-  color: var(--text-secondary);
-  text-wrap: pretty;
 }
 
 .hero-audio-signature {
@@ -331,7 +360,7 @@
   color: var(--text-muted);
 }
 
-.hero-report .hero-report-included {
+.hero-report .hero-report-action {
   margin-top: var(--space-md);
   padding-top: var(--space-md);
   border-top: 1px solid var(--border-primary);
@@ -543,10 +572,6 @@ body:not(.app-mode) #app-view {
     gap: var(--space-xl);
   }
 
-  .hero-title {
-    font-size: clamp(2.4rem, 5vw, 3.5rem);
-  }
-
   .hero-audio-signature {
     height: 144px;
   }
@@ -621,10 +646,6 @@ body:not(.app-mode) #app-view {
     padding-block: calc(var(--navbar-height) + var(--space-xl)) var(--space-2xl);
   }
 
-  .hero-title {
-    font-size: clamp(2rem, 6vw, 2.8rem);
-  }
-
   .hero-visual {
     display: block;
   }
@@ -647,7 +668,7 @@ body:not(.app-mode) #app-view {
 
   .hero-buttons {
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     width: 100%;
   }
 

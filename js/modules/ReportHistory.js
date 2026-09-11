@@ -1,3 +1,5 @@
+import { projectArchiveReport } from './ArchiveReport.js';
+
 const STORAGE_KEY = 'micprobe:report-history:v1';
 const MAX_LOCAL_BYTES = 2500000;
 const validEntries = entries => Array.isArray(entries) ? entries.filter(entry => entry && typeof entry.id === 'string'
@@ -13,6 +15,7 @@ export class ReportHistory {
     this.account = account;
     this.storage = storage;
     this.listeners = new Set();
+    this.premiumOwners = new Set();
     this.userId = null;
     this.revision = 0;
     this.loadRevision = 0;
@@ -36,8 +39,13 @@ export class ReportHistory {
   }
   getState() {
     return structuredClone({ reports: this.reports,
+      premium: this.premium,
       pendingCount: this._pending().length,
-      loading: this.loading, error: this.error || (this._pending().some(entry => entry.saveError)
+      loading: this.loading, error: this.error || (!this.premium && this._pending().length
+        ? this.accessPending ? 'Purchase verification is pending. Previously pending reports remain on this browser.'
+          : this.accessError ? 'Your account connection could not be checked. Pending reports remain on this browser.'
+            : 'Previously pending reports are kept on this browser. Premium is required to save them.' : this._pending().some(entry => entry.saveError === 'report_storage_full')
+        ? 'Your saved report storage is full. Remove an older report to make room. New results remain on this browser.' : this._pending().some(entry => entry.saveError)
         ? 'Some reports contain unsupported data and could not be saved. They remain on this browser.' : ''),
       userId: this.userId, nextCursor: this.nextCursor });
   }
@@ -46,40 +54,67 @@ export class ReportHistory {
   _persist() {
     try {
       const text = JSON.stringify({ pending: this.pending });
-      if (text.length > MAX_LOCAL_BYTES) throw new Error('storage_full');
+      if (new TextEncoder().encode(text).byteLength > MAX_LOCAL_BYTES) throw new Error('storage_full');
       this.storage?.setItem(STORAGE_KEY, text);
     } catch { this.error = 'Browser storage is full or unavailable. Keep this page open and retry saving.'; }
   }
   _onAccount(state) {
     const nextId = state.user?.id || null;
-    if (nextId === this.userId) return;
+    const changedOwner = nextId !== this.userId;
+    this.accessPending = !!state.premium?.pending;
+    this.accessError = !!state.error;
+    const gainedPremium = nextId === this.userId && !this.premium && state.premium?.unlocked === true;
+    const changedAccess = this.premium !== (state.premium?.unlocked === true);
+    this.premium = state.premium?.unlocked === true;
+    if (nextId) {
+      if (this.premium) this.premiumOwners.add(nextId);
+      else this.premiumOwners.delete(nextId);
+    }
+    if (!changedOwner && !changedAccess) { this._notify(); return; }
     this.userId = nextId;
     ++this.revision;
     this.error = '';
     this.nextCursor = null;
     this.loading = false;
-    this.reports = structuredClone(this._pending());
+    // Keep this owner's archive visible during a status refresh. Remove cached
+    // private evaluations immediately; a later authorized read can restore them.
+    this.reports = changedOwner ? structuredClone(this._pending()) : this.reports.map(entry => ({ ...entry,
+      evaluation: this.premium ? entry.evaluation : entry.evaluation ? { public: entry.evaluation.public } : null }));
     this._notify();
     if (nextId) this.reload();
+    // Old account queues are never silently uploaded on sign-in or upgrade.
+    // A user may explicitly retry them from the archive.
+    if (gainedPremium) this._notify();
   }
   capture(report) {
     if (this.suppressCapture || !report || !report.run?.id) return;
     const identity = reportIdentity(report);
     const ownerId = Object.hasOwn(report.run, 'accountOwnerId') ? report.run.accountOwnerId : this.userId;
-    if (!ownerId) return;
+    if (!ownerId || (ownerId === this.userId ? !this.premium : !this.premiumOwners.has(ownerId))) return;
     const records = ownerId === this.userId ? this.reports : this.pending[ownerId] || [];
     if (records.some(entry => reportIdentity(entry.report) === identity)) return;
-    const entry = { id: identity, report: structuredClone(report), note: '', createdAt: report.generatedAt || new Date().toISOString(),
+    const entry = { id: identity, report: projectArchiveReport(report), note: '', createdAt: report.generatedAt || new Date().toISOString(),
       pending: true, cloudSaveUnknown: false };
+    const candidate = { ...this.pending, [ownerId]: [entry, ...(this.pending[ownerId] || [])] };
+    if (new TextEncoder().encode(JSON.stringify({ pending: candidate })).byteLength > MAX_LOCAL_BYTES) {
+      this.error = 'Browser storage for pending reports is full. This result is available on the current page; save it after making room.';
+      this._notify(); return;
+    }
     this.pending[ownerId] = [entry, ...(this.pending[ownerId] || [])];
     if (ownerId === this.userId) this.reports.unshift(entry);
     this._persist();
     this._notify();
     if (ownerId === this.userId) this.retry({ includeRejected: false });
   }
-  open(entry, restore) {
+  async open(entry, restore) {
+    const revision = this.revision;
+    if (entry.summaryOnly) {
+      const result = await this.account.api(`/reports/${encodeURIComponent(entry.id)}`);
+      if (revision !== this.revision) return;
+      entry = result.report;
+    }
     this.suppressCapture = true;
-    try { restore(structuredClone(entry.report)); }
+    try { restore(structuredClone({ ...entry.report, savedEvaluation: entry.evaluation || null })); }
     finally { this.suppressCapture = false; }
   }
   async reload({ more = false } = {}) {
@@ -105,13 +140,13 @@ export class ReportHistory {
       this.reports = [...byRun.values()].sort((a, b) => String(b.report.generatedAt || b.createdAt).localeCompare(String(a.report.generatedAt || a.createdAt)));
       this.nextCursor = result.nextCursor || null;
       this.error = '';
-    } catch { if (revision === this.revision && loadRevision === this.loadRevision) this.error = 'History could not be loaded. Your pending reports are kept on this browser; retry when connected.'; }
+    } catch { if (revision === this.revision && loadRevision === this.loadRevision) this.error = 'Saved reports could not be loaded. Your pending reports are kept on this browser; retry when connected.'; }
     finally {
       if (revision === this.revision && loadRevision === this.loadRevision) { this.loading = false; this._notify(); }
     }
   }
   async retry({ includeRejected = true } = {}) {
-    if (!this.userId) return;
+    if (!this.userId || !this.premium) return;
     const revision = this.revision;
     if (this.syncRevision === revision) return;
     this.syncRevision = revision;
@@ -129,15 +164,19 @@ export class ReportHistory {
           result = await this.account.api('/reports', { method: 'POST', body: { report: entry.report, note: entry.note } });
         } catch (error) {
           if (revision !== this.revision) return;
-          if ((error.status === 400 && error.message === 'invalid_report')
+          if ((error.status === 409 && error.message === 'report_storage_full')
+              || (error.status === 403 && ['premium_access_required', 'report_not_owned'].includes(error.message))
+              || (error.status === 410 && error.message === 'report_deleted')
+              || (error.status === 400 && error.message === 'invalid_report')
               || (error.status === 413 && error.message === 'request_too_large')) {
             for (const pending of this._pending().filter(item => reportIdentity(item.report) === reportIdentity(entry.report))) {
               pending.saveError = error.message;
-              pending.cloudSaveUnknown = wasUnknown;
+              pending.cloudSaveUnknown = error.message === 'report_storage_full' ? false : wasUnknown;
             }
             this.reports = this.reports.map(item => this._pending().find(pending => reportIdentity(pending.report) === reportIdentity(item.report)) || item);
             this._persist();
             this._notify();
+            if (['report_storage_full', 'premium_access_required'].includes(error.message)) break;
             continue;
           }
           throw error;
@@ -159,18 +198,38 @@ export class ReportHistory {
       }
     } catch {
       if (revision === this.revision) { this.error = 'Some reports are waiting to sync. They remain on this browser; use Retry sync when connected.'; this._notify(); }
-    } finally { if (this.syncRevision === revision) this.syncRevision = null; }
+    } finally {
+      if (this.syncRevision === revision) this.syncRevision = null;
+      if (this.storageRetryRevision === revision && this.revision === revision) {
+        this.storageRetryRevision = null;
+        await this._retryFullStorage();
+      }
+    }
   }
   async updateNote(entryId, note) {
     if (!this.userId) return;
     const entries = this.reports;
     const entry = entries.find(item => item.id === entryId);
     if (!entry) return;
+    if (!entry.pending) {
+      const revision = this.revision;
+      const result = await this.account.api(`/reports/${encodeURIComponent(entryId)}`, { method: 'PATCH', body: { note: String(note).slice(0, 500) } });
+      if (revision !== this.revision) return;
+      this.reports = this.reports.map(item => item.id === entryId ? { ...item, note: result.report.note } : item);
+      this._notify();
+      return;
+    }
     const updated = { ...entry, note: String(note).slice(0, 500), pending: true };
     this.reports = entries.map(item => item === entry ? updated : item);
     this.pending[this.userId] = [...this._pending().filter(item => reportIdentity(item.report) !== reportIdentity(entry.report)), updated];
     this._persist();
     this._notify();
+    await this.retry({ includeRejected: false });
+  }
+  async _retryFullStorage() {
+    if (this.syncRevision === this.revision) { this.storageRetryRevision = this.revision; return; }
+    this._pending().forEach(entry => { if (entry.saveError === 'report_storage_full') delete entry.saveError; });
+    this.error = '';
     await this.retry({ includeRejected: false });
   }
   async remove(entryId) {
@@ -184,14 +243,10 @@ export class ReportHistory {
     try {
       const neverSaved = entry.pending && entry.id === reportIdentity(entry.report) && entry.cloudSaveUnknown === false;
       if (!neverSaved) {
-        let cloudId = entryId;
-        if (entry.pending && entry.id === reportIdentity(entry.report)) {
-          // A lost save response may already have created the immutable cloud row.
-          const saved = await this.account.api('/reports', { method: 'POST', body: { report: entry.report, note: entry.note } });
-          if (revision !== this.revision) return;
-          cloudId = saved.report.id;
-        }
-        try { await this.account.api(`/reports/${encodeURIComponent(cloudId)}`, { method: 'DELETE' }); }
+        const path = entry.pending && entry.id === reportIdentity(entry.report)
+          ? `/reports?runId=${encodeURIComponent(entry.report.run.id)}`
+          : `/reports/${encodeURIComponent(entryId)}`;
+        try { await this.account.api(path, { method: 'DELETE' }); }
         catch (error) {
           // Another device may already have removed this row. Only a confirmed
           // missing report is equivalent to a successful delete.
@@ -205,7 +260,7 @@ export class ReportHistory {
     } finally { if (this.syncRevision === revision) this.syncRevision = null; }
     this._persist();
     this._notify();
-    await this.retry({ includeRejected: false });
+    await this._retryFullStorage();
   }
   destroy() { this.unsubscribeAccount?.(); this.listeners.clear(); }
 }

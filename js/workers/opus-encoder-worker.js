@@ -1,5 +1,6 @@
 /* Adapter for the pinned opus-recorder bundle. Keep vendor code unchanged. */
-importScripts('../lib/opus/encoderWorker.min.js');
+// This classic vendor worker keeps its location in both source and built sites.
+importScripts('/js/lib/opus/encoderWorker.min.js');
 
 const OPUS_GET_LOOKAHEAD = 4027;
 const RESAMPLE_QUALITY = 3;

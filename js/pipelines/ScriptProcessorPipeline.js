@@ -36,16 +36,16 @@ export default class ScriptProcessorPipeline extends BasePipeline {
     this.nodes.processor = this.audioContext.createScriptProcessor(bufferSize, this._channels, this._channels);
 
     // WASM Opus encoder kurulumu (tek mod)
-    await this._setupWasmOpus(bufferSize, mediaBitrate);
+    await this._setupWasmOpus(bufferSize, mediaBitrate, options.signal);
   }
 
   /**
    * WASM Opus encoder kurulumu
    * DRY: Opus worker BasePipeline._initOpusWorker() ile olusturulur
    */
-  async _setupWasmOpus(bufferSize, mediaBitrate) {
+  async _setupWasmOpus(bufferSize, mediaBitrate, signal) {
     // DRY: Ortak Opus worker kurulumu (channels parametresi eklendi)
-    const opusBitrate = await this._initOpusWorker(mediaBitrate, this._channels);
+    const opusBitrate = await this._initOpusWorker(mediaBitrate, this._channels, 2048, signal);
 
     // ScriptProcessor -> Opus Worker (PCM gonder)
     this.nodes.processor.onaudioprocess = (e) => {

@@ -1,18 +1,5 @@
-/* ==========================================================================
-   TEST CONSOLE - kayit/test ekrani kart layout'u
-   ==========================================================================
-   Yapi:
-     .test-console
-       .console-row              Control&Signal + Info kartlari (2 kolon grid)
-         .console-card--primary
-           .settings-strip      #customSettingsPanel collapsible settings
-         .console-card--result   Playback karti (.unified-row-player class'i
-                                 UIElements.js closest() sozlesmesi - SILME)
-         .console-card--secondary
-   App kartlari burada tanimlanir. Renk/token: variables.css.
-   .unified-tips icerigi ProfileController.updateTips() tarafindan innerHTML ile
-   yeniden uretilir (li.utip / .utip-step / .utip-text).
-   ========================================================================== */
+/* Test workspace: preparation, result and technical details share one column.
+   Keep .unified-row-player: UIElements uses it to locate the playback card. */
 
 /* The console shares the page title's centered workspace bounds. */
 .test-console {
@@ -23,24 +10,10 @@
   max-width: var(--app-content-max);
 }
 
-/* Ust satir: Control (genis) + Info (dar).
-   align-items: start bilincli - kartlar dogal iceriginin boyunda biter.
-   Stretch, iki kartin farkli dogal yuksekligini (fark profile gore degisir)
-   zorla esitleyip karta olu bosluk sokuyordu; fazla alan hic olusmamali. */
-.console-row {
-  display: grid;
-  /* Both columns fill the bounded workspace; no unused percentage remains
-     beyond the guide. The guide width stays readable on larger screens. */
-  grid-template-columns: minmax(0, 1fr) clamp(272px, 24vw, 416px);
-  grid-template-areas: 'controls info' 'result info';
-  gap: clamp(32px, 3vw, 64px);
-  align-items: start;
-}
-
-.console-card--primary { grid-area: controls; }
-.console-card--result { grid-area: result; min-width: 0; scroll-margin-top: 90px; }
-.console-card--secondary { grid-area: info; }
-.console-row:not(:has(.recording-player.visible)) { grid-template-areas: 'controls info'; }
+/* Preparation, result and technical details keep the same reading order at every width. */
+.console-row { display: flex; flex-direction: column; gap: var(--space-lg); }
+.console-row > * { width: 100%; min-width: 0; }
+.console-card--result { scroll-margin-top: 90px; }
 
 .capture-hint { margin: var(--space-ms) 0 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
 .inline-result { margin-bottom: var(--space-lg); padding-bottom: var(--space-lg); border-bottom: 1px solid var(--border-secondary); }
@@ -66,10 +39,6 @@
 .profile-specifications dt { color: var(--text-muted); font-size: var(--fs-xs); }
 .profile-specifications dd { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm); }
 
-@media (max-width: 1199px) {
-  .console-row { grid-template-areas: 'controls' 'result' 'info'; }
-  .console-row:not(:has(.recording-player.visible)) { grid-template-areas: 'controls' 'info'; }
-}
 
 /* ---------- Kart ---------- */
 /* Static surfaces: only controls respond to hover. */
@@ -81,8 +50,7 @@
   box-shadow: var(--surface-card-shadow);
 }
 
-/* The guide follows the control column, with matching heading height and no
-   second card surface. Its readable width stays fixed as the workspace grows. */
+/* Optional technical details follow the result without another card surface. */
 .console-card--secondary {
   padding: var(--space-lg) 0 0;
   background: transparent;
@@ -136,26 +104,12 @@
   color: var(--text-muted);
 }
 
-/* Input and action share a row when they fit, and wrap together on narrow cards. */
-.capture-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-md);
-}
-
-.capture-controls .mic-selector-row {
-  flex: 1 1 320px;
-  min-width: 0;
-}
-
-.capture-controls .button-row {
-  flex-shrink: 0;
-}
-
-.console-card .button-row {
-  flex-wrap: wrap;
-}
+/* Device and optional settings precede the action, including on wide screens. */
+.capture-controls { display: flex; flex-direction: column; gap: var(--space-md); }
+.capture-controls > * { width: 100%; min-width: 0; }
+.capture-controls .btn-action { flex: 1 1 auto; }
+.console-card .button-row { flex-wrap: wrap; }
+.capture-controls .settings-strip { margin-top: 0; }
 
 /* The meter section shares the input's alignment, with one quiet divider. */
 .console-card-section--meters,
@@ -179,13 +133,17 @@
 }
 
 .audio-details > summary {
-  display: list-item;
-  width: fit-content;
   padding-block: var(--space-sm);
   color: var(--text-secondary);
   font-size: var(--fs-base);
   font-weight: 500;
   cursor: pointer;
+}
+
+/* A finished sample leads to its result; a new capture restores the live meter. */
+body[data-app-state="idle"] .console-row:has(#resultCard:not([hidden])) .console-card-section--meters,
+body[data-app-state="idle"] .console-row:has(#resultCard:not([hidden])) .capture-guide {
+  display: none;
 }
 
 .audio-details > summary:hover {
@@ -274,50 +232,6 @@
   color: var(--text-primary);
 }
 
-/* ---------- Tips (JS sozlesmesi: class isimlerini koru) ---------- */
-.unified-tips {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.unified-tips .utip {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: var(--fs-base);
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.unified-tips .utip-step {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  background: rgba(var(--color-purple-rgb), 0.1);
-  border: 1px solid rgba(var(--color-purple-rgb), 0.2);
-  border-radius: 50%;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--color-purple-light);
-}
-
-.unified-tips .utip strong {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* ---------- Playback (Result) karti ---------- */
-/* JS karti kategoriye gore gizler/gosterir; ic duzen block akisina uygun tutulur
-   (flex/gap kullanma). .empty-state temel stili player.css'te. */
-
-
 /* ---------- Settings serit ---------- */
 .settings-strip {
   background: transparent;
@@ -338,34 +252,9 @@
 }
 
 /* ---------- Responsive ---------- */
-/* Cards use one column through the tablet range (768-1199). */
-@media (min-width: 768px) and (max-width: 1199px) {
-  .console-row {
-    grid-template-columns: 1fr;
-  }
-
-  .console-card--secondary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-lg);
-  }
-
-  .console-card--secondary .console-card-section {
-    padding: 0;
-    border: 0;
-  }
-
-  /* Iki kolonda ayrac dikeye doner (tek kolonda border-top geri gelir) */
-  .console-card--secondary .console-card-section + .console-card-section {
-    border-left: 1px solid var(--border-secondary);
-    padding-left: var(--space-lg);
-  }
-}
-
 /* Mobil: kart padding'leri 16 (mobil gutter ile ayni), ghost Info sutunu yatayda 0 */
 @media (max-width: 767px) {
   .console-row {
-    grid-template-columns: 1fr;
     gap: var(--space-md);
   }
 
@@ -385,3 +274,8 @@
     display: none;
   }
 }
+
+/* Idle preparation does not imply a live microphone. Active capture owns the meter. */
+body[data-app-state="idle"] .console-card-section--meters,
+body[data-app-state="analysing"] .console-card-section--meters { display: none; }
+body:is([data-app-state="recording"], [data-app-state="testing"]) #captureHint { display: none; }

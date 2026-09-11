@@ -3,6 +3,8 @@
  * DRY: ensurePassthroughWorklet, createPassthroughWorkletNode tek yerde
  */
 
+import { abortable } from './utils/async.js';
+
 const PASSTHROUGH_PROCESSOR_NAME = 'passthrough-processor';
 const PASSTHROUGH_WORKLET_URL = new URL('../worklets/passthrough-processor.js', import.meta.url).href;
 
@@ -18,14 +20,15 @@ export function isAudioWorkletSupported() {
   return hasAudioWorklet && typeof window.AudioWorkletNode === 'function';
 }
 
-export async function ensurePassthroughWorklet(audioContext) {
+export async function ensurePassthroughWorklet(audioContext, signal) {
+  signal?.throwIfAborted();
   if (!audioContext?.audioWorklet?.addModule) {
     throw new Error('AudioWorklet not supported (audioContext.audioWorklet missing)');
   }
 
   if (loadedContexts.has(audioContext)) return;
 
-  await audioContext.audioWorklet.addModule(PASSTHROUGH_WORKLET_URL);
+  await abortable(audioContext.audioWorklet.addModule(PASSTHROUGH_WORKLET_URL), signal);
   loadedContexts.add(audioContext);
 }
 

@@ -150,7 +150,9 @@ export function createOverlayController(el, options = {}) {
 
   const returnFocus = () => {
     if (!restoreFocus) return;
-    const candidates = [previouslyFocused, openerEl, triggerEl];
+    // Safari may leave BODY active after a pointer click. The explicit opener
+    // owns focus restoration; a no-op BODY.focus() must not hide that fallback.
+    const candidates = [openerEl, previouslyFocused, triggerEl];
     previouslyFocused = null;
     openerEl = null;
     const target = candidates.find(node => node?.focus && !isInertOrDetached(node) && isVisible(node));
@@ -253,7 +255,9 @@ export function createOverlayController(el, options = {}) {
     closeEls.filter(Boolean).forEach(btn => on(btn, 'click', () => controller.close('button')));
     if (isDialog) {
       // ESC (cancel -> close) veya disaridan el.close(): stack/odak burada toparlanir
-      on(el, 'close', () => finishClose('native'));
+      // A queued close event may belong to an earlier opening. It must not
+      // clear the stack/ownership of a dialog already opened again.
+      on(el, 'close', () => { if (!el.open) finishClose('native'); });
       if (closeOnBackdrop) on(el, 'click', (event) => { if (event.target === el) controller.close('backdrop'); });
     } else if (backdropEl && closeOnBackdrop) {
       on(backdropEl, 'click', () => controller.close('backdrop'));

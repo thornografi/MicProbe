@@ -41,12 +41,14 @@ async function fixture(t) {
   assert.equal(login.status, 200, await login.clone().text());
   const signed = await login.json();
   const cookie = login.headers.getSetCookie().find(value => value.startsWith('micprobe_session=')).split(';')[0];
+  await service.saveLicense(signed.user.id, { licenseId: '11', freemiusUserId: '1', active: true, verifiedAt: Date.now() });
   const account = {
     calls: [],
-    subscribe(listener) { listener({ user: signed.user }); return () => {}; },
+    subscribe(listener) { listener({ user: signed.user, premium: { unlocked: true } }); return () => {}; },
     requireSignIn: () => true,
     async api(path, { method = 'GET', body } = {}) {
       this.calls.push({ path, method });
+      if (body?.report?.run && !Object.hasOwn(body.report.run, 'accountOwnerId')) body.report.run.accountOwnerId = signed.user.id;
       const response = await service.handle(new Request(`${origin}/api/account${path}`, {
         method, headers: { Origin: origin, Cookie: cookie, 'X-MicProbe-Account': signed.user.id,
           'X-MicProbe-Request': '1', 'Content-Type': 'application/json' },
@@ -69,7 +71,8 @@ test('test, record and guidance reports retain normalized problem context and re
     input.troubleshooting = { ...input.troubleshooting, injected: 'not a supported context field' };
     const saved = await account.api('/reports', { method: 'POST', body: { report: input, note: 'Checked microphone permission' } });
     assert.equal(saved.report.report.run.type, type);
-    const loaded = (await account.api('/reports')).reports.find(entry => entry.report.run.id === input.run.id);
+    const listed = (await account.api('/reports')).reports.find(entry => entry.report.run.id === input.run.id);
+    const loaded = (await account.api(`/reports/${listed.id}`)).report;
     assert.equal(loaded.note, 'Checked microphone permission');
     assert.deepEqual(loaded.report.troubleshooting, createTroubleshootingContext({ input: input.troubleshooting }));
     assert.deepEqual(evaluatePremiumReport(loaded.report), expected);
@@ -121,7 +124,7 @@ test('a lost save response resolves and deletes the cloud row instead of droppin
   await history.remove('lost-response');
   await history.reload();
   assert.deepEqual(history.getState().reports, []);
-  assert.equal(account.calls.filter(call => call.method === 'POST').length, 2);
+  assert.equal(account.calls.filter(call => call.method === 'POST').length, 1);
   assert.equal(account.calls.filter(call => call.method === 'DELETE').length, 1);
 });
 
@@ -155,7 +158,7 @@ test('history keyboard/programmatic activation checks live busy state before res
   let busy = true, closed = 0, restored = 0, message = '';
   const panel = Object.create(AccountPanelUI.prototype);
   Object.assign(panel, { getIsBusy: () => busy, close: () => { closed++; }, message: text => { message = text; },
-    history: { open: () => { restored++; } } });
+    run: action => action(), onOpenReport() {}, history: { open: (entry, restore) => { restored++; restore(entry.report); } } });
   panel.openReport({ report: report('history') });
   assert.equal(restored, 0);
   assert.equal(closed, 0);

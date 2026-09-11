@@ -11,6 +11,7 @@ import { createPipeline, isPipelineSupported } from '../pipelines/PipelineFactor
 import { SETTINGS } from './Config.js';
 import { createRunSnapshot, completeRunSnapshot } from './RunSnapshot.js';
 import CaptureGuide from './CaptureGuide.js';
+import { abortable } from './utils/async.js';
 
 class Recorder {
   constructor(config = {}) {
@@ -60,7 +61,13 @@ class Recorder {
 
     try {
       // DRY: factory kullan
-      this.audioContext = await createAudioContext();
+      const context = await createAudioContext();
+      // A capture may have acquired its own context while warmup was pending.
+      if (this.audioContext || this._startPromise || this._stopPromise) {
+        await context.close();
+        return;
+      }
+      this.audioContext = context;
 
       this.isWarmedUp = true;
 
@@ -83,6 +90,7 @@ class Recorder {
     const previousStop = this._stopPromise;
     this._stopPromise = null;
     this._cancelStart = false;
+    this._startAbort = new AbortController();
     this._startPromise = (async () => {
       if (previousStop) await previousStop.catch(() => {});
       if (this._cancelStart) throw new Error('Recording start cancelled');
@@ -92,6 +100,7 @@ class Recorder {
   }
 
   async _start(constraints = this.constraints, pipelineParam = PIPELINE_TYPES.DIRECT, encoderParam = 'mediarecorder', timeslice = 0, bufferSize = BUFFER.DEFAULT_SIZE, mediaBitrate = 0, runSnapshot = null) {
+    const signal = this._startAbort.signal;
     this._recordingError = null;
     this.captureDurationMs = null;
     this.stopReason = null;
@@ -117,7 +126,7 @@ class Recorder {
     this.mediaBitrate = mediaBitrate; // Hedef bitrate (MediaRecorder veya WASM Opus icin)
 
     try {
-      this.stream = await requestStream(constraints);
+      this.stream = await requestStream(constraints, { signal });
       if (this._cancelStart) throw new Error('Recording start cancelled');
       this.chunks = [];
 
@@ -135,7 +144,7 @@ class Recorder {
         log.webaudio('Kayit pipeline modu aktif', { pipeline: this.pipelineType, encoder: this.encoder, preWarmed: this.isWarmedUp });
 
         // AudioContext olustur/hazirla
-        await this._ensureAudioContext();
+        await this._ensureAudioContext(signal);
 
         // Source node - mikrofondan gelen stream
         this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
@@ -174,7 +183,8 @@ class Recorder {
           bufferSize,
           mediaBitrate,
           channels: this.stream.getAudioTracks()[0]?.getSettings?.().channelCount || 1,
-          encoder: this.encoder
+          encoder: this.encoder,
+          signal
         });
 
         // MediaRecorder icin WebAudio'dan gelen stream'i kullan
@@ -183,10 +193,11 @@ class Recorder {
         }
       } else {
         // Direct pipeline - VU Meter icin shared AudioContext kullan
-        await this._ensureAudioContext();
+        await this._ensureAudioContext(signal);
         this.pipelineStrategy = createPipeline(PIPELINE_TYPES.DIRECT, this.audioContext, null, null);
         await this.pipelineStrategy.setup({ stream: this.stream });
       }
+      signal.throwIfAborted();
 
       // ═══════════════════════════════════════════════════════════════
       // ENCODER KURULUMU (MediaRecorder, WASM Opus veya PCM/WAV)
@@ -264,7 +275,7 @@ class Recorder {
       // Spesifik hata mesajlari (DRY: utils.js helper kullaniliyor)
       const userMessage = getStreamErrorMessage(err);
 
-      log.error(userMessage, { category: 'recorder', originalError: err.name });
+      if (!signal.aborted) log.error(userMessage, { category: 'recorder', originalError: err.name });
 
       this.isRecording = false;
       this.captureGuide?.cancel();
@@ -279,11 +290,11 @@ class Recorder {
    * AudioContext'i hazirla (pre-warm veya yeni olustur)
    * @private
    */
-  async _ensureAudioContext() {
+  async _ensureAudioContext(signal) {
     if (!this.audioContext) {
       // DRY: factory + helper kullan - mikrofon sample rate ile olustur
       const acOptions = getAudioContextOptions(this.stream);
-      this.audioContext = await createAudioContext(acOptions);
+      this.audioContext = await createAudioContext(acOptions, { signal });
 
       const micSampleRate = acOptions.sampleRate;
       log.webaudio('AudioContext created (Recording - cold start)', {
@@ -311,12 +322,12 @@ class Recorder {
         this.destinationNode = null;
 
         // DRY: factory kullan - yeni context olustur (mikrofon sample rate ile)
-        this.audioContext = await createAudioContext({ sampleRate: micSampleRate });
+        this.audioContext = await createAudioContext({ sampleRate: micSampleRate }, { signal });
         this.isWarmedUp = false; // Artik pre-warmed degil
       } else {
         // Sample rate uyumlu - resume et
         if (this.audioContext.state === 'suspended') {
-          await this.audioContext.resume();
+          await abortable(this.audioContext.resume(), signal);
         }
       }
 
@@ -481,8 +492,11 @@ class Recorder {
   stop(reason = 'user') {
     if (this._stopPromise) return this._stopPromise;
     this._cancelStart = true;
-    if (this._startPromise) this.captureGuide?.cancel();
-    this._stopPromise = Promise.resolve().then(async () => {
+    if (this._startPromise) {
+      this._startAbort?.abort(new DOMException('Recording start cancelled', 'AbortError'));
+      this.captureGuide?.cancel();
+    }
+    const stopping = Promise.resolve().then(async () => {
       if (this._startPromise) await this._startPromise.catch(() => {});
       if (!this.isRecording && !this.stream && !this.pipelineStrategy) return;
       this.isRecording = false;
@@ -548,8 +562,11 @@ class Recorder {
           eventBus.emit(EVENTS.RECORDER_STOPPED, { encoder: this.encoder, pipeline: this.pipelineType, runSnapshot: this.runSnapshot });
         }
       }
+    }).finally(() => {
+      if (this._stopPromise === stopping) this._stopPromise = null;
     });
-    return this._stopPromise;
+    this._stopPromise = stopping;
+    return stopping;
   }
 
   getStream() {
@@ -558,6 +575,10 @@ class Recorder {
 
   getIsRecording() {
     return this.isRecording;
+  }
+
+  getIsStopping() {
+    return !!this._stopPromise;
   }
 
   // Geriye uyumluluk icin pipeline property (string olarak)

@@ -6,7 +6,6 @@ import { CAPTURE_GUIDE as GUIDE, EVENTS, TEST } from '../modules/constants.js';
 import { measureGuidedNoise } from '../modules/utils/guidedNoise.js';
 import { analyzePcm } from '../modules/utils/pcmAnalysis.js';
 import { analyze } from '../workers/spectral-analysis-worker.js';
-import { comparisonSummary } from '../ui/AccountPanelUI.js';
 import { createRunSnapshot } from '../modules/RunSnapshot.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
 
@@ -146,23 +145,6 @@ const report = (rms, mic = 'Mic A') => ({ run: { type: 'test' },
   profile: { id: 'discord', bitrate: 64000, appliedConstraints: { noiseSuppression: true } },
   recording: { guidedSegments: null }, device: { micName: mic }, audioMetrics: { status: 'measured',
     signal: { rmsDb: rms, peakDb: -5 }, clipping: { status: 'measured', rate: 0.01 }, coverage: { truncated: false } } });
-
-test('comparison reports signed deltas, applied changes and context without declaring improvement', () => {
-  const before = report(-30), after = report(-20, 'Mic B');
-  after.profile.id = 'meeting-call'; after.profile.appliedConstraints.noiseSuppression = false;
-  after.audioMetrics.clipping.rate = 0.02;
-  const result = comparisonSummary(before, after, { detailed: true });
-  assert.ok(result.context.some(line => line.includes('Different scenarios')));
-  assert.ok(result.context.some(line => line.includes('Mic A → Mic B')));
-  assert.ok(result.settings.some(line => line.includes('Noise suppression (applied): On → Off')));
-  assert.ok(result.measurements.includes('RMS level: increased by 10 dB.'));
-  assert.ok(result.measurements.includes('Clipped samples: increased by 1 percentage point.'));
-  assert.doesNotMatch(JSON.stringify(result), /improv|better/);
-  assert.deepEqual(comparisonSummary(before, after).measurements, []);
-  assert.deepEqual(comparisonSummary(before, after).settings, []);
-  before.audioMetrics.signal.rmsDb = null;
-  assert.ok(!comparisonSummary(before, after, { detailed: true }).measurements.some(line => line.startsWith('RMS level')));
-});
 
 test('report scope explains guided limitations without inventing speech identification', () => {
   const audioMetrics = analyzePcm([samples()], 16000, { guidedSegments: { ...segments(), processing: {} } });

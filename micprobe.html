@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Redirecting to Mic Probe...</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/micprobe-mark.svg">
+  <title>Redirecting to MicProbe...</title>
+  <link rel="canonical" href="https://micprobe.com/app">
+  <link rel="icon" href="/favicon.ico?v=3" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" sizes="any">
   <!-- Redirect to main app -->
-  <meta http-equiv="refresh" content="0;url=index.html#app">
+  <meta http-equiv="refresh" content="0;url=/app">
   <script>
     // Immediate redirect (faster than meta refresh)
-    window.location.replace('index.html#app');
+    window.location.replace('/app' + window.location.search);
   </script>
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/shared.css">
@@ -34,8 +36,8 @@
 </head>
 <body>
   <div class="redirect-msg">
-    <p>Redirecting to Mic Probe...</p>
-    <p><a href="index.html#app">Click here if not redirected</a></p>
+    <p>Redirecting to MicProbe...</p>
+    <p><a href="/app">Click here if not redirected</a></p>
   </div>
 </body>
 </html>

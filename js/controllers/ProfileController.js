@@ -5,7 +5,7 @@
  */
 
 import eventBus from '../modules/EventBus.js';
-import { PROFILES, SETTINGS, PROFILE_TIPS } from '../modules/Config.js';
+import { PROFILES, SETTINGS } from '../modules/Config.js';
 import { setVisible, usesWasmOpus, log } from '../modules/utils.js';
 import { getSettingLockPolicy } from '../modules/utils/settings.js';
 import { PIPELINE_TYPES, EVENTS, MARKUP_CLASSES } from '../modules/constants.js';
@@ -86,8 +86,9 @@ class ProfileController {
     const profile = PROFILES[profileId];
     if (!profile) return;
 
-    // BUG-2 fix: Preparing asamasinda profil degisikligini engelle (race condition onleme)
-    if (this.getState.isPreparing?.()) return;
+    // Programmatic callers must preserve preparation, Call and pending report ownership too.
+    const currentMode = this.getState.currentMode();
+    if (this.getState.isPreparing?.() || currentMode?.startsWith('test-') || this.getState.isReportPending?.()) return;
 
     // Profil degistiginde Player'i temizle (memory leak ve UX tutarliligi)
     this.callbacks.resetPlayer?.();
@@ -103,7 +104,6 @@ class ProfileController {
     // Eger once emit edersek, sonraki dispatchEvent'ler yanlis degerle tekrar emit yapar
 
     // Aktif stream varsa restart gerekiyor mu kontrol et
-    const currentMode = this.getState.currentMode();
     const wasRecording = currentMode === 'recording';
 
     // Aktif stream varsa once durdur
@@ -163,9 +163,6 @@ class ProfileController {
 
     // Kategori bazli UI guncelle (call vs record)
     this.callbacks.updateCategoryUI(profileId);
-
-    // Tips alanini profil bazli guncelle
-    this.updateTips(profileId);
 
     // Buton ve ayar durumlarini senkronize et
     this.callbacks.updateButtonStates();
@@ -337,7 +334,10 @@ class ProfileController {
     // Encoder bilgisi
     if (profile.values.loopback) {
       techParts.push('WebRTC Loopback');
-      techParts.push(`Opus ${profile.values.bitrate / 1000}kbps`);
+      techParts.push(`Opus limit ${profile.values.bitrate / 1000} kbps`);
+      for (const [key, label] of [['dtx', 'DTX'], ['fec', 'FEC']]) {
+        if (typeof profile.transport?.[key] === 'boolean') techParts.push(`${label} requested ${profile.transport[key] ? 'on' : 'off'}`);
+      }
     } else if (usesWasmOpus(profile.values.encoder)) {
       // 0: encoder varsayilani; pozitif deger: ortalama bitrate istegi (CBR garantisi degil)
       const bitrateText = profile.values.mediaBitrate === 0
@@ -377,24 +377,6 @@ class ProfileController {
     return this.buildTechParts(profile).join(' + ');
   }
 
-  /**
-   * Tips alanini profil bazli guncelle
-   * @param {string} profileId - Profil ID'si
-   */
-  updateTips(profileId = null) {
-    const id = profileId || this.currentProfileId;
-    const tips = PROFILE_TIPS[id] || PROFILE_TIPS['default'];
-    const container = document.querySelector('.unified-tips');
-
-    if (!container || !tips) return;
-
-    // Tips HTML'i olustur
-    const html = tips.map(tip =>
-      `<li class="${MARKUP_CLASSES.TIP}" value="${tip.step}"><span class="${MARKUP_CLASSES.TIP_STEP}" aria-hidden="true">${tip.step}</span><span class="${MARKUP_CLASSES.TIP_TEXT}">${tip.text}</span></li>`
-    ).join('');
-
-    container.innerHTML = html;
-  }
 
   /**
    * Profil detection bilgisini getir

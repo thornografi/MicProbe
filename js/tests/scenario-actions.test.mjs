@@ -69,7 +69,7 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
   currentMode = 'test-recording'; isPreparing = true;
   manager.updateButtonStates();
   assert.equal(document.body.dataset.appState, 'preparing');
-  assert.equal(elements.testBtn.getAttribute('aria-label'), 'Preparing scenario test');
+  assert.equal(elements.testBtn.getAttribute('aria-label'), 'Cancel test preparation');
   assert.equal(elements.recordToggleBtn.disabled, true);
   assert.equal(elements.micSelector.disabled, true);
   assert.equal(profileButton.disabled, true);
@@ -92,7 +92,7 @@ test('Test preparation, capture, analysis and recording retain exclusive actions
   assert.equal(document.body.dataset.appState, 'recording');
   assert.equal(elements.testBtn.disabled, true);
   assert.equal(elements.recordToggleBtn.disabled, false);
-  assert.equal(elements.recordToggleBtn.getAttribute('aria-label'), 'Stop recording');
+  assert.equal(elements.recordToggleBtn.getAttribute('aria-label'), 'Finish test recording and analyse');
 });
 
 test('first use cannot start a capture before a scenario is selected', () => {

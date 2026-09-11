@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://localhost:8080/js/tests/audio-audit-browser.html');
@@ -32,8 +33,8 @@ const assert = require('node:assert/strict');
       bus.on(EVENTS.DIAGNOSTIC_REPORT_READY, r => window.__reports.push(r));
     });
     const profiles = await page.evaluate(async () => Object.values((await import('/js/modules/Config.js')).PROFILES)
-      .map(profile => ({ id: profile.id, canTest: profile.canTest, values: profile.values, evidence: profile.evidence })));
-    for (const { id: profile, canTest: call, values, evidence } of profiles) {
+      .map(profile => ({ id: profile.id, canTest: profile.canTest, values: profile.values, evidence: profile.evidence, transport: profile.transport })));
+    for (const { id: profile, canTest: call, values, evidence, transport } of profiles) {
       await page.evaluate(async id => {
         (await import('/js/ui/ReportPanelUI.js')).default.close?.();
         // Use the same handler as scenario buttons so the settings panel is refreshed too.
@@ -124,6 +125,14 @@ const assert = require('node:assert/strict');
       }
       if (profile === 'telegram-voice') assert.equal(result.recording.bitrateMode, 'encoder-default-vbr');
       if (call) {
+        assert.deepEqual(result.loopback.requestedOpus, transport, 'run-owned Opus preferences reach the report');
+        for (const peer of ['senderCodec', 'receiverCodec']) {
+          for (const [key, parameter] of [['dtx', 'usedtx'], ['fec', 'useinbandfec']]) {
+            if (typeof transport[key] === 'boolean') {
+              assert.match(result.loopback[peer]?.sdpFmtpLine || '', new RegExp(`(?:^|;)\\s*${parameter}=${Number(transport[key])}(?:;|$)`), `${profile}: ${peer} negotiated ${parameter}`);
+            }
+          }
+        }
         assert.ok(result.loopback?.receive?.packetsReceived > 0);
         assert.equal(result.loopback.requestedBitrate, values.bitrate);
         for (const peer of ['senderCodec', 'receiverCodec']) {

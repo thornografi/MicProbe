@@ -3,22 +3,24 @@
  */
 import eventBus from '../EventBus.js';
 import { AUDIO, BYTES, VU_METER, EVENTS } from '../constants.js';
+import { abortable } from './async.js';
 
 /**
  * AudioContext factory - Tek noktadan tutarli AudioContext olusturma
  * @param {Object} options - AudioContext options (sampleRate, etc.)
  * @returns {Promise<AudioContext>} - Hazir (resumed) AudioContext
  */
-export async function createAudioContext(options = {}) {
+export async function createAudioContext(options = {}, { signal } = {}) {
+  signal?.throwIfAborted();
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   const ctx = new AudioContextCtor(options);
 
-  if (ctx.state === 'suspended') {
-    try { await ctx.resume(); }
-    catch (error) {
-      await ctx.close().catch(() => {});
-      throw error;
-    }
+  try {
+    if (ctx.state === 'suspended') await abortable(ctx.resume(), signal);
+    signal?.throwIfAborted();
+  } catch (error) {
+    await ctx.close().catch(() => {});
+    throw error;
   }
 
   return ctx;

@@ -22,6 +22,9 @@ class DeviceInfo {
     this.panelEl = document.getElementById('deviceInfoPanel');
     this.micNameEl = document.getElementById('infoMicName');
     this.channelsEl = document.getElementById('infoChannels');
+    this.sampleRateEl = document.getElementById('infoSampleRate');
+    this.codecEl = document.getElementById('infoCodec');
+    this.actualBitrateLabel = document.getElementById('infoActualBitrateLabel');
 
     // UI elementleri - Codec bolumu
     this.targetBitrateEl = document.getElementById('infoTargetBitrate');
@@ -32,7 +35,8 @@ class DeviceInfo {
     this.refreshMicsBtn = null;
 
     // Bos secim sistem varsayilanini izler; yalniz kullanicinin cihaz secimi saklanir.
-    this.selectedDeviceId = localStorage.getItem(MIC_STORAGE_KEY) || '';
+    try { this.selectedDeviceId = localStorage.getItem(MIC_STORAGE_KEY) || ''; }
+    catch { this.selectedDeviceId = ''; }
     this._defaultDeviceId = '';
     this.hasMicPermission = false;
     this.accessState = 'checking';
@@ -43,15 +47,17 @@ class DeviceInfo {
 
     // Event listener referansları (memory leak önleme - VuMeter pattern)
     this._onStreamStarted = (stream) => this.updateStreamInfo(stream);
-    this._onProfileChanged = (data) => this.updateTargetBitrate(data);
+    this._onProfileChanged = (data) => { this.resetPanel(); this.updateTargetBitrate(data); };
     this._onLoopbackStats = (stats) => this.updateActualBitrate(stats);
     this._onOpusBitrateChanged = ({ value }) => this.updateTargetBitrate({ values: { loopback: true, bitrate: value } });
     this._onMediaBitrateChanged = ({ value }) => this.updateTargetBitrate({ values: { loopback: false, mediaBitrate: value } });
+    this._onReportReady = (report) => this.updateReportInfo(report);
 
     // Event dinleyiciler
     eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.on(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.on(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.on(EVENTS.DIAGNOSTIC_REPORT_READY, this._onReportReady);
     eventBus.on('setting:Opus Bitrate:changed', this._onOpusBitrateChanged);
     eventBus.on('setting:Media Bitrate:changed', this._onMediaBitrateChanged);
   }
@@ -106,14 +112,9 @@ class DeviceInfo {
         this.selectedDeviceId = e.target.value;
         const selectedOption = this.micSelector.options[this.micSelector.selectedIndex];
 
-        // localStorage'a kaydet
-        if (this.selectedDeviceId) {
-          localStorage.setItem(MIC_STORAGE_KEY, this.selectedDeviceId);
-        } else {
-          localStorage.removeItem(MIC_STORAGE_KEY);
-        }
+        this._saveSelectedDevice();
 
-        log.stream(`Mikrofon secildi: ${selectedOption.textContent}`, { deviceId: this.selectedDeviceId || 'default' });
+        log.stream(`Mikrofon secildi: ${selectedOption?.textContent || 'System default'}`, { deviceId: this.selectedDeviceId || 'default' });
       });
     }
 
@@ -181,7 +182,7 @@ class DeviceInfo {
         log.warning('Previously selected microphone is no longer available', { lostDeviceId: this.selectedDeviceId.slice(0, 8) });
       }
       this.selectedDeviceId = '';
-      localStorage.removeItem(MIC_STORAGE_KEY);
+      this._saveSelectedDevice();
     }
 
     const defaultMic = realMics.find(m => m.deviceId === defaultRealDeviceId);
@@ -208,6 +209,14 @@ class DeviceInfo {
     this.micSelector.value = this.selectedDeviceId;
 
     return realMics;
+  }
+
+  _saveSelectedDevice() {
+    // Storage is optional; the selected microphone still works for this page.
+    try {
+      if (this.selectedDeviceId) localStorage.setItem(MIC_STORAGE_KEY, this.selectedDeviceId);
+      else localStorage.removeItem(MIC_STORAGE_KEY);
+    } catch { log.warning('Microphone preference could not be saved for the next visit'); }
   }
 
   _showMicPermissionPlaceholder(message = 'Allow microphone access') {
@@ -366,6 +375,8 @@ class DeviceInfo {
    * Gercek bitrate guncelle (WebRTC stats'tan)
    */
   updateActualBitrate(stats) {
+    if (this.codecEl) this.codecEl.textContent = stats?.senderCodec?.mimeType || '--';
+    if (this.actualBitrateLabel) this.actualBitrateLabel.textContent = 'Measured RTP bitrate';
     if (!this.actualBitrateEl) return;
 
     if (Number.isFinite(stats?.actualBitrate)) {
@@ -376,11 +387,31 @@ class DeviceInfo {
     }
   }
 
+  // A saved file and RTP payload have different byte counts. Never label file
+  // bitrate as a call's transport bitrate, or infer a codec from the profile name.
+  updateReportInfo(report) {
+    if (!report?.recording) return;
+    if (report.run?.type === 'test') {
+      this.updateActualBitrate(report.loopback);
+      return;
+    }
+    if (this.codecEl) this.codecEl.textContent = report.recording.mimeType || '--';
+    if (this.actualBitrateLabel) this.actualBitrateLabel.textContent = 'Measured file bitrate';
+    if (this.actualBitrateEl) {
+      const bitrate = report.recording.actualBitrate;
+      this.actualBitrateEl.textContent = Number.isFinite(bitrate) ? `${Math.round(bitrate / 1000)} kbps` : '--';
+    }
+  }
+
   updateStreamInfo(stream) {
     if (!stream) return;
 
     const track = stream.getAudioTracks()[0];
     if (!track) return;
+    // A new capture must not show codec or throughput from the previous run.
+    if (this.codecEl) this.codecEl.textContent = '--';
+    if (this.actualBitrateEl) this.actualBitrateEl.textContent = '--';
+    if (this.actualBitrateLabel) this.actualBitrateLabel.textContent = 'Measured bitrate';
 
     // A successful capture also grants access when the user starts with Run Test.
     this.hasMicPermission = true;
@@ -400,9 +431,10 @@ class DeviceInfo {
 
     // Mikrofon kanal sayisi (Cihaz bolumu)
     if (this.channelsEl) {
-      const count = settings.channelCount || 1;
-      this.channelsEl.textContent = count === 1 ? 'Mono' : 'Stereo';
+      const count = settings.channelCount;
+      this.channelsEl.textContent = count === 1 ? 'Mono' : count === 2 ? 'Stereo' : count > 0 ? `${count} channels` : '--';
     }
+    if (this.sampleRateEl) this.sampleRateEl.textContent = settings.sampleRate > 0 ? `${settings.sampleRate / 1000} kHz` : '--';
 
     // Device capabilities (EC/NS/AGC donanim destegi, sampleRate aralik)
     const caps = track.getCapabilities?.() ?? {};
@@ -425,6 +457,9 @@ class DeviceInfo {
   resetPanel() {
     if (this.micNameEl) this.micNameEl.textContent = '--';
     if (this.channelsEl) this.channelsEl.textContent = '--';
+    if (this.sampleRateEl) this.sampleRateEl.textContent = '--';
+    if (this.codecEl) this.codecEl.textContent = '--';
+    if (this.actualBitrateLabel) this.actualBitrateLabel.textContent = 'Measured bitrate';
     if (this.targetBitrateEl) this.targetBitrateEl.textContent = '--';
     if (this.actualBitrateEl) this.actualBitrateEl.textContent = '--';
   }
@@ -436,6 +471,7 @@ class DeviceInfo {
     eventBus.off(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.off(EVENTS.PROFILE_CHANGED, this._onProfileChanged);
     eventBus.off(EVENTS.LOOPBACK_STATS, this._onLoopbackStats);
+    eventBus.off(EVENTS.DIAGNOSTIC_REPORT_READY, this._onReportReady);
     eventBus.off('setting:Opus Bitrate:changed', this._onOpusBitrateChanged);
     eventBus.off('setting:Media Bitrate:changed', this._onMediaBitrateChanged);
 

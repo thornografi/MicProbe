@@ -10,6 +10,8 @@
  */
 import { downloadBlob } from './utils/download.js';
 import { describeTroubleshootingContext } from './TroubleshootingContext.js';
+import { normalizeEnvironment, OS_NAMES, BROWSER_NAMES } from './EnvironmentContext.js';
+import { formatMeasurementValue, formatReportScope } from './MeasurementValue.js';
 
 // Sayfa olcumleri (pt, A4)
 const PAGE = {
@@ -35,7 +37,8 @@ const SEVERITY_PREFIX = { critical: '[!]', warning: '[~]', info: '[Observation]'
  */
 async function loadJsPDF() {
   if (!globalThis.jspdf?.jsPDF) {
-    await import('../lib/jspdf/jspdf.umd.min.js');
+    const libraryUrl = new URL('../lib/jspdf/jspdf.umd.min.js', import.meta.url).href;
+    await import(/* @vite-ignore */ libraryUrl);
   }
   const ctor = globalThis.jspdf?.jsPDF;
   if (!ctor) throw new Error('jsPDF library could not be loaded');
@@ -47,34 +50,35 @@ async function loadJsPDF() {
  * @param {Object} params
  * @param {Object} params.report - DiagnosticReportBuilder.build() ciktisi
  * @param {Object} params.free - ReportEvaluator.evaluateFree() ciktisi (overall/summary/findings)
- * @param {Object|null} params.detailed - Premium detay (metrics/recommendations) veya null (kilitli)
+ * @param {Object} params.detailed - Ayni rapora ait yetkili Premium cevabi (metrics/recommendations)
+ * @param {Function} params.canDownload - Rapor sahibinin guncel Premium erisimini kontrol eder
+ * @returns {Promise<boolean>} Dosya indirildiyse true; yetki/detay yoksa false
  */
-export async function downloadReportPdf({ report, free, detailed = null }) {
+export async function downloadReportPdf({ report, free, detailed, canDownload }) {
+  if (!detailed || !canDownload?.()) return false;
   ({ report, free, detailed } = structuredClone({ report, free, detailed }));
+  if (detailed.summary) free = { ...free, ...detailed.summary, findings: detailed.findings || free.findings };
   const JsPDF = await loadJsPDF();
+  if (!canDownload()) return false;
   const doc = new JsPDF({ unit: 'pt', format: 'a4' });
   const writer = createWriter(doc);
 
   writeHeader(writer, report);
   writeOverall(writer, free);
-  if (detailed) writeFindings(writer, free);
+  writeFindings(writer, free);
   if (free.scope) {
     writer.sectionTitle('What Was Measured');
-    writer.body(free.scope);
+    writer.body(formatReportScope(free.scope));
   }
-  if (detailed) {
-    if (report.run?.type !== 'troubleshooting') writeDeviceProfile(writer, report);
-    writeTroubleshootingContext(writer, report);
-    if (report.run?.type !== 'troubleshooting') writeDetailedMetrics(writer, detailed.metrics || []);
-    writeRecommendations(writer, detailed.recommendations || []);
-  } else {
-    writer.gap();
-    writer.body('Detailed findings and instructions are available in the app with Premium. PDF download is optional.');
-  }
+  if (report.run?.type !== 'troubleshooting') writeDeviceProfile(writer, report);
+  writeTroubleshootingContext(writer, report);
+  if (report.run?.type !== 'troubleshooting') writeDetailedMetrics(writer, detailed.metrics || []);
+  writeRecommendations(writer, detailed.recommendations || []);
   writeFooter(doc);
 
   const filename = `mic-probe-report-${report.run?.id || report.sessionId || 'unknown'}.pdf`;
   downloadBlob(doc.output('blob'), filename);
+  return true;
 }
 
 /**
@@ -211,7 +215,7 @@ function writeDetailedMetrics(writer, metrics) {
     return;
   }
   for (const m of metrics) {
-    const value = m.value != null ? `${m.value}${m.unit ? ` ${m.unit}` : ''}` : '--';
+    const value = m.value != null ? `${formatMeasurementValue(m.value)}${m.unit ? ` ${m.unit}` : ''}` : '--';
     const rating = m.rating ? `  [${m.rating}]` : '';
     writer.keyValue(m.label || '-', `${value}${rating}`);
   }
@@ -251,6 +255,7 @@ function writeRecommendations(writer, recommendations) {
   );
 
   for (const cat of cats) {
+    writer.ensureSpace(8 + 11 + PAGE.LINE_GAP + 2 * (FONT_SIZES.BODY + PAGE.LINE_GAP));
     writer.gap(8);
     writer.body(CATEGORY_LABELS[cat] || cat, { style: 'bold', size: 11 });
     for (const r of groups[cat]) {

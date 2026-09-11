@@ -50,7 +50,7 @@ const resample = (pcm, ratio) => {
   return out;
 };
 
-test('a waveform pinned flat below full scale is reported as clipping before capture, tones and speech are not', () => {
+test('a concentrated waveform ceiling is reported without locating a cause; tones and speech remain clear', () => {
   // Analog clipping at the converter, then a system input level of 62.7 % and a mono fold: ceiling ~ -10 dBFS.
   const clipped = speechLike(6, 3).map(v => Math.max(-0.3162, Math.min(0.3162, v)));
   const m = analyzePcm([clipped], sampleRate);
@@ -61,11 +61,13 @@ test('a waveform pinned flat below full scale is reported as clipping before cap
   const pinned = free.findings.find(f => f.id === 'PINNED_CEILING');
   assert.equal(pinned?.severity, 'critical');
   assert.equal(free.overall.score, 'critical');
-  assert.match(pinned.message, /before the browser received the audio/);
+  assert.match(pinned.message, /does not identify where it happened/);
+  assert.doesNotMatch(pinned.message, /before the browser received|driver fault|interface gain/);
   const premium = evaluatePremiumReport(report(m));
   const guide = premium.recommendations.find(r => r.id === 'GUIDE_WINDOWS_RECORDED_INPUT');
   assert.equal(guide?.replaces, 'PINNED_CEILING', 'the OS step replaces the pinned-ceiling recommendation');
-  assert.match(guide.steps[1], /do not raise it/);
+  assert.match(guide.steps[1], /lower one available input-level control/);
+  assert.match(guide.reason, /does not locate the cause/);
   assert.ok(!premium.recommendations.some(r => r.id === 'PINNED_CEILING'));
   assert.equal(premium.metrics.find(item => item.key === 'nearCeiling').rating, 'poor');
   // The signature must survive resampling and ringing: overshoot spikes move the maximum,

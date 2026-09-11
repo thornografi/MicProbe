@@ -54,7 +54,7 @@ export default class WorkletPipeline extends BasePipeline {
     this._encoderMode = encoder;
 
     // Worklet module'unu yukle (ilk seferde)
-    await ensurePassthroughWorklet(this.audioContext);
+    await ensurePassthroughWorklet(this.audioContext, options.signal);
 
     // Passthrough worklet node olustur
     this.nodes.worklet = createPassthroughWorkletNode(this.audioContext);
@@ -70,7 +70,7 @@ export default class WorkletPipeline extends BasePipeline {
       this._setupMediaRecorderGraph();
     } else {
       // WASM Opus encoder kurulumu (varsayilan)
-      await this._setupWasmOpus(mediaBitrate);
+      await this._setupWasmOpus(mediaBitrate, options.signal);
     }
   }
 
@@ -213,8 +213,8 @@ export default class WorkletPipeline extends BasePipeline {
    * WASM Opus encoder kurulumu (accumulator pattern)
    * DRY: Opus worker BasePipeline._initOpusWorker() ile olusturulur
    */
-  async _setupWasmOpus(mediaBitrate) {
-    const opusBitrate = await this._initOpusWorker(mediaBitrate, this._channels);
+  async _setupWasmOpus(mediaBitrate, signal) {
+    const opusBitrate = await this._initOpusWorker(mediaBitrate, this._channels, 2048, signal);
     this._frameSize = Math.round(this.audioContext.sampleRate * OPUS.FRAME_SIZE / 48000);
     this.accumulator = Array.from({ length: this._channels }, () => new Float32Array(this._frameSize));
     this.accumulatorIndex = 0;

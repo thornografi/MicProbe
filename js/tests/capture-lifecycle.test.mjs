@@ -300,6 +300,105 @@ test('WASM initialization failure terminates its worker', async () => {
   assert.equal(workers.length, 1); assert.equal(workers[0].terminated, true);
 });
 
+test('controller Cancel releases preparation before permission arrives and a late stream cannot affect the retry', async () => {
+  reset();
+  const recorder = new Recorder(); const oldStream = stream;
+  let grant, mode = null, preparing = false, timers = 0;
+  navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { grant = resolve; });
+  recordingController.setDependencies({ recorder, getCurrentMode: () => mode, setCurrentMode: value => { mode = value; },
+    getIsPreparing: () => preparing, setIsPreparing: value => { preparing = value; },
+    uiStateManager: { updateButtonStates() {}, startTimer() { timers++; }, stopTimer() {} },
+    getPipeline: () => 'worklet', getEncoder: () => 'pcm-wav', isWebAudioEnabled: () => true });
+  const messages = collect(EVENTS.UI_MESSAGE);
+  const first = recordingController.toggle();
+  assert.equal(preparing, true);
+  await recordingController.toggle(); await first;
+  assert.equal(mode, null); assert.equal(preparing, false); assert.equal(timers, 0);
+  assert.equal(recorder.getIsStopping(), false);
+  const replacement = makeStream();
+  navigator.mediaDevices.getUserMedia = async () => replacement;
+  await recordingController.toggle();
+  grant(oldStream); await drain();
+  assert.equal(oldStream.track.readyState, 'ended');
+  assert.equal(recorder.stream, replacement); assert.equal(replacement.track.readyState, 'live');
+  assert.equal(mode, 'recording'); assert.equal(timers, 1);
+  assert.deepEqual(messages.values, []);
+  await recordingController.toggle(); messages.off();
+});
+
+test('quota refusal and cancelled admission leave the previous player and microphone untouched', async () => {
+  let mode = null, preparing = false, started = 0, paused = 0, release, resolve;
+  recordingController.setDependencies({ getCurrentMode: () => mode, setCurrentMode: value => { mode = value; },
+    getIsPreparing: () => preparing, setIsPreparing: value => { preparing = value; },
+    createRunSnapshot: () => ({ runId: 'quota-controller-run' }),
+    recorder: { start: async () => { started++; }, stop: async () => {} }, player: { pause: () => { paused++; } },
+    testAccess: { begin: async () => false, release: async id => { release = id; } } });
+  await recordingController.start();
+  assert.equal(mode, null); assert.equal(started, 0); assert.equal(paused, 0);
+  recordingController.deps.testAccess.begin = () => new Promise(done => { resolve = done; });
+  const starting = recordingController.start();
+  await recordingController.stop();
+  resolve(true); await starting;
+  assert.equal(started, 0); assert.equal(paused, 0); assert.equal(release, 'quota-controller-run');
+  assert.equal(mode, null);
+  recordingController.setDependencies({ testAccess: null, createRunSnapshot: undefined, player: null });
+});
+
+test('a late warmup closes its own context without replacing an active recording context', async () => {
+  reset(); let release, warmContext;
+  window.AudioContext = class extends AudioContext {
+    constructor() {
+      super();
+      if (!warmContext) {
+        warmContext = this; this.state = 'suspended';
+        this.resume = () => new Promise(resolve => { release = resolve; });
+      }
+    }
+  };
+  const recorder = new Recorder();
+  const warming = recorder.warmup();
+  await recorder.start({}, 'worklet', 'pcm-wav');
+  const activeContext = recorder.audioContext;
+  release(); await warming;
+  assert.equal(warmContext.state, 'closed');
+  assert.equal(recorder.audioContext, activeContext);
+  assert.equal(activeContext.state, 'running');
+  assert.equal(recorder.isRecording, true);
+  recorder.pipelineStrategy.nodes.worklet.input([new Float32Array(128).fill(0.2)]);
+  await recorder.stop();
+});
+
+test('preparation cancellation releases a suspended context, delayed worklet or initializing Opus worker', async () => {
+  for (const stage of ['context', 'worklet', 'opus']) {
+    reset(); let release, pendingContext;
+    window.AudioContext = class extends AudioContext {
+      constructor() {
+        super(); pendingContext = this;
+        if (stage === 'context') { this.state = 'suspended'; this.resume = () => new Promise(resolve => { release = resolve; }); }
+        if (stage === 'worklet') this.audioWorklet.addModule = () => new Promise(resolve => { release = resolve; });
+      }
+    };
+    if (stage === 'opus') globalThis.Worker = class extends Worker {
+      postMessage(data) {
+        if (data.command === 'init') release = () => this.onmessage?.({ data: { message: 'ready' } });
+        else super.postMessage(data);
+      }
+    };
+    const recorder = new Recorder();
+    const started = recorder.start({}, 'worklet', stage === 'opus' ? 'wasm-opus' : 'pcm-wav');
+    const rejected = assert.rejects(started, { name: 'AbortError' });
+    await drain(); assert.equal(typeof release, 'function', stage);
+    await recorder.stop(); await rejected;
+    assert.equal(stream.track.readyState, 'ended', stage);
+    assert.equal(pendingContext.state, 'closed', stage);
+    if (stage === 'opus') assert.equal(workers[0].terminated, true);
+    release(); await drain();
+    assert.equal(recorder.pipelineStrategy, null);
+    assert.equal(recorder.audioContext, null);
+    assert.equal(recorder.isRecording, false);
+  }
+});
+
 test('Opus completion rejects missing audio packets instead of saving a header-only file', async context => {
   reset(); context.mock.method(console, 'error', () => {});
   globalThis.Worker = class extends Worker {

@@ -156,11 +156,11 @@
   gap: 0;
 }
 
-/* Checkbox'lar için kompakt inline grup */
+/* Equal columns avoid an accidental one-plus-two row of processing options. */
 .custom-settings-checkbox-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md) var(--space-xl);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
   padding: var(--space-xs) 0;
 }
 
@@ -176,6 +176,10 @@
 
 .custom-settings-checkbox-row .custom-setting-item:hover {
   background: transparent;
+}
+
+@media (max-width: 767px) {
+  .custom-settings-checkbox-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Checkbox grubu başlığı - .console-card-heading ile ayni tipografik olcek */

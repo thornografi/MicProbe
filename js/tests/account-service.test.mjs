@@ -48,6 +48,85 @@ function fixture(t, options = {}) {
     return { db, service, request, send, challenge, login };
 }
 
+test('purchase management follows a linked purchase while Premium follows its current validity', async t => {
+    const f = fixture(t), signedIn = await f.login('buyer');
+    const session = async () => (await f.send('/api/account/session', { cookie: signedIn.cookie })).json();
+    assert.equal((await session()).purchaseLinked, false, 'A free account has no purchase to manage');
+    await f.service.saveLicense(signedIn.user.id, license(101));
+    for (const [active, verifiedAt, pending] of [[true, Date.now(), false], [false, Date.now(), false], [false, 0, true]]) {
+        await f.service.updateLicense('101', { active, verifiedAt });
+        const state = await session();
+        assert.equal(state.purchaseLinked, true);
+        assert.equal(state.premium.unlocked, active);
+        assert.equal(state.premium.pending, pending);
+        assert.equal(state.licenseId, undefined, 'Public status does not expose license or buyer data');
+    }
+    const production = createAccountService({ db: f.db, googleClientId: clientId, origin, mode: 'production' });
+    const otherMode = await (await production.handle(f.request('/api/account/session', { cookie: signedIn.cookie }))).json();
+    assert.equal(otherMode.purchaseLinked, false, 'A sandbox purchase is not a production purchase');
+    assert.equal(otherMode.premium.unlocked, false);
+    const guest = await (await f.send('/api/account/session')).json();
+    assert.equal(guest.purchaseLinked, false);
+    const logout = await (await f.send('/api/account/logout', { method: 'POST', cookie: signedIn.cookie })).json();
+    assert.equal(logout.purchaseLinked, false);
+});
+
+test('Google confirmation refreshes proof without replacing the session or its persistence choice', async t => {
+    const f = fixture(t);
+    const signedIn = await f.login('alice', { email: 'alice@gmail.com' });
+    await f.db.prepare('UPDATE accounts SET google_verified_at = ? WHERE id = ?').bind(Date.now() - 86400001, signedIn.user.id).run();
+    const sessions = await f.db.prepare('SELECT * FROM account_sessions').all();
+    const challenge = await f.challenge();
+    const options = { method: 'POST', cookie: `${signedIn.cookie}; ${challenge.cookie}`,
+        headers: { 'X-MicProbe-Account': signedIn.user.id },
+        body: { credential: JSON.stringify(makeClaims('alice', challenge.nonce, { email: 'alice@gmail.com' })), rememberMe: true } };
+    const response = await f.send('/api/account/google/confirm', options);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.ok(response.headers.getSetCookie().every(cookie => cookie.startsWith('micprobe_login_nonce_') && cookie.includes('Max-Age=0')));
+    assert.deepEqual(await f.db.prepare('SELECT * FROM account_sessions').all(), sessions);
+    const account = await f.service.getUser(f.request('/api/account/session', { cookie: signedIn.cookie }));
+    assert.ok(Date.now() - Date.parse(account.googleVerifiedAt) < 5000);
+    assert.equal(account.authoritativeEmail, true);
+    const publicState = await (await f.send('/api/account/session', { cookie: signedIn.cookie })).json();
+    assert.equal(publicState.user.googleSub, undefined);
+    assert.equal(publicState.user.googleVerifiedAt, undefined);
+    assert.equal((await f.send('/api/account/google/confirm', options)).status, 401, 'Confirmation consumes its nonce once');
+});
+
+test('Google confirmation cannot switch accounts or create an account for another selected subject', async t => {
+    const f = fixture(t);
+    const signedIn = await f.login('alice');
+    const before = await f.db.prepare('SELECT * FROM accounts').all();
+    const sessions = await f.db.prepare('SELECT * FROM account_sessions').all();
+    const challenge = await f.challenge();
+    const response = await f.send('/api/account/google/confirm', { method: 'POST',
+        cookie: `${signedIn.cookie}; ${challenge.cookie}`, headers: { 'X-MicProbe-Account': signedIn.user.id },
+        body: { credential: JSON.stringify(makeClaims('bob', challenge.nonce, { email: 'alice@example.com' })) } });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, 'portal_account_mismatch');
+    assert.deepEqual(await f.db.prepare('SELECT * FROM accounts').all(), before);
+    assert.deepEqual(await f.db.prepare('SELECT * FROM account_sessions').all(), sessions);
+});
+
+test('Google confirmation requires the existing session, owner header and sign-in browser proof', async t => {
+    const f = fixture(t);
+    const signedIn = await f.login('alice');
+    const challenge = await f.challenge();
+    const base = { method: 'POST', cookie: `${signedIn.cookie}; ${challenge.cookie}`,
+        headers: { 'X-MicProbe-Account': signedIn.user.id },
+        body: { credential: JSON.stringify(makeClaims('alice', challenge.nonce)) } };
+    for (const [change, status] of [
+        [{ cookie: challenge.cookie }, 401], [{ headers: { 'X-MicProbe-Account': 'other' } }, 409],
+        [{ cookie: signedIn.cookie }, 401], [{ headers: { ...base.headers, Origin: 'https://other.example' } }, 403],
+        [{ body: { credential: JSON.stringify(makeClaims('alice', challenge.nonce, { aud: 'other-client' })) } }, 401]
+    ]) {
+        assert.equal((await f.send('/api/account/google/confirm', { ...base, ...change })).status, status);
+    }
+    assert.equal((await f.send('/api/account/google/confirm', base)).status, 200, 'Rejected requests do not refresh proof');
+});
+
 test('disabled accounts fail closed without affecting non-account routes', async () => {
     const service = createAccountService();
     const config = await service.handle(new Request(`${origin}/api/account/config`));
@@ -110,7 +189,7 @@ test('local migrations upgrade an existing 0001 database once while preserving p
             assert.equal(user.google_verified_at, null);
             assert.equal((await db.prepare('SELECT active FROM account_licenses').first()).active, 1);
             assert.equal((await db.prepare('SELECT note FROM account_reports').first()).note, 'Preserved note');
-            assert.equal((await db.prepare('SELECT count(*) AS n FROM account_schema_migrations').first()).n, 3);
+            assert.equal((await db.prepare('SELECT count(*) AS n FROM account_schema_migrations').first()).n, 10);
         } finally { db.close(); }
     }
 });
@@ -135,9 +214,11 @@ test('only verified Gmail and Workspace identities provide authoritative email p
 test('a stale tab cannot read, save, edit, delete, or log out a different cookie account', async t => {
     const f = fixture(t);
     const alice = await f.login('alice');
+    await f.service.saveLicense(alice.user.id, license(901));
     const bob = await f.login('bob');
+    await f.service.saveLicense(bob.user.id, license(902));
     const saved = await (await f.send('/api/account/reports', { method: 'POST', cookie: bob.cookie,
-        body: { report: makeReport('bob-run') } })).json();
+        body: { report: makeReport('bob-run', { run: { id: 'bob-run', type: 'test', accountOwnerId: bob.user.id } }) } })).json();
     for (const header of [alice.user.id, '', 'anonymous']) {
         for (const item of [
             { path: '/api/account/reports', method: 'GET' },
@@ -162,7 +243,7 @@ test('a stale tab cannot read, save, edit, delete, or log out a different cookie
 test('sign-in consumes the browser nonce once, rotates sessions, and identifies by Google subject', async t => {
     const f = fixture(t);
     const challenge = await f.challenge();
-    const body = { credential: JSON.stringify(makeClaims('alice', challenge.nonce)) };
+    const body = { credential: JSON.stringify(makeClaims('alice', challenge.nonce)), rememberMe: true };
     const results = await Promise.all([
         f.send('/api/account/google', { method: 'POST', cookie: challenge.cookie, body }),
         f.send('/api/account/google', { method: 'POST', cookie: challenge.cookie, body })
@@ -185,7 +266,35 @@ test('sign-in consumes the browser nonce once, rotates sessions, and identifies 
     const next = await f.challenge();
     const rotated = await f.send('/api/account/google', { method: 'POST', cookie: `${sessionToken}; ${next.cookie}`, body: { credential: JSON.stringify(makeClaims('alice', next.nonce)) } });
     assert.equal(rotated.status, 200);
+    assert.doesNotMatch(rotated.headers.getSetCookie().find(value => value.startsWith('micprobe_session=')), /Max-Age|Expires/i);
     assert.equal(await f.service.getUser(f.request('/api/account/session', { cookie: sessionToken })), null);
+});
+
+test('only explicit remember-me creates a persistent session; both modes retain expiry and logout protection', async t => {
+    const f = fixture(t);
+    for (const rememberMe of [undefined, false, true, 'true', 1]) {
+        const challenge = await f.challenge();
+        const before = Date.now();
+        const response = await f.send('/api/account/google', { method: 'POST', cookie: challenge.cookie,
+            body: { credential: JSON.stringify(makeClaims('alice', challenge.nonce)), rememberMe } });
+        assert.equal(response.status, 200);
+        const user = (await response.json()).user;
+        const cookies = response.headers.getSetCookie();
+        const session = cookies.find(value => value.startsWith('micprobe_session='));
+        assert.match(session, /; Path=\/; HttpOnly; SameSite=Lax/);
+        assert.match(session, /; Secure$/);
+        if (rememberMe === true) assert.match(session, /; Max-Age=2592000;/);
+        else assert.doesNotMatch(session, /Max-Age|Expires/i);
+        assert.match(cookies.find(value => value.startsWith('micprobe_login_nonce_')), /; Max-Age=0;/);
+        const stored = await f.db.prepare('SELECT expires_at FROM account_sessions').first();
+        assert.ok(stored.expires_at >= before + 2592000000 && stored.expires_at <= Date.now() + 2592000000);
+        const cookie = session.split(';')[0];
+        assert.equal((await f.service.getUser(f.request('/api/account/session', { cookie }))).id, user.id);
+        const logout = await f.send('/api/account/logout', { method: 'POST', cookie, headers: { 'X-MicProbe-Account': user.id } });
+        assert.equal(logout.status, 200);
+        assert.match(logout.headers.get('set-cookie'), /micprobe_session=;.*Max-Age=0/);
+        assert.equal(await f.service.getUser(f.request('/api/account/session', { cookie })), null);
+    }
 });
 
 test('sign-in rejects wrong nonce, audience, issuer, expiry, email proof and request origin', async t => {
@@ -226,8 +335,9 @@ test('two tabs keep independent browser-bound sign-in challenges and each remain
 test('Google production verifier checks an actual RS256 signature against the fixed JWKS URL', async t => {
     const keypair = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
     const jwk = { ...(await crypto.subtle.exportKey('jwk', keypair.publicKey)), kid: 'account-service-test', alg: 'RS256', use: 'sig' };
-    t.mock.method(globalThis, 'fetch', async url => {
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
         assert.equal(url, 'https://www.googleapis.com/oauth2/v3/certs');
+        assert.equal(options.redirect, 'manual');
         return new Response(JSON.stringify({ keys: [jwk] }), { headers: { 'Cache-Control': 'max-age=0' } });
     });
     const f = fixture(t, { verifyGoogleToken: undefined });
@@ -240,6 +350,48 @@ test('Google production verifier checks an actual RS256 signature against the fi
     const second = await f.challenge();
     const altered = `${encoded({ alg: 'RS256', kid: jwk.kid })}.${encoded(makeClaims('other-person', second.nonce))}.${signature}`;
     assert.equal((await f.send('/api/account/google', { method: 'POST', cookie: second.cookie, body: { credential: altered } })).status, 401);
+});
+
+test('Google key redirects are rejected without following or consuming browser proof', async t => {
+    let requests = 0;
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+        requests++;
+        assert.equal(url, 'https://www.googleapis.com/oauth2/v3/certs');
+        assert.equal(options.redirect, 'manual');
+        return new Response(null, { status: 302, headers: { Location: 'https://other.example/keys' } });
+    });
+    const f = fixture(t, { verifyGoogleToken: undefined });
+    const config = await f.challenge();
+    const encoded = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const credential = `${encoded({ alg: 'RS256', kid: 'redirected-key' })}.${encoded(makeClaims('redirected', config.nonce))}.AAAA`;
+    const response = await f.send('/api/account/google', { method: 'POST', cookie: config.cookie, body: { credential } });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, 'google_temporarily_unavailable');
+    assert.equal(requests, 1);
+    assert.equal(await f.db.prepare('SELECT count(*) AS n FROM account_login_challenges').first('n'), 1);
+    assert.equal(await f.db.prepare('SELECT count(*) AS n FROM account_sessions').first('n'), 0);
+});
+
+test('Google key outages are retryable without consuming browser proof or creating sessions', async t => {
+    t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 503 }));
+    const f = fixture(t, { verifyGoogleToken: undefined });
+    const config = await f.challenge();
+    const encoded = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const credential = `${encoded({ alg: 'RS256', kid: 'outage' })}.${encoded(makeClaims('alice', config.nonce))}.AAAA`;
+    const response = await f.send('/api/account/google', { method: 'POST', cookie: config.cookie, body: { credential } });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, 'google_temporarily_unavailable');
+    assert.equal(await f.db.prepare('SELECT count(*) AS n FROM account_login_challenges').first('n'), 1);
+    assert.equal(await f.db.prepare('SELECT count(*) AS n FROM account_sessions').first('n'), 0);
+});
+
+test('a verified identity without its browser cookie has actionable recovery and cannot sign in', async t => {
+    const f = fixture(t);
+    const config = await f.challenge();
+    const response = await f.send('/api/account/google', { method: 'POST', body: { credential: JSON.stringify(makeClaims('alice', config.nonce)) } });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error, 'sign_in_cookies_required');
+    assert.equal(await f.db.prepare('SELECT count(*) AS n FROM account_sessions').first('n'), 0);
 });
 
 test('logout removes only the current session and expired sessions cannot access history', async t => {
@@ -258,8 +410,10 @@ test('logout removes only the current session and expired sessions cannot access
 test('reports deduplicate each owner/run, ignore client entitlement, paginate and enforce ownership on edits', async t => {
     const f = fixture(t);
     const alice = await f.login('alice');
+    await f.service.saveLicense(alice.user.id, license(901));
     const bob = await f.login('bob');
-    const save = (user, id, extra = {}) => f.send('/api/account/reports', { method: 'POST', cookie: user.cookie, body: { report: makeReport(id, extra), note: 'Gain reduced' } });
+    await f.service.saveLicense(bob.user.id, license(902));
+    const save = (user, id, extra = {}) => f.send('/api/account/reports', { method: 'POST', cookie: user.cookie, body: { report: makeReport(id, { ...extra, run: { id, type: "test", accountOwnerId: user.user.id } }), note: 'Gain reduced' } });
     const communicationContext = { scenario: 'local-call', internetMeasured: false };
     const first = (await (await save(alice, 'run-1', { premium: { unlocked: true }, userId: bob.user.id, communicationContext })).json()).report;
     const repeated = (await (await save(alice, 'run-1')).json()).report;
@@ -288,7 +442,11 @@ test('reports deduplicate each owner/run, ignore client entitlement, paginate an
 test('history rejects excessive bodies, raw audio, malformed reports and prototype properties', async t => {
     const f = fixture(t);
     const user = await f.login('alice');
-    const post = body => f.send('/api/account/reports', { method: 'POST', cookie: user.cookie, body });
+    await f.service.saveLicense(user.user.id, license(901));
+    const post = body => {
+      if (body?.report?.run) body.report.run.accountOwnerId = user.user.id;
+      return f.send('/api/account/reports', { method: 'POST', cookie: user.cookie, body });
+    };
     assert.equal((await post({ report: { run: { id: 'incomplete' } } })).status, 400);
     assert.equal((await post({ report: makeReport('raw', { deepAnalysis: { pcm: [1, 2] } }) })).status, 400);
     assert.equal((await post({ report: makeReport('notes'), note: 'n'.repeat(2001) })).status, 400);
@@ -301,6 +459,7 @@ test('history rejects excessive bodies, raw audio, malformed reports and prototy
 test('saving a duplicate and deleting it concurrently return consistent committed results', async t => {
     const f = fixture(t);
     const alice = await f.login('alice');
+    await f.service.saveLicense(alice.user.id, license(901));
     const store = new AccountStore(f.db, 'sandbox');
     const report = makeReport('overlapping-save-delete');
     const original = await store.saveReport(alice.user.id, report, 'Original note');

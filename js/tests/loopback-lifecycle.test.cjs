@@ -37,7 +37,7 @@ function testFlow(overrides = {}) {
     .replace('export default class CaptureGuide', 'class CaptureGuide') + '\n'
     + read('js/controllers/TestRecordingFlow.js').replace(/^import .*;$/gm, '')
     .replace('export default TestRecordingFlow;', 'TestRecordingFlow;');
-  const Flow = vm.runInNewContext(code, { ...constants, ...(overrides.timers || timers), Blob,
+  const Flow = vm.runInNewContext(code, { ...constants, ...(overrides.timers || timers), Blob, AbortController, DOMException,
     eventBus: { emit(type, data) { events.push({ type, data }); } },
     log: new Proxy({}, { get: (_, type) => (message, details) => logs.push({ type, message, details }) }), stopStreamTracks,
     performance: { now: () => now += 1000 },
@@ -61,6 +61,21 @@ function testFlow(overrides = {}) {
   });
   return { flow: new Flow(deps), events, recorders, playback, analyses, logs };
 }
+
+test('call quota refusal and cancellation before admission never open a microphone', async () => {
+  let microphones = 0, paused = 0, released;
+  const f = testFlow({ requestStream: async () => { microphones++; return stream('mic'); } });
+  f.flow.deps.player.pause = () => { paused++; };
+  f.flow.deps.testAccess = { begin: async () => false, release: async id => { released = id; } };
+  await f.flow.startRecording();
+  assert.equal(microphones, 0); assert.equal(paused, 0);
+  const gate = deferred();
+  f.flow.deps.testAccess.begin = () => gate.promise;
+  const starting = f.flow.startRecording();
+  await f.flow.cancel();
+  gate.resolve(true); await starting;
+  assert.equal(microphones, 0); assert.equal(paused, 0); assert.equal(released, 'run-2');
+});
 
 test('an ended microphone is rejected before setup, after setup, and after activation', async () => {
   for (const stage of ['permission', 'setup', 'activation']) {

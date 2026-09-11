@@ -1,12 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import accountAccess, { AccountAccess } from '../modules/AccountAccess.js';
+import { GoogleSignIn } from '../modules/GoogleSignIn.js';
 import { ReportHistory } from '../modules/ReportHistory.js';
-import AccountPanelUI, { comparisonRows } from '../ui/AccountPanelUI.js';
+import AccountPanelUI from '../ui/AccountPanelUI.js';
 import { CheckoutStateSnapshot } from '../modules/CheckoutStateSnapshot.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('purchase-management status survives an outage only for the known account and never grants Premium', async () => {
+  let offline = false;
+  let session = { ok: true, user: { id: 'A' }, purchaseLinked: true, premium: { unlocked: true } };
+  const account = new AccountAccess({ request: async path => {
+    if (offline) throw new Error('Connection unavailable');
+    return Response.json(path.includes('/config') ? { ok: true, configured: true } : session);
+  } });
+  await account.refresh();
+  offline = true;
+  await account.refresh({ sessionOnly: true });
+  assert.equal(account.getState().purchaseLinked, true);
+  assert.equal(account.getState().premium.unlocked, false);
+  await account.refreshRejectedAccess('sign_in_required', 'A');
+  assert.equal(account.getState().purchaseLinked, false, 'An expired session clears the former owner even when offline');
+  assert.equal(account.getState().user, null);
+  offline = false;
+  await account.refresh();
+  session = { ok: true, user: { id: 'B' }, purchaseLinked: false, premium: { unlocked: false } };
+  await account.refresh();
+  assert.equal(account.getState().purchaseLinked, false, 'A different free account does not inherit the purchase entry');
+  session = { ok: true, user: { id: 'B' }, purchaseLinked: true, premium: { unlocked: false } };
+  await account.refresh();
+  await account.logout();
+  assert.equal(account.getState().purchaseLinked, false);
+  assert.equal(account.getState().premium.unlocked, false);
+});
 const fixture = id => ({ version: '2.0', generatedAt: '2026-09-05T12:00:00.000Z', run: { id, type: 'test' },
   profile: { id: 'discord', label: 'Discord Voice', requestedConstraints: { sampleRate: 16000, noiseSuppression: true },
     appliedConstraints: { sampleRate: 48000, noiseSuppression: false } }, device: { micName: 'USB mic' } });
@@ -17,8 +45,9 @@ function storage() {
 function mockAccount() {
   const listeners = new Set();
   return { user: null, calls: [],
-    subscribe(listener) { listeners.add(listener); listener({ user: this.user }); return () => listeners.delete(listener); },
-    switchUser(id) { this.user = id ? { id } : null; listeners.forEach(listener => listener({ user: this.user })); },
+    subscribe(listener) { listeners.add(listener); listener({ user: this.user, premium: { unlocked: true } }); return () => listeners.delete(listener); },
+    switchUser(id) { this.user = id ? { id } : null; listeners.forEach(listener => listener({ user: this.user, premium: { unlocked: true } })); },
+    grantPremium() { listeners.forEach(listener => listener({ user: this.user, premium: { unlocked: true } })); },
     requireSignIn() { return !!this.user; },
     async api(path, options = {}) {
       this.calls.push({ path, options, userId: this.user?.id });
@@ -47,6 +76,53 @@ test('signed-out tests do not retain reports in memory or browser storage', () =
   assert.deepEqual(history.getState().reports, []);
   assert.equal(saved.getItem('micprobe:report-history:v1'), null);
   assert.deepEqual(account.calls, []);
+});
+
+test('full history preserves the unsaved result, stops automatic retry, and saves after a cloud report is removed', async () => {
+  const account = mockAccount(), saved = storage();
+  const history = new ReportHistory({ account, storage: saved });
+  account.switchUser('A'); await tick();
+  history.capture(fixture('old')); await tick();
+  const previous = history.getState().reports[0];
+  const original = account.api.bind(account);
+  let full = true, rejected = 0;
+  account.api = async (path, options = {}) => {
+    if (options.method === 'DELETE') full = false;
+    if (options.method === 'POST' && full) {
+      rejected++;
+      throw Object.assign(new Error('report_storage_full'), { status: 409 });
+    }
+    return original(path, options);
+  };
+  history.capture(fixture('new')); await tick();
+  assert.match(history.getState().error, /saved report storage is full/);
+  assert.equal(history.getState().pendingCount, 1);
+  assert.equal(history.getState().reports[0].saveError, 'report_storage_full');
+  assert.ok(saved.getItem('micprobe:report-history:v1').includes('new'));
+  await history.retry({ includeRejected: false });
+  assert.equal(rejected, 1, 'No unbounded background retries');
+  await history.remove(previous.id);
+  assert.equal(history.getState().pendingCount, 0);
+  assert.equal(history.getState().reports[0].id, 'saved-new');
+  assert.equal(history.getState().error, '');
+});
+
+test('a blocked pending save needs an explicit retry after access changes', async () => {
+  const account = mockAccount(), history = new ReportHistory({ account, storage: storage() });
+  account.switchUser('A'); await tick();
+  const original = account.api.bind(account);
+  let rejectSave, full = true;
+  account.api = (path, options = {}) => options.method === 'POST' && full
+    ? new Promise((resolve, reject) => { rejectSave = reject; }) : original(path, options);
+  history.capture(fixture('waiting-for-upgrade')); await tick();
+  account.grantPremium();
+  full = false;
+  rejectSave(Object.assign(new Error('report_storage_full'), { status: 409 }));
+  await tick();
+  await history.retry();
+  assert.equal(history.getState().pendingCount, 0);
+  assert.equal(history.getState().reports[0].id, 'saved-waiting-for-upgrade');
+  assert.equal(history.getState().error, '');
 });
 
 test('legacy guest history is retired while account-owned pending reports survive', async () => {
@@ -123,75 +199,6 @@ test('note updates use the saved report id while preserving the original report 
   assert.ok(account.calls.some(call => call.path === '/reports/saved-note' && call.options.method === 'PATCH'));
 });
 
-test('detailed comparison preserves unknown readings, measured zero, and requested versus applied settings', () => {
-  const report = fixture('compare');
-  report.audioMetrics = { status: 'measured', clipping: { status: 'measured', rate: 0 },
-    noiseFloor: { status: 'unavailable', estimatedDb: -90 }, coverage: { truncated: true } };
-  const rows = Object.fromEntries(comparisonRows(report, { detailed: true }));
-  assert.equal(rows['Peak level'], 'Unknown');
-  assert.equal(rows['Clipped samples'], '0 %');
-  assert.equal(rows['Estimated noise floor'], 'Unknown');
-  assert.equal(rows['Sample rate (requested)'], '16000 Hz');
-  assert.equal(rows['Sample rate (applied)'], '48000 Hz');
-  assert.equal(rows['Noise suppression (applied)'], 'Off');
-  assert.equal(rows['Analyzed coverage'], 'Partial recording');
-});
-
-test('free comparison uses the existing short assessment without measurement or captured-setting rows', () => {
-  const report = fixture('free-comparison');
-  const free = reportEvaluator.evaluateFree(report);
-  const rows = Object.fromEntries(comparisonRows(report));
-  assert.deepEqual(Object.keys(rows), ['Profile', 'Result', 'Summary', 'Assessment']);
-  assert.equal(rows.Result, free.overall.label);
-  assert.equal(rows.Summary, free.summary);
-  assert.equal(rows.Assessment, 'Insufficient audio');
-  assert.doesNotMatch(JSON.stringify(rows), /16000|48000|USB mic|RMS|Peak|suppression/);
-});
-
-test('comparison DOM follows current Premium access, clears on owner change, and preserves note drafts', t => {
-  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
-  class DomNode {
-    constructor() { this.children = []; this.text = ''; this.scrolls = 0; }
-    set textContent(value) { this.text = String(value); }
-    get textContent() { return this.text + this.children.map(child => child.textContent).join(' '); }
-    append(...children) { this.children.push(...children); }
-    replaceChildren(...children) { this.children = children; }
-    hasChildNodes() { return this.children.length > 0; }
-    scrollIntoView() { this.scrolls++; }
-  }
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: { createElement: () => new DomNode() } });
-  t.after(() => {
-    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
-    else delete globalThis.document;
-  });
-  let unlocked = false;
-  const panel = Object.assign(Object.create(AccountPanelUI.prototype), {
-    premiumAccess: { isUnlocked: () => unlocked }, accountState: { user: { id: 'A' } },
-    selected: new Set(['one', 'two']), noteDrafts: new Map([['draft', 'Unsaved note']]), compare: new DomNode(),
-    historyState: { reports: ['one', 'two'].map(id => ({ id, report: fixture(id), note: `Note ${id}` })) }
-  });
-  panel.renderComparison();
-  assert.match(panel.compare.textContent, /Saved report summaries/);
-  assert.match(panel.compare.textContent, /Note one/);
-  assert.doesNotMatch(panel.compare.textContent, /RMS level|16000 Hz|Use the same phrase/);
-  unlocked = true;
-  panel._syncComparisonAccess({ userId: 'A' });
-  assert.match(panel.compare.textContent, /RMS level/);
-  assert.match(panel.compare.textContent, /16000 Hz/);
-  assert.match(panel.compare.textContent, /48000 Hz/);
-  unlocked = false;
-  panel._syncComparisonAccess({ userId: 'A' });
-  assert.doesNotMatch(panel.compare.textContent, /RMS level|16000 Hz|Use the same phrase/);
-  assert.match(panel.compare.textContent, /Note two/);
-  assert.equal(panel.compare.scrolls, 1, 'Access refresh must not move the dialog');
-  panel._syncComparisonAccess({ userId: 'B' });
-  assert.equal(panel.compare.children.length, 0);
-  assert.equal(panel.noteDrafts.get('draft'), 'Unsaved note');
-  delete panel.premiumAccess;
-  panel.renderComparison();
-  assert.doesNotMatch(panel.compare.textContent, /RMS level|16000 Hz/);
-});
-
 test('Google credential exchange uses cookie transport and never includes an access token in state', async () => {
   const calls = [];
   const account = new AccountAccess({ request: async (path, options) => {
@@ -203,7 +210,10 @@ test('Google credential exchange uses cookie transport and never includes an acc
   assert.equal(login.options.credentials, 'same-origin');
   assert.equal(login.options.headers['X-MicProbe-Request'], '1');
   assert.equal(JSON.parse(login.options.body).credential, 'google-credential');
+  assert.equal(JSON.parse(login.options.body).rememberMe, false);
   assert.equal(JSON.stringify(account.getState()).includes('google-credential'), false);
+  await account.signInWithGoogle('google-credential', { rememberMe: true });
+  assert.equal(JSON.parse(calls.filter(call => call.path.endsWith('/google')).at(-1).options.body).rememberMe, true);
   await account.logout();
   assert.equal(account.getState().user, null);
   assert.equal(account.getState().premium.unlocked, false);
@@ -214,7 +224,7 @@ test('failed session validation never retains a previously granted premium state
   account.state = { ready: true, configured: true, user: { id: 'A' }, premium: { unlocked: true }, error: '' };
   await account.refresh();
   assert.equal(account.getState().premium.unlocked, false);
-  assert.equal(account.getState().error, 'offline');
+  assert.equal(account.getState().error, 'network_unavailable');
 });
 
 test('logout invalidates a pending session refresh so a late response cannot sign the user back in', async () => {
@@ -253,7 +263,8 @@ test('replacing the sign-in container during loading renders one current Google 
     const first = { isConnected: true, replaceChildren() {} };
     const second = { isConnected: true, replaceChildren() {} };
     const panel = Object.assign(Object.create(AccountPanelUI.prototype), {
-      googleContainer: first, dialog: { open: true }, accountState: { user: null }, message() {}
+      googleContainer: first, dialog: { open: true }, accountState: { user: null }, message() {},
+      google: new GoogleSignIn({ account: accountAccess })
     });
     const loading = panel.renderGoogle();
     await panel.renderGoogle(); assert.equal(calls, 1);
@@ -265,7 +276,7 @@ test('replacing the sign-in container during loading renders one current Google 
   } finally { accountAccess.getSignInConfig = originalConfig; globalThis.google = originalGoogle; }
 });
 
-test('a report completing after an account switch stays pending for its captured owner', async () => {
+test('a report completing after an account switch stays pending for its captured Premium owner', async () => {
   const account = mockAccount(); const history = new ReportHistory({ account, storage: storage() });
   account.switchUser('A'); await tick();
   const report = fixture('in-flight-A'); report.run.accountOwnerId = 'A';
@@ -338,7 +349,7 @@ test('confirmed session expiry still clears stale user if the follow-up session 
   account.state = { ready: true, configured: true, user: { id: 'A' }, premium: { unlocked: true }, error: '' };
   await assert.rejects(account.api('/reports'), /sign_in_required/);
   assert.equal(account.getState().user, null);
-  assert.equal(account.getState().error, 'offline');
+  assert.equal(account.getState().error, 'network_unavailable');
 });
 
 test('shared rejected-access recovery closes an expired owner before an offline follow-up check', async () => {
@@ -348,7 +359,7 @@ test('shared rejected-access recovery closes an expired owner before an offline 
   await account.refreshRejectedAccess('sign_in_required', 'A');
   assert.equal(account.getState().user, null);
   assert.equal(account.getState().premium.unlocked, false);
-  assert.equal(account.getState().error, 'offline');
+  assert.equal(account.getState().error, 'network_unavailable');
   assert.deepEqual(requests, ['/api/account/session']);
 });
 

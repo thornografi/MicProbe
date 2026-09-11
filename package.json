@@ -1,18 +1,35 @@
 {
   "name": "micprobe",
   "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
+    "assets:brand": "node scripts/generate-brand-assets.cjs",
+    "build": "vite build",
+    "start:built": "node server.js --built",
+    "check:services": "node scripts/check-service-readiness.mjs",
     "test": "node --test js/tests/*.test.mjs js/tests/*.test.cjs",
     "test:browser": "node js/tests/audio-browser-runner.cjs",
     "test:microphone-browser": "node js/tests/microphone-selection-browser-runner.cjs",
     "test:account-browser": "node js/tests/account-browser-runner.cjs",
+    "test:account-browsers": "node js/tests/account-browser-runner.cjs --all-browsers",
+    "test:portal-browsers": "node js/tests/account-portal-browser-runner.cjs --all-browsers",
+    "test:google-redirect-browsers": "node js/tests/google-redirect-browser-runner.cjs",
+    "test:account-browsers:ci": "node scripts/validate-build.cjs --accounts",
     "test:troubleshooting-browser": "node js/tests/troubleshooting-browser-runner.cjs",
     "test:ui-browser": "node js/tests/ui-settings-download-browser-runner.cjs",
     "test:presentation-browser": "node js/tests/presentation-browser-runner.cjs",
     "test:scenario-browser": "node js/tests/scenario-selection-browser-runner.cjs",
     "test:report-browser": "node js/tests/report-browser-runner.cjs",
+    "test:review-browser": "node js/tests/review-browser-runner.cjs",
     "test:guided-browser": "node js/tests/guided-capture-browser-runner.cjs",
-    "cf:dev:assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-cloudflare-dev-assets.ps1",
+    "test:runtime-browser": "node js/tests/runtime-interactions-browser-runner.cjs",
+    "test:quota-browser": "node js/tests/test-access-browser-runner.cjs",
+    "test:navigation-browser": "node js/tests/navigation-browser-runner.cjs",
+    "test:build-browser": "node js/tests/build-browser-runner.cjs",
+    "test:build": "npm run build && node scripts/validate-build.cjs",
+    "cf:dev:assets": "npm run build",
     "cf:dev:dry-run": "npm run cf:dev:assets && npx wrangler deploy --env dev --dry-run",
     "cf:dev:deploy": "npm run cf:dev:assets && npx wrangler deploy --env dev",
     "cf:dev:secret:list": "npx wrangler secret list --env dev",
@@ -20,6 +37,10 @@
     "test:real-capture-browser": "node js/tests/real-capture-browser-runner.cjs"
   },
   "devDependencies": {
+    "esbuild": "0.28.1",
+    "miniflare": "5.20260910.0-alpha",
+    "playwright": "^1.63.0",
+    "vite": "^8.3.0",
     "wrangler": "^4.50.0"
   }
 }

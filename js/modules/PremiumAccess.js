@@ -10,6 +10,7 @@ import eventBus from './EventBus.js';
 import { EVENTS } from './constants.js';
 import { log } from './utils.js';
 import accountAccess from './AccountAccess.js';
+import { projectArchiveReport } from './ArchiveReport.js';
 
 const STORAGE_KEY = 'micprobe:premium-access:v1';
 const CONFIG_ENDPOINT = '/api/freemius/config';
@@ -126,7 +127,7 @@ class PremiumAccess {
         ...(accessToken ? {} : { 'X-MicProbe-Account': expectedOwner }),
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ report })
+      body: JSON.stringify({ report: projectArchiveReport(report) })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) {
@@ -195,8 +196,9 @@ class PremiumAccess {
     await this._loadCheckoutConfig();
     await accountAccess.bootstrap();
 
-    if ((hasSignature && params.has('checkout_state')) || this.pendingPurchase) {
-      if (hasSignature && params.has('checkout_state')) {
+    const accountReturn = hasSignature && (accountAccess.getState().configured !== false || params.has('checkout_state'));
+    if (accountReturn || this.pendingPurchase) {
+      if (accountReturn) {
         this.pendingPurchase = this.redirectHref;
         try { sessionStorage.setItem(PENDING_PURCHASE_KEY, this.pendingPurchase); }
         catch { /* The current page still owns the pending return. */ }
@@ -262,14 +264,14 @@ class PremiumAccess {
         if (this.isUnlocked()) {
           this._showStatusMessage('Lifetime Premium is linked to your account. Test again anytime.', 'success', 'idle');
         } else if (accountAccess.getState().error) {
-          this._showStatusMessage('Your purchase was linked. Reconnect from Account & History to check Premium access.', 'warning');
+          this._showStatusMessage('Your purchase was linked. Reconnect from Account to check Premium access.', 'warning');
         } else {
-          this._showStatusMessage('Your purchase was linked, but it is no longer active. Check your purchase from Account & History. You can still test again.', 'warning');
+          this._showStatusMessage('Your purchase was linked, but it is no longer active. Check your purchase from Account. You can still test again.', 'warning');
         }
       } catch {
         if (accountAccess.getState().user?.id !== ownerId || this.pendingPurchase !== purchaseUrl) return this.getState();
         this._showStatusMessage(this.getState().pending
-          ? 'Purchase verification is pending. Use Retry purchase verification in Account & History; you do not need to buy again.'
+          ? 'Purchase verification is pending. Use Retry purchase verification in Account; you do not need to buy again.'
           : 'Your purchase could not be linked yet. Sign in with the account used for checkout and retry by reloading this page.', 'warning');
       }
       this._notify();

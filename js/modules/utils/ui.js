@@ -42,3 +42,9 @@ export function setHidden(element, hidden) {
 export function setVisible(element, visible) {
   setHidden(element, !visible);
 }
+
+/** Keep the brand visible even when a browser tab truncates the page title. */
+export function appPageTitle(heading) {
+  const title = heading?.id === 'scenarioPickerTitle' ? '' : heading?.textContent.trim();
+  return `MicProbe — ${title || 'Microphone test'}`;
+}

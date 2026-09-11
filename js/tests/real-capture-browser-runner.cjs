@@ -56,6 +56,7 @@ if (!wavPath || !fs.existsSync(wavPath)) {
       };
     });
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${baseUrl}/#app`);

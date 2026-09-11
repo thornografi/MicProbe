@@ -125,6 +125,7 @@ class UIStateManager {
       isTestAnalysing: currentMode === 'test-analysing',
       isPreparing
     };
+    flags.isFinalizing = flags.isRecording && !!this.getState.isRecordingFinalizing?.();
     flags.isTesting = flags.isTestRecording || flags.isTestAnalysing;
 
     // Tek makine-fazi kaynagi: body[data-app-state] (APP_STATE). CSS buton gorunumlerini ve
@@ -153,14 +154,14 @@ class UIStateManager {
    * @private
    */
   _updateActionButtons(flags) {
-    const { isRecording, isTesting, isPreparing } = flags;
+    const { isRecording, isTesting, isPreparing, isFinalizing } = flags;
     const { recordToggleBtn, testBtn } = this.elements;
     const hasProfile = !!PROFILES[this.getState.currentProfileId()];
 
     // Gorunum body[data-app-state] + aria-pressed'den turer (controls.css); burada yalniz
     // disabled ve aria-pressed yazilir.
     if (recordToggleBtn) {
-      recordToggleBtn.disabled = !hasProfile || isTesting || (isPreparing && !isRecording);
+      recordToggleBtn.disabled = !hasProfile || isTesting || isFinalizing || (isPreparing && !isRecording);
       recordToggleBtn.setAttribute('aria-pressed', isRecording ? 'true' : 'false');
     }
 
@@ -257,7 +258,7 @@ class UIStateManager {
    * @private
    */
   _updateButtonTexts(flags) {
-    const { isRecording, isTestRecording, isTestAnalysing, isTesting, isPreparing } = flags;
+    const { isRecording, isTestRecording, isTestAnalysing, isTesting, isPreparing, isFinalizing } = flags;
     const { recordToggleBtn, testBtn } = this.elements;
 
     // Test buton text
@@ -266,8 +267,8 @@ class UIStateManager {
       let testLabel = 'Start microphone test';
       if (testBtnText) {
         if (isPreparing && isTesting) {
-          testBtnText.textContent = 'Preparing...';
-          testLabel = 'Preparing scenario test';
+          testBtnText.textContent = 'Cancel';
+          testLabel = 'Cancel test preparation';
         } else if (isTestRecording) {
           testBtnText.textContent = 'Finish';
           testLabel = 'Finish test recording and analyse';
@@ -275,7 +276,7 @@ class UIStateManager {
           testBtnText.textContent = 'Analysing...';
           testLabel = 'Analysing recording';
         } else {
-          testBtnText.textContent = 'Run Test';
+          testBtnText.textContent = 'Start test';
         }
       }
       testBtn.setAttribute('aria-label', testLabel);
@@ -286,13 +287,16 @@ class UIStateManager {
     const recordBtnText = recordToggleBtn?.querySelector('.btn-text');
 
     if (recordBtnText) {
-      let recordLabel = 'Record test sample';
-      if (isPreparing && isRecording) {
-        recordBtnText.textContent = 'Preparing...';
-        recordLabel = 'Preparing recording';
+      let recordLabel = 'Start microphone test';
+      if (isFinalizing) {
+        recordBtnText.textContent = 'Finishing...';
+        recordLabel = 'Finishing recording';
+      } else if (isPreparing && isRecording) {
+        recordBtnText.textContent = 'Cancel';
+        recordLabel = 'Cancel recording preparation';
       } else {
-        recordBtnText.textContent = isRecording ? 'Stop' : 'Record';
-        if (isRecording) recordLabel = 'Stop recording';
+        recordBtnText.textContent = isRecording ? 'Finish' : 'Start test';
+        if (isRecording) recordLabel = 'Finish test recording and analyse';
       }
       recordToggleBtn?.setAttribute('aria-label', recordLabel);
       if (recordToggleBtn) recordToggleBtn.title = recordLabel;

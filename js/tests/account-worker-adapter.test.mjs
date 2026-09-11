@@ -4,6 +4,37 @@ import worker from '../../worker/dev.js';
 import { createNodeAccountDb } from '../../server/node-account-db.mjs';
 
 const origin = 'https://micprobe.example';
+
+test('Worker redirects old page URLs to the canonical host, preserving path and query', async () => {
+  const env = { MICPROBE_PUBLIC_ORIGIN: origin };
+  for (const method of ['GET', 'HEAD']) {
+    for (const path of ['/', '/app?checkout=returned', '/privacy.html', '//other.example/path?x=1']) {
+      const response = await worker.fetch(new Request(`https://old.example${path}`, { method }), env);
+      assert.equal(response.status, 308);
+      assert.equal(response.headers.get('location'), `${origin}${path}`);
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    }
+  }
+});
+
+test('Worker serves canonical pages and keeps unconfigured development hosts usable', async () => {
+  for (const publicOrigin of [origin, undefined]) {
+    const env = { MICPROBE_PUBLIC_ORIGIN: publicOrigin,
+      ASSETS: { fetch: async request => new Response(new URL(request.url).pathname) } };
+    const response = await worker.fetch(new Request(`${origin}/privacy.html`), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('location'), null);
+    assert.equal(await response.text(), '/privacy.html');
+  }
+});
+
+test('Worker does not redirect page mutations between hosts', async () => {
+  const response = await worker.fetch(new Request('https://old.example/privacy.html', { method: 'POST' }),
+    { MICPROBE_PUBLIC_ORIGIN: origin });
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get('location'), null);
+});
+
 function fixture(t) {
   const db = createNodeAccountDb(':memory:');
   t.after(() => db.close());

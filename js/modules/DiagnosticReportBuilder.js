@@ -10,13 +10,15 @@
  * - LogManager (sanity report, log istatistikleri)
  * - RECORDING_COMPLETED event (kayit verisi)
  * - LOOPBACK_STATS event (WebRTC istatistikleri)
- * - navigator API (ortam bilgileri)
+ * - RunSnapshot.environment (capture-time browser hints)
  */
 import eventBus from './EventBus.js';
 import { EVENTS, IS_DEV } from './constants.js';
 import { log, downloadBlob } from './utils.js';
 import { UNKNOWN_COMMUNICATION_CONTEXT } from './CommunicationContext.js';
 import { UNKNOWN_TROUBLESHOOTING_CONTEXT } from './TroubleshootingContext.js';
+import { UNKNOWN_ENVIRONMENT } from './EnvironmentContext.js';
+import { getConstraintMismatches } from './CaptureContext.js';
 
 class DiagnosticReportBuilder {
   constructor() {
@@ -276,7 +278,7 @@ class DiagnosticReportBuilder {
       generatedAt: new Date().toISOString(),
       sessionId: this._deps.logManager?.sessionId || null,
       run: { id: runSnapshot.runId, accountOwnerId: runSnapshot.accountOwnerId || null, type: 'troubleshooting' },
-      environment: this._buildEnvironment(),
+      environment: this._buildEnvironment(runSnapshot),
       communicationContext: {
         ...(runSnapshot.communicationContext || UNKNOWN_COMMUNICATION_CONTEXT),
         usage: runSnapshot.troubleshooting?.usage || 'unknown'
@@ -366,21 +368,8 @@ class DiagnosticReportBuilder {
     };
   }
 
-  _buildEnvironment() {
-    let audioWorkletSupported = false;
-    try {
-      audioWorkletSupported = typeof AudioWorkletNode !== 'undefined';
-    } catch { /* */ }
-
-    return {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform || null,
-      language: navigator.language,
-      audioContextSupported: !!(window.AudioContext || window.webkitAudioContext),
-      mediaDevicesSupported: !!navigator.mediaDevices?.getUserMedia,
-      rtcPeerConnectionSupported: !!window.RTCPeerConnection,
-      audioWorkletSupported
-    };
+  _buildEnvironment(snapshot = this._runSnapshot) {
+    return snapshot?.environment || UNKNOWN_ENVIRONMENT;
   }
 
   _buildDevice() {
@@ -396,13 +385,12 @@ class DiagnosticReportBuilder {
     const constraints = Object.fromEntries(keys.map(key => [key, applied[key] ?? null]));
     // The device may ignore a requested value (e.g. 44.1 kHz on a 48 kHz-only interface,
     // mono on a stereo pair). Keep both and list every difference explicitly.
-    const constraintMismatches = run.appliedSettings ? keys
-      .filter(key => v[key] !== undefined && v[key] !== null && applied[key] !== undefined && applied[key] !== null
-        && String(v[key]) !== String(applied[key]))
-      .map(key => ({ key, requested: v[key], applied: applied[key] })) : [];
+    const constraintMismatches = getConstraintMismatches({ requestedConstraints: v, appliedConstraints: constraints });
     return {
       id: run.profileId,
       label: run.profileLabel,
+      referenceVersion: run.profileReferenceVersion ?? null,
+      runtime: run.captureRuntime ?? null,
       category: run.category,
       constraints,
       appliedConstraints: constraints,
@@ -438,7 +426,9 @@ class DiagnosticReportBuilder {
       osProcessing: { status: 'unavailable', reason: 'driver-and-enhancement-state-not-exposed-to-web-apps' },
       browserInputVolumeAdjustment: applied.autoGainControl === true
         ? { status: 'possible', reason: 'browser-agc-may-change-system-input-level' }
-        : { status: 'not-expected', reason: 'automatic-gain-control-off' },
+        : applied.autoGainControl === false
+          ? { status: 'not-expected', reason: 'automatic-gain-control-off' }
+          : { status: 'unavailable', reason: 'applied-automatic-gain-control-unknown' },
       pinnedCeiling: audioMetrics?.ceiling?.status === 'measured'
         ? { peakDb: audioMetrics.ceiling.peakDb, flatTopRate: audioMetrics.ceiling.flatTopRate,
           nearCeilingRate: audioMetrics.ceiling.nearCeilingRate } : null
@@ -483,6 +473,7 @@ class DiagnosticReportBuilder {
 
     return {
       requestedCodec: 'audio/opus',
+      requestedOpus: this._runSnapshot?.transport || null,
       senderCodec: s.senderCodec || null,
       receiverCodec: s.receiverCodec || null,
       requestedBitrate,

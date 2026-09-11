@@ -43,6 +43,9 @@ test('public pages, browser fixtures, encoder assets and worklets remain accessi
     ['/index.html', 'text/html'], ['/micprobe.html', 'text/html'],
     ['/privacy.html', 'text/html'], ['/terms.html', 'text/html'],
     ['/css/style.css', 'text/css'], ['/assets/micprobe-mark.svg', 'image/svg+xml'],
+    ['/robots.txt', 'text/plain'], ['/sitemap.xml', 'application/xml'],
+    ['/favicon.ico', 'image/x-icon'], ['/favicon.svg', 'image/svg+xml'],
+    ['/apple-touch-icon.png', 'image/png'], ['/social-card.png', 'image/png'],
     ['/js/tests/audio-audit-browser.html', 'text/html'],
     ['/js/tests/audio-audit-browser.js', 'text/javascript'],
     ['/js/worklets/passthrough-processor.js', 'text/javascript'],
@@ -56,16 +59,21 @@ test('public pages, browser fixtures, encoder assets and worklets remain accessi
     assert.ok(response.body.length > 0, path);
   }
   assert.equal((await request('/js/missing.wasm')).status, 404);
-  assert.equal((await request('/favicon.ico')).status, 204);
 });
 
-test('extensionless SPA routes serve the public entry point without reading private paths', async () => {
+test('only known application routes serve the public entry point', async () => {
   const index = await request('/index.html');
-  for (const path of ['/', '/app', '/app/report', '/server', '/server/premium-report-evaluator', '/js/missing-route']) {
+  for (const path of ['/', '/app', '/app/']) {
     const response = await request(path);
     assert.equal(response.status, 200, path);
     assert.equal(response.headers['content-type'], index.headers['content-type'], path);
     assert.deepEqual(response.body, index.body, path);
+  }
+  for (const path of ['/missing', '/app/report', '/server', '/server/premium-report-evaluator', '/js/missing-route']) {
+    const response = await request(path);
+    assert.equal(response.status, 404, path);
+    assert.match(response.body.toString(), /Page not found/);
+    assert.equal((await request(path, { method: 'HEAD' })).status, 404);
   }
 });
 

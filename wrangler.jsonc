@@ -7,16 +7,24 @@
     "directory": ".tmp/cloudflare-dev-assets",
     "binding": "ASSETS",
     "run_worker_first": true,
-    "not_found_handling": "single-page-application",
+    "not_found_handling": "404-page",
     "html_handling": "none"
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "redact_query_string": true
   },
   "env": {
     "dev": {
       "name": "micprobe-dev",
+      "workers_dev": true,
+      "triggers": { "crons": ["*/5 * * * *"] },
+      "routes": [{ "pattern": "micprobe.com", "custom_domain": true }],
       "vars": {
+        "MICPROBE_PUBLIC_ORIGIN": "https://micprobe.com",
+        "MICPROBE_EMAIL_ENABLED": "false",
+        "MICPROBE_EMAIL_FROM": "MicProbe <notifications@micprobe.com>",
+        "MICPROBE_GOOGLE_CLIENT_ID": "162448177626-l34bkesgakfivmi5rhddcm908fbqcpkh.apps.googleusercontent.com",
         "MICPROBE_FREEMIUS_MODE": "sandbox",
         "MICPROBE_FREEMIUS_SANDBOX_PRODUCT_ID": "33850",
         "MICPROBE_FREEMIUS_SANDBOX_PUBLIC_KEY": "pk_65160128b78ff12cd8db536007592",
@@ -29,6 +37,7 @@
         {
           "binding": "MICPROBE_ACCOUNTS",
           "database_name": "micprobe-dev-accounts",
+          "database_id": "5cef0cd3-63fd-45d6-9a12-61de3cac3be3",
           "migrations_dir": "migrations"
         }
       ],

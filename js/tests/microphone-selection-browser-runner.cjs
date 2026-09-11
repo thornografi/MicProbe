@@ -10,6 +10,7 @@ const BASE = 'http://localhost:8080';
     const context = await browser.newContext();
     await context.grantPermissions(['microphone'], { origin: BASE });
     const page = await context.newPage();
+    await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route(`${BASE}/js/tests/microphone-selection-fixture`, route => route.fulfill({

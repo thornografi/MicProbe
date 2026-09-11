@@ -1,6 +1,8 @@
-import { isAccountMutationAllowed, requireAccountUser } from './account-service.mjs';
+import { isAccountMutationAllowed, requireAccountUser, validateReport } from './account-service.mjs';
 import { createFreemiusLicenses, LICENSE_FIELDS, hasSandboxCheckoutProof } from './freemius-license.mjs';
 import { isDetailedReportInput } from './premium-report-evaluator.js';
+import { GOOGLE_PROOF_MAX_AGE_MS } from './account-store.mjs';
+import { freemiusPortalUrl } from '../js/modules/FreemiusPortal.js';
 
 const encoder = new TextEncoder();
 const RECHECK_MS = 24 * 60 * 60 * 1000;
@@ -157,13 +159,32 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
     let url;
     try { url = new URL(raw); } catch { throw problem('invalid_redirect'); }
     if (url.origin !== new URL(request.url).origin || url.pathname !== '/app' || url.hash) throw problem('invalid_redirect', 403);
-    for (const name of ['signature', 'checkout_state', 'license_id', 'user_id']) {
+    for (const name of ['signature', 'license_id', 'user_id']) {
       if (url.searchParams.getAll(name).length !== 1) throw problem('invalid_redirect', 403);
+    }
+    if (url.searchParams.getAll('checkout_state').length > 1) throw problem('invalid_redirect', 403);
+    if (!['license_id', 'user_id'].every(name => /^\d{1,30}$/.test(url.searchParams.get(name)))) {
+      throw problem('invalid_redirect', 403);
     }
     if (!await validSignature(unsignedUrl(raw), url.searchParams.get('signature'), config.productSecret)) {
       throw problem('invalid_signature', 403);
     }
     const state = url.searchParams.get('checkout_state');
+    // Hosted checkout uses the dashboard's static redirect and may omit the
+    // requested success_url. A signed return alone never proves account ownership:
+    // reuse the same bounded, Google-authoritative recovery as creation webhooks.
+    if (!url.searchParams.has('checkout_state')) {
+      const id = url.searchParams.get('license_id');
+      const buyerId = url.searchParams.get('user_id');
+      const existing = await accounts.getLicenseById(id);
+      if (existing && (existing.userId !== user.id || existing.freemiusUserId !== buyerId)) {
+        throw problem('checkout_not_found', 409);
+      }
+      const stored = existing ? await refreshLicense(existing, true)
+        : await recoverNewPurchase(id, user.id, buyerId);
+      if (!stored) throw problem('checkout_not_found', 409);
+      return json({ ok: true, premium: { unlocked: stored.active === true, mode } });
+    }
     if (!await accounts.getCheckout(state, user.id)) throw problem('checkout_not_found', 409);
     const license = await retrieve(url.searchParams.get('license_id'), url.searchParams.get('user_id'));
     const stored = await confirmFirstLink(await accounts.completeCheckout(state, user.id, {
@@ -192,12 +213,59 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
     return json({ ok: true, premium: { unlocked: refreshed?.active === true, mode } });
   }
 
-  async function portal(user) {
+  async function portal(request, user) {
     const record = await accounts.getLicense(user.id);
     if (!record) throw problem('purchase_not_linked', 409);
-    // A license key can restore app access without proving ownership of the
-    // buyer's entire billing account. Freemius authenticates that account itself.
-    return json({ ok: true, url: 'https://customers.freemius.com/login/' });
+    const verifiedAt = Date.parse(user.googleVerifiedAt);
+    if (!Number.isFinite(verifiedAt) || verifiedAt > Date.now() || Date.now() - verifiedAt > GOOGLE_PROOF_MAX_AGE_MS) {
+      throw problem('portal_confirmation_required', 403);
+    }
+    if (!user.authoritativeEmail) throw problem('portal_identity_unverified', 403);
+    if (![record.licenseId, record.freemiusUserId].every(id => /^[1-9]\d{0,29}$/.test(String(id)))) {
+      throw problem('portal_owner_mismatch', 403);
+    }
+    // One shared deadline keeps all provider calls within the browser's timeout.
+    const signal = AbortSignal.timeout(10000);
+    const license = await api(`licenses/${record.licenseId}.json`, { fields: 'id,plugin_id,user_id,environment', signal });
+    // Billing remains accessible for a refunded/expired purchase. These checks
+    // prove its current owner/product/environment, not its Premium entitlement.
+    if (String(license?.id) !== record.licenseId || String(license.plugin_id) !== String(config.productId)
+        || String(license.user_id) !== record.freemiusUserId
+        || ![mode === 'production' ? 0 : 1, mode === 'production' ? '0' : '1'].includes(license.environment)) {
+      throw problem('portal_owner_mismatch', 403);
+    }
+    const buyer = await api(`users/${record.freemiusUserId}.json`, { fields: 'id,email', signal });
+    // License-key possession alone does not establish billing-account ownership.
+    if (String(buyer?.id) !== record.freemiusUserId || typeof buyer.email !== 'string'
+        || !user.email || buyer.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw problem('portal_owner_mismatch', 403);
+    }
+    const checkCurrentOwner = async () => {
+      const current = await requireUser(request);
+      const linked = await accounts.getLicenseById(record.licenseId);
+      if (current.id !== user.id || current.email !== user.email || !current.authoritativeEmail
+          || linked?.userId !== user.id || linked.freemiusUserId !== record.freemiusUserId) {
+        throw problem('account_changed', 409);
+      }
+    };
+    await checkCurrentOwner();
+    const result = await api('portal/login.json', { method: 'POST', body: { id: record.freemiusUserId }, signal });
+    await checkCurrentOwner();
+    const url = freemiusPortalUrl(result?.link);
+    if (!url) throw problem('portal_unavailable', 503);
+    // Return only the immediately used link. Never persist, log, or separately expose its token.
+    return json({ ok: true, url });
+  }
+
+  async function recoverNewPurchase(id, expectedUserId = null, expectedBuyerId) {
+    if (!/^\d{1,30}$/.test(String(id))) return null;
+    const source = await api(`licenses/${id}.json`, { fields: LICENSE_FIELDS });
+    const license = verifiedLicense(source, id, expectedBuyerId);
+    const createdAt = licenseCreatedAt(source.created);
+    if (createdAt === null) return null;
+    const buyer = await api(`users/${encodeURIComponent(license.freemiusUserId)}.json`, { fields: 'id,email' });
+    if (String(buyer.id) !== license.freemiusUserId) return null;
+    return confirmFirstLink(await accounts.recoverCheckout(license, { email: buyer.email, createdAt, expectedUserId }));
   }
 
   async function webhook(request) {
@@ -219,15 +287,8 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
       // recovery to a single recent Google-authoritative email owner whose
       // pending checkout contains the provider's actual license creation time.
       // This is email ownership evidence, not cryptographic checkout correlation.
-      if (!/^\d+$/.test(String(id))) return json({ ok: true, ignored: true });
       try {
-        const source = await api(`licenses/${id}.json`, { fields: LICENSE_FIELDS });
-        const license = verifiedLicense(source, id);
-        const createdAt = licenseCreatedAt(source.created);
-        if (createdAt === null) return json({ ok: true, ignored: true });
-        const buyer = await api(`users/${encodeURIComponent(license.freemiusUserId)}.json`, { fields: 'id,email' });
-        if (String(buyer.id) !== license.freemiusUserId) return json({ ok: true, ignored: true });
-        await confirmFirstLink(await accounts.recoverCheckout(license, { email: buyer.email, createdAt }));
+        await recoverNewPurchase(id);
       } catch (error) {
         if (error.status === 403 || error.status === 404) return json({ ok: true, ignored: true });
         throw error;
@@ -254,7 +315,15 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
         if (!current?.active) throw problem('premium_access_required', 403);
         const { report } = await bodyJson(request, 256 * 1024);
         if (!isDetailedReportInput(report)) throw problem('missing_report');
-        return json({ ok: true, detailed: evaluatePremiumReport(report) });
+        const saved = report.run?.id ? await accounts.savedEvaluation?.(user.id, report.run.id) : null;
+        if (saved) return json({ ok: true, detailed: saved.detailed });
+        if (report.run?.accountOwnerId && report.run.accountOwnerId !== user.id) throw problem('report_not_owned', 403);
+        return json({ ok: true, detailed: evaluatePremiumReport(validateReport(report)) });
+      }
+      if (path.startsWith('/api/account/reports') && enabled) {
+        const user = request.method === 'GET' ? requireAccountUser(request, await accounts.getUser(request)) : await requireUser(request);
+        await refreshUserLicense(user.id);
+        return null;
       }
       if (!['/api/account/checkout', '/api/account/purchase', '/api/account/restore', '/api/account/portal'].includes(path)) return null;
       if (request.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
@@ -262,11 +331,11 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
       if (path.endsWith('/checkout')) return await startCheckout(request, user);
       if (path.endsWith('/purchase')) return await completePurchase(request, user);
       if (path.endsWith('/restore')) return await restorePurchase(request, user);
-      return await portal(user);
+      return await portal(request, user);
     } catch (error) {
       return json({ ok: false, error: error.code || 'account_request_failed' }, error.status || 500);
     }
   }
 
-  return { handle, refreshLicense };
+  return { handle, refreshLicense, refreshUserLicense };
 }

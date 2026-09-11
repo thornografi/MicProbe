@@ -9,12 +9,15 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const constants = vm.runInNewContext(read('js/modules/constants.js').replaceAll('export const ', 'const ')
   + '\n({QUALITY, VU_METER})', { location: { hostname: 'localhost' } });
 const evaluator = vm.runInNewContext(read('js/modules/ReportEvaluator.js').replace(/^import .*;$/gm, '')
-  .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants });
+  .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants, structuredClone,
+    usableReport: require('../modules/MeasurementValidity.js').usableReport,
+    ...require('../modules/CaptureContext.js') });
 const plain = value => JSON.parse(JSON.stringify(value));
 
 function report(metrics = {}) {
   return {
     run: { id: 'preview-a', type: 'record' },
+    profile: { appliedConstraints: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } },
     audioMetrics: {
       status: 'measured', source: 'decoded-file-pcm', sampleCount: 48000, durationMs: 1000,
       signal: { rmsDb: -25, peakDb: -10, maxBlockRmsDb: -20 },
@@ -22,7 +25,9 @@ function report(metrics = {}) {
       noiseFloor: { status: 'measured', estimatedDb: -60 },
       snr: { status: 'measured', estimatedDb: 30 },
       coverage: { truncated: false },
-      dropouts: { status: 'unavailable' }, ...metrics,
+      dropouts: { status: 'unavailable' }, guidedNoise: { status: 'measured', method: 'user-guided-file-segments' }, ...metrics,
+      noiseFloor: { method: 'guided-quiet-segment', ...(metrics.noiseFloor || { status: 'measured', estimatedDb: -60 }) },
+      snr: { method: 'guided-power-subtraction', ...(metrics.snr || { status: 'measured', estimatedDb: 30 }) },
       signal: { maxBlockRmsStatus: 'measured', maxBlockRmsWindowMs: 10,
         ...(metrics.signal || { rmsDb: -25, peakDb: -10, maxBlockRmsDb: -20 }) }
     }
@@ -43,6 +48,14 @@ const CASES = [
   [{ dropouts: { status: 'measured', count: 2 } }, 'DROPOUTS', 'warning', 2],
   [{ headroom: { peakDb: -0.3 } }, 'LOW_HEADROOM', 'info', -0.5]
 ];
+
+test('free scope explains unavailable guided measurements without prescribing another test', () => {
+  for (const reason of ['guided-prompts-incomplete', 'guided-segments-too-short', 'quiet-segment-not-steady', 'unknown']) {
+    const result = evaluator.evaluateFree(report({ guidedNoise: { status: 'unavailable', reason } }));
+    assert.match(result.scope, /comparison of quiet and speaking levels is unavailable/);
+    assert.doesNotMatch(result.scope, /Repeat|try again|follow the|change your/i);
+  }
+});
 
 test('short free preview preserves core findings without manufacturing a voice-quality rating', () => {
   for (const [metrics, id, severity, threshold] of CASES) {
@@ -87,13 +100,13 @@ test('existing strict threshold boundaries and high-noise/SNR suppression remain
 
 test('summary contains one highest-priority fact and preserves the first rule when priority ties', () => {
   const base = {
-    signal: { rmsDb: -55, peakDb: -48, maxBlockRmsDb: -50 },
+    signal: { rmsDb: -20, peakDb: -5, maxBlockRmsDb: -10 },
     noiseFloor: { status: 'measured', estimatedDb: -10 },
     clipping: { status: 'measured', method: 'sample-saturation', rate: 0.1 },
     dropouts: { status: 'measured', count: 5 }
   };
   const result = evaluator.evaluateFree(report(base));
-  assert.equal(result.findings.length, 4);
+  assert.equal(result.findings.length, 3);
   assert.equal(result.summary, result.findings.find(item => item.id === 'HIGH_NOISE').message);
   assert.equal(result.overall.stars, null);
   assert.equal((result.summary.match(/[.!?](?:\s|$)/g) || []).length, 1);
@@ -104,8 +117,9 @@ test('summary contains one highest-priority fact and preserves the first rule wh
     clipping: { status: 'measured', method: 'sample-saturation', rate: 0.001 },
     dropouts: { status: 'unavailable' }
   }));
-  assert.equal(warningOnly.summary, warningOnly.findings[0].message);
-  assert.equal(warningOnly.findings[0].id, 'WEAK_SIGNAL');
+  assert.match(warningOnly.summary, /noise segment has a high level/);
+  assert.doesNotMatch(warningOnly.summary, /distortion|interruptions/);
+  assert.equal(warningOnly.findings[0].id, 'HIGH_NOISE');
   assert.equal(warningOnly.overall.stars, null);
 });
 
@@ -128,11 +142,11 @@ test('limited preview stays short while expanded scope retains unmeasured noise,
   assert.equal(result.overall.score, 'limited');
   assert.equal(result.overall.stars, null);
   assert.equal(result.assessment.status, 'limited');
-  assert.equal(result.summary, 'No low-level, pinned-ceiling, true-peak or full-scale sample flags were detected.');
+  assert.equal(result.summary, 'The available checks found no signs of very low recording level or audio exceeding its recording limits.');
   assert.match(result.scopeSummary, /speech clarity and recipient audio are unmeasured/);
   assert.match(result.scopeSummary, /^First 1 s of saved audio only/);
   assert.doesNotMatch(result.summary, /looks good|excellent|all clear|controlled quiet|intelligibility/i);
-  assert.match(result.scope, /Noise or signal-to-noise remains unassessed without controlled quiet and speaking segments/);
+  assert.match(result.scope, /Noise or signal-to-noise remains unassessed/);
   assert.match(result.scope, /first part only/);
   assert.match(result.scope, /additional encoding/);
   assert.match(result.scope, /Speech intelligibility.*are not measured/);
@@ -148,7 +162,7 @@ test('nonfinite noise or SNR remains explicitly unassessed in scope without chan
     const result = evaluator.evaluateFree(report({ ...patch, signal: { rmsDb: -55, peakDb: -48, maxBlockRmsDb: -50 } }));
     assert.equal(result.assessment.status, 'limited');
     assert.equal(result.overall.stars, null);
-    assert.equal(result.summary, 'Even the loudest part of this recording has a low level.');
+    assert.equal(result.summary, 'The recording has a low sound level.');
     assert.match(result.scope, /remains unassessed/);
   }
 });
@@ -163,6 +177,7 @@ test('insufficient and legacy no-audio reports retain unknown outcomes without a
     assert.equal(result.assessment.status, 'insufficient');
     assert.match(result.summary, /not enough measured audio/);
     assert.doesNotMatch(result.summary, /No level|looks good/);
+    assert.doesNotMatch(result.summary, /\b(record|try|check|adjust|increase|decrease|repeat)\b/i);
   }
   const legacy = evaluator.evaluateFree({ ...report(), run: { type: 'troubleshooting' } });
   assert.equal(legacy.overall.score, 'unknown');
@@ -171,4 +186,32 @@ test('insufficient and legacy no-audio reports retain unknown outcomes without a
   assert.equal(legacy.findings.length, 0);
   assert.equal(legacy.summary, 'No audio was recorded for this report.');
   assert.match(legacy.scope, /No microphone, application, network or driver performance was measured/);
+});
+
+test('free summaries keep numeric evidence and cause interpretations in the detailed findings', () => {
+  const fixtures = [
+    report({ signal: { rmsDb: -18, peakDb: -12, maxBlockRmsDb: -15, crestFactorDb: 6 },
+      ceiling: { status: 'measured', ceilingDb: -12, nearCeilingRate: 0.6, flatTopRate: 0.3 } }),
+    report({ truePeak: { status: 'measured', db: 0.8 } })
+  ];
+  for (const input of fixtures) {
+    const result = evaluator.evaluateFree(input);
+    assert.match(result.summary, /possible distortion/);
+    assert.doesNotMatch(result.summary, /\d|dB|gain|driver|system input|before the browser|re-encoding/i);
+    assert.doesNotMatch(result.summary, /\b(check|listen|repeat|compare|adjust|increase|decrease)\b/i);
+    assert.match(result.findings[0].message, /dBFS|dBTP/, 'Premium findings retain the actual evidence');
+    assert.doesNotMatch(result.scope, /waveform pinned|clipping that happened before capture/);
+  }
+  const preview = evaluator._generateSummary([{ id: 'FUTURE_RULE', severity: 'warning',
+    message: 'Increase input gain by 12 dB to fix the driver.' }]);
+  assert.doesNotMatch(preview, /12|gain|driver|increase/i, 'New detailed rules cannot leak instructions into the preview');
+});
+
+test('a low sustained level summary does not claim that a brief loud moment was quiet', () => {
+  const input = report({ lufs: { status: 'measured', integratedStatus: 'measured', integrated: -50 } });
+  const result = evaluator.evaluateFree(input);
+  assert.equal(result.findings[0].basis, 'integrated-loudness');
+  assert.match(result.summary, /low sound level/);
+  assert.doesNotMatch(result.summary, /loudest|peak|LUFS/);
+  assert.match(result.findings[0].message, /brief louder moment/);
 });

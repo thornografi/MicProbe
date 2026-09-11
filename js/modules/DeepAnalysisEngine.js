@@ -3,10 +3,9 @@ import eventBus from './EventBus.js';
 import { EVENTS, DEEP_ANALYSIS, QUALITY } from './constants.js';
 import { log } from './utils/log.js';
 
-const WORKER_URL = new URL('../workers/spectral-analysis-worker.js', import.meta.url).href;
-
 export class DeepAnalysisEngine {
-  constructor() {
+  constructor({ emitEvents = true } = {}) {
+    this.emitEvents = emitEvents;
     this._lastResults = null;
     this._job = null;
     this._runCounter = 0;
@@ -41,7 +40,7 @@ export class DeepAnalysisEngine {
       job.context.close().catch(() => {});
       job.context = null;
     }
-    if (status === 'failed') eventBus.emit(EVENTS.DEEP_ANALYSIS_FAILED, result);
+    if (status === 'failed' && this.emitEvents) eventBus.emit(EVENTS.DEEP_ANALYSIS_FAILED, result);
   }
 
   /** @param {Object} options {source:'test'|'record', runId, onProgress} */
@@ -52,7 +51,7 @@ export class DeepAnalysisEngine {
     const cancelled = new Promise(resolve => { job.resolveCancelled = resolve; });
     this._job = job;
     job.timeoutId = setTimeout(() => this._interrupt(job, 'failed', 'analysis-timeout'), DEEP_ANALYSIS.MAX_WAIT_MS);
-    eventBus.emit(EVENTS.DEEP_ANALYSIS_STARTED, { source, runId: job.runId });
+    if (this.emitEvents) eventBus.emit(EVENTS.DEEP_ANALYSIS_STARTED, { source, runId: job.runId });
     // decodeAudioData cannot be aborted reliably. The public promise still settles
     // immediately on cancel, and identity checks discard any later decode result.
     return Promise.race([this._performAnalysis(blob, source, onProgress, job), cancelled]);
@@ -65,7 +64,7 @@ export class DeepAnalysisEngine {
     clearTimeout(job.timeoutId);
     this._lastResults = { runId: job.runId, ...result };
     this._job = null;
-    eventBus.emit(result.status === 'failed' ? EVENTS.DEEP_ANALYSIS_FAILED : EVENTS.DEEP_ANALYSIS_READY, this._lastResults);
+    if (this.emitEvents) eventBus.emit(result.status === 'failed' ? EVENTS.DEEP_ANALYSIS_FAILED : EVENTS.DEEP_ANALYSIS_READY, this._lastResults);
     return this._lastResults;
   }
 
@@ -140,13 +139,13 @@ export class DeepAnalysisEngine {
       job.rejectWorker = reject;
       let fftSize = DEEP_ANALYSIS.FFT_SIZE;
       while (fftSize > channels[0].length) fftSize >>= 1;
-      const worker = new Worker(WORKER_URL, { type: 'module' });
+      const worker = new Worker(new URL('../workers/spectral-analysis-worker.js', import.meta.url), { type: 'module' });
       job.worker = worker;
       worker.onmessage = ({ data: message }) => {
         if (!this._isCurrent(job) || message.runId !== job.runId) return;
         if (message.type === 'progress') {
           if (onProgress) onProgress(message.ratio);
-          eventBus.emit(EVENTS.DEEP_ANALYSIS_PROGRESS, { runId: job.runId, ratio: message.ratio, stage: 'pcm-and-spectral' });
+          if (this.emitEvents) eventBus.emit(EVENTS.DEEP_ANALYSIS_PROGRESS, { runId: job.runId, ratio: message.ratio, stage: 'pcm-and-spectral' });
         } else if (message.type === 'done') {
           this._terminateWorker(job);
           resolve(message.result);

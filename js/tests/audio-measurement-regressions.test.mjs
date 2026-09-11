@@ -243,3 +243,14 @@ test('Oversized input and decode failure cannot produce measured audio', async (
   assert.equal(failure.status, 'failed'); assert.equal(failure.audioMetrics, null);
   engine.destroy();
 });
+
+test('review reanalysis does not publish recording lifecycle events or replace the primary analysis', async () => {
+  const engine = new DeepAnalysisEngine({ emitEvents: false }), events = [];
+  const off = [EVENTS.DEEP_ANALYSIS_STARTED, EVENTS.DEEP_ANALYSIS_READY, EVENTS.DEEP_ANALYSIS_FAILED]
+    .map(type => eventBus.on(type, value => events.push(value)));
+  engine._decode = async () => { throw new Error('invalid container'); };
+  try {
+    const result = await engine.analyze(new Blob(['bad']), { runId: 'review-reanalysis' });
+    assert.equal(result.status, 'failed'); assert.deepEqual(events, []);
+  } finally { off.forEach(fn => fn()); engine.destroy(); }
+});

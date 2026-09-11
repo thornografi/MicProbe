@@ -1,10 +1,13 @@
 // Private, source-backed next steps. New reports use canonical saved-audio
 // findings. Description-based rules remain only for existing report contexts.
 const VERIFIED_ON = '2026-09-05';
+const { inputSettingsInstruction, INPUT_SOURCES } = require('../js/modules/InputGuidance.js');
+const { normalizeEnvironment } = require('../js/modules/EnvironmentContext.js');
+const { getAppliedConstraints } = require('../js/modules/CaptureContext.js');
 const source = (label, url) => ({ label, url });
 const SOURCES = {
-  windows: source('Microsoft: microphone checks', 'https://support.microsoft.com/en-us/windows/hardware/drivers/fix-microphone-problems'),
-  macInput: source('Apple: Mac sound input settings', 'https://support.apple.com/guide/mac-help/change-the-sound-input-settings-mchlp2567/mac'),
+  windows: INPUT_SOURCES.windows,
+  macInput: INPUT_SOURCES.macos,
   latency: source('Resplendence: using LatencyMon', 'https://www.resplendence.com/latencymon_using'),
   windowsPerformance: source('Microsoft: checking Windows performance', 'https://support.microsoft.com/en-us/windows/tips-to-improve-pc-performance-in-windows-b3b3ef5b-5953-fb6a-2528-4bbed82fba96'),
   androidBrowser: source('Google: Chrome microphone permissions', 'https://support.google.com/chrome/answer/2693767?co=GENIE.Platform%3DAndroid&hl=en'),
@@ -160,6 +163,16 @@ const DESCRIPTION_RULES = [
   }
 ];
 
+function inputLevelInstruction(report, reduce = false) {
+  const automatic = getAppliedConstraints(report.profile).autoGainControl === true;
+  if (automatic) return `Automatic gain control was active. Check whether the input level is managed or moves automatically during speech before changing a manual control. ${reduce
+    ? 'If playback sounds distorted, lower one available input-level control or move slightly farther from the microphone. Do not increase gain.'
+    : 'If spoken audio sounds too quiet, check microphone position and one available input-level control.'} If the system level is managed, use the microphone/interface control or speaking distance instead.`;
+  return reduce
+    ? 'If playback sounds distorted, lower one available input-level control or move slightly farther from the microphone. Do not increase gain to compensate for quiet sections.'
+    : 'If spoken audio sounds too quiet, check microphone position and the selected input level. The recording alone does not identify the cause.';
+}
+
 function automaticInputGuidance(report, context, measurementFindings) {
   if (report.run?.type === 'troubleshooting' || context.osSource !== 'browser-hint'
       || !['windows', 'macos'].includes(context.os) || report.audioMetrics?.source !== 'decoded-file-pcm') return [];
@@ -167,7 +180,8 @@ function automaticInputGuidance(report, context, measurementFindings) {
   // run another level classifier here or promote imported report fields to evidence.
   const saturation = measurementFindings.some(item => item.id === 'FULL_SCALE_SAMPLES');
   const pinned = !saturation && measurementFindings.some(item => item.id === 'PINNED_CEILING');
-  const lowLevel = !saturation && !pinned && measurementFindings.some(item => item.id === 'LOW_RECORDED_LEVEL');
+  const lowLevel = !saturation && !pinned && !measurementFindings.some(item => item.id === 'TRUE_PEAK_OVER')
+    && measurementFindings.some(item => item.id === 'LOW_RECORDED_LEVEL' && !item.nearSilent);
   if (!saturation && !pinned && !lowLevel) return [];
   const windows = context.os === 'windows';
   const osName = windows ? 'Windows' : 'macOS';
@@ -177,37 +191,30 @@ function automaticInputGuidance(report, context, measurementFindings) {
     reason: saturation
       ? 'Some samples in the saved recording reach full scale. Listen for distortion before changing the input level.'
       : pinned
-        ? 'The saved waveform is pinned flat below full scale. This matches clipping at the interface or microphone gain that a system input level below 100% then hides from full-scale counts.'
-        : 'Even the loudest measured part of the saved recording has a low level. This does not show whether you were speaking or why the level was low.',
-    action: saturation
-      ? `If speech sounds distorted, compare a lower input level in ${osName}, where available.`
-      : pinned
-        ? `If speech sounds distorted, lower the interface or microphone gain first, then check the input level in ${osName}.`
-        : `If you spoke during this recording and playback is too quiet, check the selected input and its level in ${osName}.`,
+        ? 'Many saved samples cluster near a ceiling below full scale. Clipping or limiting can produce this pattern; it does not locate the cause in the interface or microphone.'
+        : measurementFindings.find(item => item.id === 'LOW_RECORDED_LEVEL').reason + ' This does not show whether you were speaking or why the level was low.',
+    action: saturation || pinned
+      ? `If playback sounds distorted, reduce an available input-level control in ${osName} or on your device. Increasing gain could worsen the peaks.`
+      : `If you spoke during this recording and playback is too quiet, check the selected input in ${osName}.`,
     steps: [
-      windows
-        ? 'Open Windows Settings > System > Sound > Input, then select the same device used for this recording. Use its microphone test; controls differ between Windows versions.'
-        : 'Open Apple menu > System Settings (System Preferences on older versions) > Sound > Input, then select the same device used for this recording.',
-      saturation
-        ? 'If the selected device offers an input-volume control, note its current value and lower it slightly only if speech sounds distorted. Repeat the same phrase at the same distance.'
-        : pinned
-          ? 'Note the current input-volume value but do not raise it. Lower the gain on the interface or microphone (the clip indicator, if any, should stop lighting), then repeat the same phrase at the same distance.'
-          : 'If speech is still too quiet and the selected device offers an input-volume control, note its current value and increase it slightly. Repeat the same phrase at the same distance.',
-      'Compare the spoken parts in playback. If the device has no adjustable input volume, use its supported controls or compare a change in speaking distance.'
+      inputSettingsInstruction(context.os),
+      inputLevelInstruction(report, saturation || pinned)
     ],
-    expected: saturation
-      ? 'The repeat should reduce full-scale samples without making speech hard to hear. A change supports that input setting; it does not establish where the original distortion began.'
-      : pinned
-        ? 'The repeat should no longer show a flat ceiling and speech should sound clean. If the ceiling stays while the gain is low, the limit is elsewhere in the device chain.'
-        : 'The repeat should make speech easier to hear without adding distortion. If the original recording contained no speech, its low level does not justify an input-level change.',
-    next: 'Keep the change only if playback improves. If it does not, restore the previous level. This local result does not identify a native-app, driver or network fault.',
+    expected: 'These controls apply to the local recording device. The selected platform preset does not measure settings inside your actual app.',
     evidence: `Based on the saved recording and a browser hint for ${osName}. The operating system's settings and the cause of the measured level were not inspected.`,
     sources: [windows ? SOURCES.windows : SOURCES.macInput]
   }];
 }
 
 function getTroubleshootingGuidance(report, { measurementFindings = [] } = {}) {
-  const context = report?.troubleshooting;
+  let context = report?.troubleshooting;
+  // Current measured reports own a frozen capture environment. A legacy target
+  // description must not redirect that recording's instructions to another OS.
+  if (report?.run?.type !== 'troubleshooting' && report?.environment?.version === 1) {
+    const environment = normalizeEnvironment(report.environment);
+    context = { version: 1, os: environment.os, osSource: environment.osSource,
+      ...Object.fromEntries(['app', 'client', 'symptom', 'scope', 'trigger'].map(key => [key, 'unknown'])) };
+  }
   if (!context || typeof context !== 'object' || Array.isArray(context) || context.version !== 1) return [];
   const usage = report.run?.type === 'troubleshooting' ? context.usage : report.communicationContext?.usage;
   const automatic = ['app', 'client', 'symptom', 'scope', 'trigger'].every(key => context[key] === 'unknown');
@@ -224,4 +231,4 @@ function getTroubleshootingGuidance(report, { measurementFindings = [] } = {}) {
   });
 }
 
-module.exports = { getTroubleshootingGuidance };
+module.exports = { getTroubleshootingGuidance, inputLevelInstruction };

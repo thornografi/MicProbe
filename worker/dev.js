@@ -1,9 +1,12 @@
 import { evaluatePremiumReport, isDetailedReportInput } from './premium-report-evaluator.js';
 import { createAccountService } from '../server/account-service.mjs';
+import { createTestAccess } from '../server/test-access.mjs';
+import { createReviewService } from '../server/review-service.mjs';
 import { createAccountBilling } from '../server/account-billing.mjs';
 import { createLegacyPremium } from '../server/legacy-premium.mjs';
 import { hasSandboxCheckoutProof, readBoundedBillingJson } from '../server/freemius-license.mjs';
 import { isAccountMutationAllowed } from '../server/account-service.mjs';
+import { createAccountEmailService, readEmailConfig } from '../server/account-email.mjs';
 
 const CSP_POLICY = [
   "default-src 'self'",
@@ -399,13 +402,19 @@ async function handleDetailedReport(freemiusEnv, request) {
 function withSecurityHeaders(response, requestUrl) {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    headers.set(name, value);
+    if (!headers.has(name)) headers.set(name, value);
   }
 
   const contentType = headers.get('Content-Type') || '';
   const pathname = new URL(requestUrl).pathname;
   if (contentType.includes('text/html') || pathname === '/' || pathname === '/app') {
-    headers.set('Content-Security-Policy', CSP_POLICY);
+    if (!pathname.startsWith('/api/account/')) {
+      headers.set('Content-Security-Policy', CSP_POLICY);
+      headers.set('Cache-Control', 'no-cache');
+    }
+  } else if (response.ok && pathname.startsWith('/assets/')) {
+    // Only content-hashed files from the build are emitted under /assets/.
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   }
 
   return new Response(response.body, {
@@ -417,16 +426,29 @@ function withSecurityHeaders(response, requestUrl) {
 
 function assetRequestFor(request) {
   const url = new URL(request.url);
-  if (url.pathname === '/app' || url.pathname === '/app/') {
-    url.pathname = '/index.html';
+  if (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/app/') {
+    url.pathname = url.pathname === '/' ? '/index.html' : '/app.html';
     return new Request(url, request);
   }
   return request;
 }
 
 export default {
-  async fetch(request, env) {
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(createAccountEmailService({ db: env.MICPROBE_ACCOUNTS, config: readEmailConfig(env) }).flush());
+  },
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // Move page visits to the canonical host; API requests keep their origin checks.
+    if (env.MICPROBE_PUBLIC_ORIGIN && !url.pathname.startsWith('/api/') &&
+        (request.method === 'GET' || request.method === 'HEAD')) {
+      const target = new URL(env.MICPROBE_PUBLIC_ORIGIN);
+      if (url.origin !== target.origin) {
+        target.pathname = url.pathname;
+        target.search = url.search;
+        return withSecurityHeaders(Response.redirect(target.href, 308), request.url);
+      }
+    }
     const freemiusEnv = readFreemiusEnv(env, request.url);
     // Once Google sign-in is enabled, a missing D1 binding must fail closed
     // instead of silently restoring the anonymous token billing path.
@@ -439,7 +461,7 @@ export default {
         return jsonResponse({ ok: true, entitlement: await createLegacyPremium(freemiusEnv).restore(licenseKey) });
       } catch (error) { return jsonResponse({ ok: false, error: error.code || 'invalid_license_key' }, error.status || 400); }
     }
-    if (url.pathname.startsWith('/api/account/') || url.pathname === '/api/freemius/webhook'
+    if (url.pathname.startsWith('/api/reviews/') || url.pathname.startsWith('/api/tests/') || url.pathname.startsWith('/api/account/') || url.pathname === '/api/freemius/webhook' || url.pathname === '/api/resend/webhook'
       || (url.pathname === '/api/report/detailed' && accountConfigured)) {
       try {
         if (env.MICPROBE_PUBLIC_ORIGIN && url.origin !== new URL(env.MICPROBE_PUBLIC_ORIGIN).origin) {
@@ -450,8 +472,17 @@ export default {
           origin: env.MICPROBE_PUBLIC_ORIGIN || url.origin });
         const billing = createAccountBilling({ accounts, config: freemiusEnv,
           checkoutUrl: buildFreemiusCheckoutUrl(freemiusEnv), enabled: accountConfigured, evaluatePremiumReport });
-        const response = await billing.handle(request) || await accounts.handle(request);
-        if (response) return withSecurityHeaders(response, request.url);
+        const email = createAccountEmailService({ db: env.MICPROBE_ACCOUNTS, config: readEmailConfig(env) });
+        const tests = createTestAccess({ db: env.MICPROBE_ACCOUNTS, accounts, billing,
+          legacy: createLegacyPremium(freemiusEnv), origin: env.MICPROBE_PUBLIC_ORIGIN || url.origin });
+        const reviews = createReviewService({ db: env.MICPROBE_ACCOUNTS, accounts, billing, tests,
+          mode: freemiusEnv.mode, origin: env.MICPROBE_PUBLIC_ORIGIN || url.origin });
+        const response = await tests.handle(request, { ip: request.headers.get('CF-Connecting-IP') || '' })
+          || await reviews.handle(request) || await email.handle(request) || await billing.handle(request) || await accounts.handle(request);
+        if (response) {
+          if (response.ok && !url.pathname.startsWith('/api/tests/') && !url.pathname.startsWith('/api/reviews/') && url.pathname !== '/api/resend/webhook' && ctx) ctx.waitUntil(email.flush());
+          return withSecurityHeaders(response, request.url);
+        }
         if (url.pathname.startsWith('/api/account/')) return jsonResponse({ ok: false, error: 'not_found' }, 404);
       } catch {
         return jsonResponse({ ok: false, error: 'account_service_unavailable' }, 503);
@@ -480,10 +511,6 @@ export default {
 
     if (url.pathname === '/api/freemius/verify') {
       return handleFreemiusVerify(freemiusEnv, url, env);
-    }
-
-    if (url.pathname === '/favicon.ico') {
-      return new Response(null, { status: 204, headers: SECURITY_HEADERS });
     }
 
     const assetResponse = await env.ASSETS.fetch(assetRequestFor(request));

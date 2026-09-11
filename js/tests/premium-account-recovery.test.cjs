@@ -10,6 +10,8 @@ function fixture({ request, refresh, purchase } = {}) {
   const messages = []; const requests = []; const refreshes = []; const rejections = [];
   const account = {
     getState: () => state, subscribe() {},
+    async bootstrap() { return state; },
+    requireSignIn() { return !!state.user; },
     async refresh(options) { refreshes.push(options); await refresh?.(state); },
     async refreshRejectedAccess(code, owner) {
       rejections.push({ code, owner });
@@ -20,13 +22,47 @@ function fixture({ request, refresh, purchase } = {}) {
   const source = fs.readFileSync(require.resolve('../modules/PremiumAccess.js'), 'utf8').replace(/^import .*;$/gm, '')
     .replace('export default premiumAccess;', 'premiumAccess;');
   const premium = vm.runInNewContext(source, {
+    projectArchiveReport: require('../modules/ArchiveReport.js').projectArchiveReport,
     URL, Date, AbortSignal, localStorage: storage, sessionStorage: storage, accountAccess: account,
     fetch: async (url, options) => { requests.push({ url, options }); return request(url, options); },
-    window: { location: { href: 'https://micprobe.example/app', origin: 'https://micprobe.example' } },
+    document: { title: 'MicProbe' },
+    window: { location: { href: 'https://micprobe.example/app', origin: 'https://micprobe.example' }, history: { replaceState() {} } },
     log: { warning() {}, ui() {}, error() {} }, eventBus: { emit: (event, payload) => messages.push(payload) }, EVENTS: {}
   });
   return { premium, state, saved, messages, requests, refreshes, rejections };
 }
+
+test('hosted checkout without state uses account verification and announces Premium only after a confirmed session refresh', async () => {
+  const purchases = [];
+  const env = fixture({
+    request: async url => {
+      assert.equal(url, '/api/freemius/config', 'account mode must not enter legacy verification');
+      return Response.json({ configured: true, mode: 'sandbox' });
+    },
+    purchase: async (state, path, options) => { purchases.push({ path, options }); },
+    refresh: state => { state.premium.unlocked = true; }
+  });
+  env.state.premium.unlocked = false;
+  env.premium.redirectHref = 'https://micprobe.example/app?license_id=101&user_id=202&signature=signed';
+  await env.premium.bootstrap();
+  assert.equal(purchases[0].path, '/purchase');
+  assert.equal(purchases[0].options.body.url, env.premium.redirectHref);
+  assert.equal(env.premium.isUnlocked(), true);
+  assert.match(env.messages[0].message, /linked to your account/);
+  assert.equal(env.saved.has('micprobe:premium-access:v1'), false);
+});
+
+test('a hosted return that cannot link remains retryable and never announces Premium', async () => {
+  const env = fixture({ request: async () => Response.json({ configured: true }),
+    purchase: async () => { throw new Error('checkout_not_found'); } });
+  env.state.premium.unlocked = false;
+  env.premium.redirectHref = 'https://micprobe.example/app?license_id=101&signature=signed';
+  await env.premium.bootstrap();
+  assert.equal(env.premium.isUnlocked(), false);
+  assert.equal(env.premium.pendingPurchase, env.premium.redirectHref);
+  assert.equal(env.messages[0].tone, 'warning');
+  assert.equal(env.saved.has('micprobe:premium-access:v1'), false);
+});
 
 test('expired sessions and confirmed revocations refresh access without resending a report', async () => {
   for (const [error, status] of [['sign_in_required', 401], ['premium_access_required', 403], ['account_changed', 409]]) {

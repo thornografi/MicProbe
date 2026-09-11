@@ -2,6 +2,7 @@
  * StatusManager - Kontrollerin yanindaki aciklamalar, hata mesajlari ve durum olaylari
  */
 import eventBus from './EventBus.js';
+import { captureErrorMessage } from './InputGuidance.js';
 import { EVENTS } from './constants.js';
 
 class StatusManager {
@@ -106,16 +107,17 @@ class StatusManager {
     if (this.currentStatus !== state) this.setStatus(state);
     const micHints = {
       checking: 'Checking available microphones…',
-      prompt: 'Start a test or recording, then allow microphone access in your browser.',
-      denied: 'Microphone access is blocked. Allow access in browser site settings, then refresh the list.',
+      prompt: 'Choose your microphone and allow microphone access when your browser asks.',
+      denied: captureErrorMessage({ name: 'NotAllowedError' }) + ' Then refresh the microphone list.',
       unavailable: 'No microphone is available. Connect a microphone and refresh the list.',
-      ready: 'Use your everyday microphone. We’ll guide you through the test.'
+      ready: 'Choose the microphone you use for calls or recordings.'
     };
     const micHint = micHints[context.access] || micHints.checking;
     const captureHint = state === 'analysing'
       ? 'Analyzing your sample. Your result will appear below.'
       : state === 'preparing' ? 'Allow microphone access if your browser asks. Capture starts when ready.'
-      : 'We’ll guide you: stay quiet briefly, then read a short sentence. The test stops automatically.';
+      : context.hasResult ? 'Listen to your sample, then review your result.'
+      : 'Stay quiet briefly, then read a sentence. The test stops automatically.';
     // These are live regions: only change their DOM text when the guidance changes.
     if (this.micHintEl && this.micHintEl.textContent !== micHint) this.micHintEl.textContent = micHint;
     if (this.captureHintEl && this.captureHintEl.textContent !== captureHint) this.captureHintEl.textContent = captureHint;

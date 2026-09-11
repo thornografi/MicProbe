@@ -1,3 +1,5 @@
+import { captureEnvironment, OS_NAMES } from './EnvironmentContext.js';
+
 function field(label, options) {
   return Object.freeze({
     label,
@@ -11,10 +13,7 @@ export const TROUBLESHOOTING_FIELDS = Object.freeze({
     ['unknown', 'Not sure'], ['voice-call', 'Voice calls'], ['voice-message', 'Voice messages'],
     ['recording', 'Audio recording']
   ]),
-  os: field('Operating system with the problem', [
-    ['unknown', 'Not sure'], ['windows', 'Windows'], ['macos', 'macOS'], ['ios', 'iPhone / iPad'],
-    ['android', 'Android'], ['linux', 'Linux'], ['chromeos', 'ChromeOS']
-  ]),
+  os: field('Operating system with the problem', Object.entries(OS_NAMES)),
   app: field('App with the problem', [
     ['unknown', 'Not sure'], ['discord', 'Discord'], ['teams', 'Microsoft Teams'], ['zoom', 'Zoom'],
     ['whatsapp', 'WhatsApp'], ['telegram', 'Telegram'], ['browser', 'Another browser app'], ['other', 'Another app']
@@ -39,34 +38,11 @@ export const TROUBLESHOOTING_FIELDS = Object.freeze({
 const allowedValues = Object.fromEntries(Object.entries(TROUBLESHOOTING_FIELDS)
   .map(([key, definition]) => [key, new Set(definition.options.map(option => option.value))]));
 
-function inferOs(navigatorInfo) {
-  const userAgent = navigatorInfo?.userAgent || '';
-  const platform = navigatorInfo?.platform || '';
-  const uaPlatform = navigatorInfo?.userAgentData?.platform || '';
-  if (/Smart-?TV|HbbTV|Tizen|Web[O0]S|GoogleTV|Android TV|CrKey/i.test(userAgent)) return 'unknown';
-
-  // iPad desktop mode advertises a Mac, and Android often advertises Linux.
-  if (/iPhone|iPad|iPod/i.test(userAgent) || /^(iPhone|iPad|iPod)$/i.test(platform)
-      || (platform === 'MacIntel' && navigatorInfo?.maxTouchPoints > 1)) return 'ios';
-  if (/Android/i.test(userAgent)) return 'android';
-
-  const knownPlatform = { Windows: 'windows', macOS: 'macos', iOS: 'ios', Android: 'android',
-    Linux: 'linux', 'Chrome OS': 'chromeos', ChromeOS: 'chromeos' }[uaPlatform];
-  if (allowedValues.os.has(knownPlatform)) return knownPlatform;
-  if (/Windows NT/i.test(userAgent) || /^Win(32|64)$/i.test(platform)) return 'windows';
-  if (/CrOS/i.test(userAgent)) return 'chromeos';
-  if (/Macintosh|Mac OS X/i.test(userAgent) || /^Mac(Intel|PPC)$/i.test(platform)) return 'macos';
-  // A bare mobile flag supplies no OS, and Linux platform alone can also describe Android.
-  if (/X11.*Linux/i.test(userAgent) || (!navigatorInfo?.userAgentData?.mobile
-      && (/Linux/i.test(userAgent) || /^Linux (x86_64|i[3-6]86)$/i.test(platform)))) return 'linux';
-  return 'unknown';
-}
-
-export function createTroubleshootingContext({ input = {}, navigator: navigatorInfo } = {}) {
+export function createTroubleshootingContext({ input = {}, navigator: navigatorInfo, environment = captureEnvironment(navigatorInfo) } = {}) {
   const values = input && typeof input === 'object' ? input : {};
   const hasOs = Object.hasOwn(values, 'os');
   const selectedOs = hasOs && allowedValues.os.has(values.os);
-  const os = selectedOs ? values.os : hasOs ? 'unknown' : inferOs(navigatorInfo);
+  const os = selectedOs ? values.os : hasOs ? 'unknown' : environment.os;
   const preservedSource = values.version === 1 && selectedOs
     && ['browser-hint', 'user-selected', 'unknown'].includes(values.osSource) ? values.osSource : null;
   return Object.freeze({

@@ -47,8 +47,7 @@
   user-select: none;
 }
 
-/* Tight icon viewBoxes give every action the same visible 16px height.
-   Width follows the glyph, so flex centering includes no asymmetric empty space. */
+/* Visible glyphs retain their proportions inside equal 24px side slots. */
 .btn-action > svg {
   width: auto;
   height: var(--fs-lg);
@@ -109,6 +108,8 @@ body[data-app-state="preparing"] .btn-action[aria-pressed="true"] {
 body[data-app-state="preparing"] .btn-action[aria-pressed="true"]::after {
   content: '';
   position: static;
+  grid-area: 1 / 1;
+  justify-self: center;
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -144,13 +145,6 @@ body[data-app-state="recording"] .btn-record .icon-square { display: block; }
   }
 }
 
-@media (max-width: 479px) {
-  .button-row .btn-action {
-    padding-inline: var(--space-ms);
-    font-size: var(--fs-sm);
-  }
-}
-
 /* ========== TEST BUTTON (Variant) ========== */
 /* Test butonu - 7sn loopback test */
 .btn-test {
@@ -183,13 +177,13 @@ body[data-app-state="preparing"] .btn-action[aria-pressed="true"] :is(.icon-circ
   display: none;
 }
 
-/* Countdown participates in layout so compact labels cannot overlap it. */
+/* Countdown uses the reserved trailing slot without shifting the action label. */
 .test-countdown {
   flex-shrink: 0;
   min-width: var(--control-h-xs);
   height: var(--control-h-xs);
-  padding: 0 var(--space-sm);
-  background: var(--accent-danger);
+  padding: 0 var(--space-xs);
+  background: rgba(var(--color-white-rgb), 0.16);
   color: white;
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -198,7 +192,6 @@ body[data-app-state="preparing"] .btn-action[aria-pressed="true"] :is(.icon-circ
   display: none;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.5);
 }
 
 body[data-app-state="testing"] .btn-test .test-countdown {

@@ -15,6 +15,7 @@ async function setup(browser, premium) {
     };
   });
   const page = await context.newPage();
+  await require('./scenario-browser-helpers.cjs').allowTestAccess(page);
   page.setDefaultTimeout(15000);
   const errors = [], requests = [], downloads = [];
   let failuresRemaining = 0;
@@ -47,6 +48,10 @@ async function setup(browser, premium) {
     }
     await route.fulfill({ json: { ok: true, detailed: evaluatePremiumReport(report) } });
   });
+  // This runner covers the preserved rule-detail path. The separate review
+  // runner exercises explicit review creation against the shared service.
+  await page.route('**/api/reviews/**', route => route.fulfill({ json: { ok: true, review: null,
+    decision: { status: 'SUMMARY', eligible: false, title: 'Recording measurements are available.' } } }));
   await page.goto(BASE);
   await page.locator('#heroLaunchBtn').click();
   await page.waitForFunction(() => document.body.classList.contains('app-mode'));
@@ -129,7 +134,7 @@ async function lockedFlow(browser) {
     assert.equal(requests.length, 0);
     const summary = page.locator('#reportSummary');
     assert.match(await summary.innerText(), /Saved audio only; speech clarity and recipient audio are unmeasured/);
-    assert.match(await summary.innerText(), /very quiet/);
+    assert.match(await summary.innerText(), /Very little sound was captured/);
     assert.doesNotMatch(await summary.innerText(), /Check the selected|Windows Settings|closer speaking|input.volume|dBFS/);
     assert.equal(await summary.locator('#reportFindings, #reportMetricsGrid, #reportRecommendations').count(), 0);
     assert.equal(await summary.locator('details[open]').count(), 0);
@@ -144,10 +149,11 @@ async function lockedFlow(browser) {
     assert.equal(await page.evaluate(() => !!globalThis.jspdf), false, 'PDF code remains lazy until requested');
     await page.setViewportSize({ width: 375, height: 812 });
     await page.screenshot({ path: '.tmp/free-summary-mobile.png' });
-    const downloadEvent = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download summary as PDF (optional)', exact: true }).click();
-    await (await downloadEvent).saveAs('.tmp/free-summary-browser.pdf');
-    assert.equal(downloads.length, 1);
+    assert.equal(await page.locator('#reportDownloadBtn').isHidden(), true);
+    assert.equal(await page.locator('#reportDownloadBtn').isDisabled(), true);
+    await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default._downloadPdf());
+    assert.equal(downloads.length, 0, 'Free access cannot export a summary PDF');
+    assert.equal(await page.evaluate(() => !!globalThis.jspdf), false);
 
     // An existing open result gains in-app instructions after membership activates.
     failNextDetail();
@@ -157,17 +163,22 @@ async function lockedFlow(browser) {
     await retry.waitFor({ state: 'visible' });
     assert.doesNotMatch(await page.locator('#premiumOverlay').innerText(), /Get Lifetime Premium|One payment/);
     assert.equal(await page.locator('#reportDetailed').isHidden(), true);
+    assert.equal(await page.locator('#reportDownloadBtn').isHidden(), true, 'Failed details cannot export a PDF');
     await retry.click();
     await page.waitForFunction(() => document.querySelector('#reportRecommendations')?.textContent.includes('Windows'));
     assert.equal(await page.locator('#reportDetailed').isVisible(), true);
     assert.equal(await page.locator('#premiumOverlay').isHidden(), true);
     assert.equal(await page.locator('.report-evidence[open]').count(), 0);
-    await page.locator('.report-evidence > summary').click();
+    await page.locator('.report-evidence > summary').filter({ hasText: 'Detailed findings and measurements' }).click();
     assert(await page.locator('#reportMetricsGrid .metric-card').count() > 0);
     assert.equal(await page.locator('#reportFindings').isVisible(), true);
-    await page.locator('.report-evidence > summary').click();
-    assert.equal(downloads.length, 1, 'Membership reveals instructions without requiring PDF download');
+    await page.locator('.report-evidence > summary').filter({ hasText: 'Detailed findings and measurements' }).click();
+    assert.equal(downloads.length, 0, 'Membership reveals instructions without requiring PDF download');
     assert.equal(requests.length, 2, 'A failed details request retries instead of starting another checkout');
+    const downloadEvent = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download detailed report as PDF', exact: true }).click();
+    await (await downloadEvent).saveAs('.tmp/premium-details-browser.pdf');
+    assert.equal(downloads.length, 1);
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.locator('#reportOverall').scrollIntoViewIfNeeded();
     await page.screenshot({ path: '.tmp/premium-in-app-instructions.png' });
@@ -178,9 +189,13 @@ async function lockedFlow(browser) {
     assert.equal(await page.locator('#reportRecommendations').textContent(), '');
     assert.equal(await page.locator('#reportFindings').textContent(), '');
     assert.equal(await page.locator('#reportMetricsGrid').textContent(), '');
+    assert.equal(await page.locator('#reportDownloadBtn').isHidden(), true);
+    assert.equal(await page.locator('#reportDownloadBtn').isDisabled(), true);
+    await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default._downloadPdf());
+    assert.equal(downloads.length, 1, 'Revoked access cannot download again');
     assert.equal(await page.evaluate(() => window.__guideMicRequests), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: compact free summary, optional PDF, in-app unlock/retry without repurchase and detail removal on revocation');
+    console.log('PASS: free PDF blocked, Premium PDF after detail retry, and export removed on revocation');
   } finally { await context.close(); }
 }
 

@@ -18,6 +18,9 @@ const mimeTypes = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.ico': 'image/x-icon',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -152,16 +155,21 @@ let accountsRuntime;
 async function getAccountsRuntime() {
   if (!accountsRuntime) {
     accountsRuntime = (async () => {
-      const [{ createAccountService }, { createNodeAccountDb }, { createAccountBilling }] = await Promise.all([
-        import('./server/account-service.mjs'), import('./server/node-account-db.mjs'), import('./server/account-billing.mjs')
+      const [{ createAccountService }, { createNodeAccountDb }, { createAccountBilling }, { createAccountEmailService, readEmailConfig }, { createTestAccess }, { createReviewService }] = await Promise.all([
+        import('./server/account-service.mjs'), import('./server/node-account-db.mjs'), import('./server/account-billing.mjs'), import('./server/account-email.mjs'), import('./server/test-access.mjs'), import('./server/review-service.mjs')
       ]);
       const googleClientId = process.env.MICPROBE_GOOGLE_CLIENT_ID || '';
-      const db = googleClientId ? createNodeAccountDb(process.env.MICPROBE_ACCOUNT_DB_PATH || path.join(__dirname, '.tmp', 'accounts.sqlite')) : null;
+      const db = createNodeAccountDb(process.env.MICPROBE_ACCOUNT_DB_PATH || path.join(__dirname, '.tmp', 'accounts.sqlite'));
       const accounts = createAccountService({ db, googleClientId, mode: FREEMIUS_ENV.mode,
         origin: process.env.MICPROBE_PUBLIC_ORIGIN || undefined });
       const billing = createAccountBilling({ accounts, config: FREEMIUS_ENV, checkoutUrl: () => buildFreemiusCheckoutUrl(FREEMIUS_ENV),
         enabled: Boolean(db && googleClientId), evaluatePremiumReport });
-      return { accounts, billing, enabled: Boolean(db && googleClientId) };
+      const email = createAccountEmailService({ db, config: readEmailConfig(process.env) });
+      const tests = createTestAccess({ db, accounts, billing,
+        legacy: (await legacyPremium).createLegacyPremium(FREEMIUS_ENV), origin: process.env.MICPROBE_PUBLIC_ORIGIN || undefined });
+      const reviews = createReviewService({ db, accounts, billing, tests, mode: FREEMIUS_ENV.mode,
+        origin: process.env.MICPROBE_PUBLIC_ORIGIN || undefined });
+      return { accounts, billing, email, tests, reviews, enabled: Boolean(db && googleClientId) };
     })().catch(error => { accountsRuntime = null; throw error; });
   }
   return accountsRuntime;
@@ -176,12 +184,14 @@ async function handleAccountApi(req, res, url) {
   const requestUrl = process.env.MICPROBE_PUBLIC_ORIGIN
     ? new URL(`${url.pathname}${url.search}`, new URL(process.env.MICPROBE_PUBLIC_ORIGIN).origin) : url;
   const request = new Request(requestUrl, options);
-  const response = await runtime.billing.handle(request) || await runtime.accounts.handle(request);
+  const response = await runtime.tests.handle(request, { ip: req.socket.remoteAddress || '' })
+    || await runtime.reviews.handle(request) || await runtime.email.handle(request) || await runtime.billing.handle(request) || await runtime.accounts.handle(request);
   if (!response) return false;
   const headers = { ...SECURITY_HEADERS, ...Object.fromEntries(response.headers) };
   const cookies = response.headers.getSetCookie();
   if (cookies.length) headers['set-cookie'] = cookies;
   res.writeHead(response.status, headers);
+  if (response.ok && !url.pathname.startsWith('/api/tests/') && !url.pathname.startsWith('/api/reviews/') && url.pathname !== '/api/resend/webhook') res.once('finish', () => { void runtime.email.flush(); });
   res.end(Buffer.from(await response.arrayBuffer()));
   return true;
 }
@@ -251,7 +261,9 @@ function buildHeaders(contentType) {
   return headers;
 }
 
-const PUBLIC_FILES = new Set(['index.html', 'micprobe.html', 'privacy.html', 'terms.html']);
+const STATIC_ROOT = process.argv.includes('--built') ? path.join(__dirname, '.tmp/cloudflare-dev-assets') : __dirname;
+const PUBLIC_FILES = new Set(['index.html', 'app.html', 'micprobe.html', 'privacy.html', 'terms.html', '404.html']);
+const PUBLIC_ASSET_FILES = new Set(['robots.txt', 'sitemap.xml', 'favicon.ico', 'favicon.svg', 'favicon-96.png', 'apple-touch-icon.png', 'logo.png', 'social-card.png']);
 const PUBLIC_DIRECTORIES = new Set(['assets', 'css', 'js']);
 
 function resolveStaticPath(requestPathname) {
@@ -266,13 +278,15 @@ function resolveStaticPath(requestPathname) {
   const segments = decoded.split('/').filter(Boolean);
   if (segments.some(segment => segment.startsWith('.'))) return null;
 
-  if (!PUBLIC_FILES.has(segments.join('/')) && !PUBLIC_DIRECTORIES.has(segments[0])) {
-    // SPA routes resolve directly to the entry point, never to a private repo file.
-    return path.extname(segments.at(-1) || '') ? null : path.join(__dirname, 'index.html');
+  const publicAsset = PUBLIC_ASSET_FILES.has(segments.join('/'));
+  if (!publicAsset && !PUBLIC_FILES.has(segments.join('/')) && !PUBLIC_DIRECTORIES.has(segments[0])) {
+    // Unknown routes are not files; private repository paths remain inaccessible.
+    return path.extname(segments.at(-1) || '') ? null : false;
   }
 
-  const resolved = path.resolve(__dirname, ...segments);
-  const relative = path.relative(__dirname, resolved);
+  const directory = publicAsset && STATIC_ROOT === __dirname ? path.join(STATIC_ROOT, 'public') : STATIC_ROOT;
+  const resolved = path.resolve(directory, ...segments);
+  const relative = path.relative(directory, resolved);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
   return resolved;
 }
@@ -290,7 +304,10 @@ const STATIC_MAX_AGE_SECONDS = (() => {
   return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : 0;
 })();
 
-function cacheControlForStatic(contentType) {
+function cacheControlForStatic(contentType, filePath) {
+  if (STATIC_ROOT !== __dirname && path.dirname(filePath) === path.join(STATIC_ROOT, 'assets')) {
+    return 'public, max-age=31536000, immutable';
+  }
   // HTML (SPA giriş noktası) daima revalidate edilir
   if (STATIC_MAX_AGE_SECONDS === 0 || contentType.startsWith('text/html')) return 'no-cache';
   return `public, max-age=${STATIC_MAX_AGE_SECONDS}, must-revalidate`;
@@ -332,7 +349,7 @@ function isRequestFresh(req, etag, lastModified) {
   return Number.isFinite(ifModifiedSince) && Date.parse(lastModified) <= ifModifiedSince;
 }
 
-function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
+function serveStaticFile(req, res, filePath, contentType, statusCode = 200) {
   fs.stat(filePath, (statErr, stats) => {
     if (statErr && statErr.code !== 'ENOENT') {
       res.writeHead(500, buildHeaders('text/plain; charset=utf-8'));
@@ -341,9 +358,8 @@ function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
     }
 
     if (statErr || !stats.isFile()) {
-      // SPA fallback: extension yoksa index.html döndür
-      if (allowSpaFallback) {
-        serveStaticFile(req, res, path.join(__dirname, 'index.html'), mimeTypes['.html'], false);
+      if (statusCode !== 404) {
+        serveStaticFile(req, res, path.join(STATIC_ROOT, '404.html'), mimeTypes['.html'], 404);
         return;
       }
       res.writeHead(404, buildHeaders('text/plain; charset=utf-8'));
@@ -353,10 +369,10 @@ function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
 
     const etag = `W/"${stats.size.toString(16)}-${Math.round(stats.mtimeMs).toString(16)}"`;
     const lastModified = stats.mtime.toUTCString();
-    const cacheControl = cacheControlForStatic(contentType);
+    const cacheControl = cacheControlForStatic(contentType, filePath);
     const compressible = isCompressibleType(contentType);
 
-    if (isRequestFresh(req, etag, lastModified)) {
+    if (statusCode === 200 && isRequestFresh(req, etag, lastModified)) {
       res.writeHead(304, {
         ...SECURITY_HEADERS,
         'Cache-Control': cacheControl,
@@ -376,7 +392,7 @@ function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
 
     if (req.method === 'HEAD') {
       headers['Content-Length'] = stats.size;
-      res.writeHead(200, headers);
+      res.writeHead(statusCode, headers);
       res.end();
       return;
     }
@@ -394,7 +410,7 @@ function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
 
       if (!encoding) {
         headers['Content-Length'] = content.length;
-        res.writeHead(200, headers);
+        res.writeHead(statusCode, headers);
         res.end(content);
         return;
       }
@@ -403,13 +419,13 @@ function serveStaticFile(req, res, filePath, contentType, allowSpaFallback) {
         // Sıkıştırma hata verir ya da kazanç sağlamazsa düz içerik gönderilir
         if (zlibErr || compressed.length >= content.length) {
           headers['Content-Length'] = content.length;
-          res.writeHead(200, headers);
+          res.writeHead(statusCode, headers);
           res.end(content);
           return;
         }
         headers['Content-Encoding'] = encoding;
         headers['Content-Length'] = compressed.length;
-        res.writeHead(200, headers);
+        res.writeHead(statusCode, headers);
         res.end(compressed);
       });
     });
@@ -585,7 +601,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (pathname.startsWith('/api/account/') || pathname === '/api/freemius/webhook'
+    if (pathname.startsWith('/api/reviews/') || pathname.startsWith('/api/tests/') || pathname.startsWith('/api/account/') || pathname === '/api/freemius/webhook' || pathname === '/api/resend/webhook'
       || (pathname === '/api/report/detailed' && process.env.MICPROBE_GOOGLE_CLIENT_ID)) {
       try {
         if (await handleAccountApi(req, res, url)) return;
@@ -627,17 +643,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/') {
-    pathname = '/index.html';
-  }
-
-  if (pathname === '/favicon.ico') {
-    res.writeHead(204, SECURITY_HEADERS);
-    res.end();
-    return;
+  if (pathname === '/' || pathname === '/app' || pathname === '/app/') {
+    pathname = pathname !== '/' && STATIC_ROOT !== __dirname ? '/app.html' : '/index.html';
   }
 
   const filePath = resolveStaticPath(pathname);
+  if (filePath === false) {
+    serveStaticFile(req, res, path.join(STATIC_ROOT, '404.html'), mimeTypes['.html'], 404);
+    return;
+  }
   if (!filePath) {
     res.writeHead(403, buildHeaders('text/plain; charset=utf-8'));
     res.end('403 Forbidden');
@@ -647,7 +661,7 @@ const server = http.createServer(async (req, res) => {
   const extname = String(path.extname(filePath)).toLowerCase();
   const contentType = mimeTypes[extname] || 'application/octet-stream';
 
-  serveStaticFile(req, res, filePath, contentType, !extname);
+  serveStaticFile(req, res, filePath, contentType, pathname === '/404.html' ? 404 : 200);
 });
 
 function listenWithFallback(startPort, maxAttempts = 20) {

@@ -40,6 +40,7 @@ class Player {
     this.currentUrl = null;
     this.knownDurationSeconds = null;
     this.progressAnimId = null; // requestAnimationFrame loop
+    this._playRequest = 0;
 
     this.bindEvents();
 
@@ -74,9 +75,7 @@ class Player {
     this.recordedAt = runSnapshot?.startedAt || new Date().toISOString();
 
     // Playback state sifirla
-    this.stopProgressLoop();
-    this.audio.pause();
-    this.isPlaying = false;
+    this.pause();
     this.isEnded = false;
 
     // Onceki URL'i temizle
@@ -151,7 +150,7 @@ class Player {
       setVisible(this.panelEl, false);
     }
     // Oynatmayi durdur
-    this.audio.pause();
+    this.pause();
     this.audio.src = '';
     this.isPlaying = false;
     this.isEnded = false;
@@ -249,18 +248,18 @@ class Player {
   }
 
   pause() {
-    if (!this.isPlaying) return;
-
+    ++this._playRequest;
+    const wasPlaying = this.isPlaying;
     this.audio.pause();
     this.isPlaying = false;
     this.stopProgressLoop();
 
     this.syncPlayButtonIcon();
 
-    eventBus.emit(EVENTS.PLAYER_PAUSED);
+    if (wasPlaying) eventBus.emit(EVENTS.PLAYER_PAUSED);
   }
 
-  togglePlay() {
+  async togglePlay() {
     if (this.isPlaying) {
       this.pause();
     } else {
@@ -273,11 +272,24 @@ class Player {
         this.isEnded = false;
       }
 
-      void this.audio.play();
+      const request = ++this._playRequest;
       this.isPlaying = true;
       this.isEnded = false;
       this.syncPlayButtonIcon();
       this.startProgressLoop();
+      try {
+        await this.audio.play();
+      } catch (error) {
+        // Pause, a new recording or a newer Play owns the UI now.
+        if (request !== this._playRequest) return;
+        this.pause();
+        if (error.name !== 'AbortError') {
+          log.error('Playback failed', { error: error.message });
+          eventBus.emit(EVENTS.UI_MESSAGE, {
+            message: 'The sample could not play. Try Play again or download the original recording.', tone: 'error'
+          });
+        }
+      }
     }
   }
 
@@ -574,8 +586,7 @@ class Player {
    */
   destroy() {
     this.currentBlob = null;
-    this.stopProgressLoop();
-    this.audio.pause();
+    this.pause();
     this.audio.src = '';
 
     if (this.currentUrl) {

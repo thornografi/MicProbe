@@ -3,6 +3,7 @@
  */
 import eventBus from '../EventBus.js';
 import { EVENTS } from '../constants.js';
+import { captureErrorMessage } from '../InputGuidance.js';
 
 /**
  * MediaStream'in tum track'lerini durdurur
@@ -19,15 +20,7 @@ export function stopStreamTracks(stream) {
  * @returns {string} - Kullanici dostu hata mesaji
  */
 export function getStreamErrorMessage(err) {
-  const errorMap = {
-    NotAllowedError: 'Microphone permission denied',
-    NotFoundError: 'Microphone not found',
-    NotReadableError: 'Microphone is being used by another application',
-    OverconstrainedError: 'Unsupported microphone setting',
-    AbortError: 'Microphone access was aborted',
-    SecurityError: 'Microphone access blocked by security policy'
-  };
-  return errorMap[err.name] || err.message;
+  return captureErrorMessage(err);
 }
 
 /**

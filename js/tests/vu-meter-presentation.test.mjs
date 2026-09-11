@@ -31,7 +31,7 @@ test('activity text distinguishes capture from idle and reports presence without
   meter.activityBarEl = { style: {} };
   meter.activityStatusEl = { dataset: {}, textContent: '' };
   meter._renderActivity(null);
-  assert.equal(meter.activityStatusEl.textContent, 'Ready to check');
+  assert.equal(meter.activityStatusEl.textContent, 'Not measuring yet');
   meter._renderActivity(0);
   assert.equal(meter.activityStatusEl.textContent, 'Waiting for sound');
   for (const level of [VU_METER.DOT_ACTIVE_THRESHOLD + 1, 50, 100]) {
@@ -42,7 +42,7 @@ test('activity text distinguishes capture from idle and reports presence without
   meter._renderActivity(0);
   assert.equal(meter.activityStatusEl.textContent, 'Waiting for sound');
   meter._renderActivity(null);
-  assert.equal(meter.activityStatusEl.textContent, 'Ready to check');
+  assert.equal(meter.activityStatusEl.textContent, 'Not measuring yet');
   assert.equal(meter.activityBarEl.style.width, '0%');
 });
 

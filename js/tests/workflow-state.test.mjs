@@ -42,6 +42,7 @@ test('inline guidance follows permission, preparation, capture and pending analy
   assert.match(nodes.get('captureHint').textContent, /Analyzing your sample/);
   update({ pending: false, hasResult: true }, EVENTS.DIAGNOSTIC_REPORT_READY);
   assert.equal(manager.getStatus(), 'result');
+  assert.match(nodes.get('captureHint').textContent, /Listen to your sample/);
   update({ category: 'record', hasResult: false }, EVENTS.PROFILE_CHANGED);
   assert.match(nodes.get('captureHint').textContent, /stops automatically/);
 });

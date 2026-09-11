@@ -6,12 +6,17 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const pdfSource = () => read('js/modules/ReportPdfExporter.js').replace(/^import .*;$/gm, '')
+  .replaceAll('import.meta.url', JSON.stringify('http://localhost:8080/js/modules/ReportPdfExporter.js'))
+  .replace('export async function ', 'async function ');
 const plain = value => JSON.parse(JSON.stringify(value));
 const constants = vm.runInNewContext(read('js/modules/constants.js').replaceAll('export const ', 'const ')
   + '\n({QUALITY, VU_METER})', { location: { hostname: 'localhost' } });
 function freeEvaluator() {
   return vm.runInNewContext(read('js/modules/ReportEvaluator.js').replace(/^import .*;$/gm, '')
-    .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants });
+    .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants, structuredClone,
+      usableReport: require('../modules/MeasurementValidity.js').usableReport,
+      ...require('../modules/CaptureContext.js') });
 }
 const server = require('../../server/premium-report-evaluator.js').evaluatePremiumReport;
 let worker;
@@ -255,7 +260,8 @@ test('Premium separates actual RTP, saved file, requested targets and unknown re
 
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function uiHarness(fetchDetailedReport, loadPdf) {
-  const premiumAccess = { isUnlocked: () => premiumAccess.unlocked, unlocked: true, fetchDetailedReport };
+  const premiumAccess = { isUnlocked: () => premiumAccess.unlocked, unlocked: true,
+    getState: () => ({ userId: premiumAccess.userId || null }), fetchDetailedReport };
   let code = read('js/ui/ReportPanelUI.js').replace(/^import[\s\S]*?from [^;]+;\r?\n/gm, '');
   code = code.replace("import('../modules/ReportPdfExporter.js')", 'loadPdf()')
     .replace('const reportPanelUI = new ReportPanelUI();', '')
@@ -263,7 +269,7 @@ function uiHarness(fetchDetailedReport, loadPdf) {
   const UI = vm.runInNewContext(code, { premiumAccess, reportEvaluator: freeEvaluator(), structuredClone,
     log: { ui() {}, warning() {}, error() {} }, eventBus: { emit() {} }, EVENTS: {}, loadPdf });
   const ui = Object.create(UI.prototype);
-  Object.assign(ui, { currentReport: null, _lastDetailed: null, _detailedReport: null, _premiumRequestId: 0, _pendingPremiumReport: null,
+  Object.assign(ui, { currentReport: null, _lastDetailed: null, _detailedReport: null, _premiumRequestId: 0, _pendingPremiumReport: null, _isDownloadingPdf: false,
     rendered: null, _renderMetrics(value) { this.rendered = value; }, _renderRecommendations() {}, _setPremiumStatus() {},
     _renderScoreBadge() {}, _renderOverall() {}, _renderFindings() {}, _syncPremiumState() {}, open() {}, downloadBtn: { disabled: false } });
   return { ui, premiumAccess };
@@ -308,11 +314,15 @@ test('a successful premium retry reveals the same report only after an authorize
   ui.premiumCtaEl = { disabled: false };
   ui._renderReport(report()); await ui._renderPremiumDetails();
   assert.equal(ui.detailedEl.hidden, true);
+  assert.equal(ui.downloadBtn.hidden, true);
+  assert.equal(ui.downloadBtn.disabled, true);
   assert.equal(ui.premiumCtaEl.textContent, 'Retry instructions');
   await ui._startPremiumCheckout();
   assert.equal(ui.detailedEl.hidden, false);
   assert.equal(ui.premiumCtaEl.disabled, false);
   assert.equal(ui.premiumOverlayEl.hidden, true);
+  assert.equal(ui.downloadBtn.hidden, false);
+  assert.equal(ui.downloadBtn.disabled, false);
   assert.deepEqual(ui.rendered, ['retry']);
 });
 
@@ -322,6 +332,31 @@ test('account change clears an old report before syncing the new premium state',
   ui._premiumOwnerId = 'A'; ui.clearReport = () => order.push('clear'); ui._syncPremiumState = () => order.push('sync');
   ui._onPremiumState({ userId: 'B' });
   assert.deepEqual(order, ['clear', 'sync']);
+});
+
+test('insufficient reports offer neither checkout nor paid details, and a later valid report recovers', async () => {
+  let detailRequests = 0;
+  const { ui, premiumAccess } = uiHarness(async () => { detailRequests++; return { metrics: [], recommendations: [] }; });
+  premiumAccess.getState = () => ({});
+  ui.wrapperEl = { hidden: false };
+  ui.premiumOverlayEl = { hidden: false };
+  ui.premiumCtaEl = { disabled: false };
+  delete ui._syncPremiumState;
+  for (const unlocked of [false, true]) {
+    premiumAccess.unlocked = unlocked;
+    for (const metrics of [null, { status: 'unavailable' }, { ...report().audioMetrics, durationMs: 100 }]) {
+      ui._renderReport({ ...report(), audioMetrics: metrics });
+      await ui._startPremiumCheckout();
+      await ui._renderPremiumDetails();
+      assert.equal(ui.wrapperEl.hidden, true);
+      assert.equal(ui.downloadBtn.hidden, true);
+      assert.equal(ui.downloadBtn.disabled, true);
+      assert.equal(detailRequests, 0);
+    }
+  }
+  ui._renderReport(report());
+  assert.equal(ui.wrapperEl.hidden, false);
+  assert.equal(detailRequests, 1);
 });
 
 test('locked legacy purchase errors remain actionable when the report is reopened', () => {
@@ -340,22 +375,65 @@ test('locked legacy purchase errors remain actionable when the report is reopene
   assert.equal(ui.statusMessage, '');
 });
 
-test('PDF lazy-load captures one report and matching premium details before another report arrives', async () => {
+test('PDF lazy-load captures the clicked report and keeps a new report disabled until its details arrive', async () => {
   const loader = deferred(); let downloaded;
   const { ui } = uiHarness(() => Promise.resolve({}), () => loader.promise);
   ui._renderReport(report());
   ui._detailedReport = ui.currentReport;
   ui._lastDetailed = { metrics: ['A'], recommendations: [] };
   const pending = ui._downloadPdf();
+  assert.equal(ui.downloadBtn.disabled, true);
   const next = report(); next.run.id = 'run-b'; ui._renderReport(next);
   loader.resolve({ downloadReportPdf: async payload => { downloaded = payload; } }); await pending;
   assert.equal(downloaded.report.run.id, 'run-a');
   assert.deepEqual(downloaded.detailed.metrics, ['A']);
-  assert.equal(ui.downloadBtn.disabled, false);
+  assert.equal(ui.downloadBtn.hidden, true);
+  assert.equal(ui.downloadBtn.disabled, true);
+});
+
+test('PDF cannot load for locked, pending, missing or mismatched report details', async () => {
+  let imports = 0;
+  const { ui, premiumAccess } = uiHarness(async () => ({}), () => { imports++; });
+  ui._renderReport(report());
+  for (const unlocked of [false, true]) {
+    premiumAccess.unlocked = unlocked;
+    for (const [detailedReport, detailed] of [[null, null], [ui.currentReport, null], [report(), {}], [ui.currentReport, {}]]) {
+      if (unlocked && detailedReport === ui.currentReport && detailed) continue;
+      ui._detailedReport = detailedReport;
+      ui._lastDetailed = detailed;
+      ui._syncPdfDownload();
+      assert.equal(ui.downloadBtn.hidden, true);
+      assert.equal(ui.downloadBtn.disabled, true);
+      await ui._downloadPdf();
+    }
+  }
+  assert.equal(imports, 0);
+});
+
+test('PDF loading blocks duplicate clicks and cannot survive revocation or an account switch', async () => {
+  for (const change of ['revoke', 'owner']) {
+    const loader = deferred(); let imports = 0, exports = 0;
+    const { ui, premiumAccess } = uiHarness(async () => ({}), () => { imports++; return loader.promise; });
+    premiumAccess.userId = 'owner-a';
+    ui._renderReport(report());
+    ui._detailedReport = ui.currentReport;
+    ui._lastDetailed = { metrics: [], recommendations: [] };
+    const pending = ui._downloadPdf();
+    await ui._downloadPdf();
+    assert.equal(imports, 1);
+    if (change === 'revoke') premiumAccess.unlocked = false;
+    else premiumAccess.userId = 'owner-b';
+    ui._clearPremiumDetails();
+    loader.resolve({ downloadReportPdf: async () => { exports++; } });
+    await pending;
+    assert.equal(exports, 0);
+    assert.equal(ui.downloadBtn.hidden, true);
+    assert.equal(ui.downloadBtn.disabled, true);
+  }
 });
 
 test('PDF findings preserve insufficient and limited outcomes, and unknown scores have no stars', () => {
-  const code = read('js/modules/ReportPdfExporter.js').replace(/^import .*;$/gm, '').replace('export async function ', 'async function ');
+  const code = pdfSource();
   const pdf = vm.runInNewContext(code + '\n({writeFindings, writeOverall})');
   for (const r of [{ audioMetrics: null }, report()]) {
     const free = freeEvaluator().evaluateFree(r), text = [];
@@ -380,7 +458,7 @@ test('measured observations retain neutral presentation inside the premium repor
   assert.equal(items[0].className, 'finding-item finding-item--info');
   assert.equal(items[0].icon, 'i');
   assert.match(items[0].message, /^Observation:/);
-  const code = read('js/modules/ReportPdfExporter.js').replace(/^import .*;$/gm, '').replace('export async function ', 'async function ');
+  const code = pdfSource();
   const pdf = vm.runInNewContext(code + '\n({writeFindings, writeOverall})');
   const text = [], writer = { sectionTitle() {}, body(value) { text.push(value); } };
   pdf.writeFindings(writer, free); pdf.writeOverall(writer, free);
@@ -393,9 +471,9 @@ test('premium PDF separates observations and test scope from corrective advice',
   r.profile = { approximation: true };
   r.deepAnalysis = { status: 'ready', bands: { presence: -40 } };
   const detailed = server(r);
-  const code = read('js/modules/ReportPdfExporter.js').replace(/^import .*;$/gm, '').replace('export async function ', 'async function ');
+  const code = pdfSource();
   const pdf = vm.runInNewContext(code + '\n({writeRecommendations})');
-  const text = [], writer = { sectionTitle() {}, gap() {}, body(value) { text.push(value); }, small(value) { text.push(value); } };
+  const text = [], writer = { sectionTitle() {}, ensureSpace() {}, gap() {}, body(value) { text.push(value); }, small(value) { text.push(value); } };
   pdf.writeRecommendations(writer, detailed.recommendations);
   assert(text.includes('Test scope'));
   assert(text.includes('Observations — no quality penalty'));
@@ -404,7 +482,7 @@ test('premium PDF separates observations and test scope from corrective advice',
   for (const id of ['LOW_HEADROOM', 'LOW_TREBLE_ENERGY']) {
     const item = detailed.recommendations.find(item => item.id === id);
     assert(item, id);
-    assert(text.includes(item.action));
+    if (item.action) assert(text.includes(item.action));
   }
 });
 
@@ -427,9 +505,9 @@ test('problem descriptions never change audio scoring and guide-only reports nev
 test('PDF guide preserves steps, evidence and sources without suggesting a measured finding', async () => {
   const { describeTroubleshootingContext } = await import('../modules/TroubleshootingContext.js');
   const r = { run: { type: 'troubleshooting' }, troubleshooting: { version: 1, os: 'windows', osSource: 'user-selected', symptom: 'no-input' } };
-  const code = read('js/modules/ReportPdfExporter.js').replace(/^import .*;$/gm, '').replace('export async function ', 'async function ');
+  const code = pdfSource();
   const pdf = vm.runInNewContext(code + '\n({writeTroubleshootingContext, writeRecommendations, writeFindings, writeOverall})', { describeTroubleshootingContext });
-  const text = [], writer = { sectionTitle(value) { text.push(value); }, gap() {}, body(value) { text.push(value); },
+  const text = [], writer = { sectionTitle(value) { text.push(value); }, ensureSpace() {}, gap() {}, body(value) { text.push(value); },
     small(value) { text.push(value); }, keyValue(key, value) { text.push(`${key}: ${value}`); } };
   const free = freeEvaluator().evaluateFree(r), detailed = server(r);
   pdf.writeOverall(writer, free); pdf.writeFindings(writer, free);

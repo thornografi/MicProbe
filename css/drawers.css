@@ -115,30 +115,13 @@
   gap: var(--space-sm);
 }
 
-/* Shares the rail's final row; the sidebar reserves room so content never overlaps. */
+/* Developer-only action lives inside Audio details. */
 .dev-console-toggle-btn {
-  grid-area: 2 / 1;
-  justify-self: start;
-  align-self: end;
-  margin: 0 var(--space-lg) var(--space-lg);
-  position: relative;
-  z-index: 2;
-  min-width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  padding-inline: var(--space-ms);
-  font-size: var(--fs-xs);
-  background: var(--bg-input);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  display: inline-flex; align-items: center; gap: var(--space-sm);
+  min-height: var(--control-h-m); padding: 0 var(--space-ms);
+  margin: 0 0 var(--space-md); border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md); background: transparent;
+  color: var(--text-muted); font-size: var(--fs-xs); cursor: pointer;
 }
 
 .dev-console-toggle-btn:hover {
@@ -153,23 +136,8 @@
   height: 16px;
 }
 
-/* Console açıkken toggle butonunu gizle */
-.dev-console-drawer.open ~ .dev-console-toggle-btn {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Mobil: kabuk flex sutunu olur; toggle akista, icerigin altinda sagda; drawer tam genislik
-   (profil cekmecesiyle ayni esik) */
 @media (max-width: 767px) {
-  .dev-console-toggle-btn {
-    align-self: flex-end;
-    margin: 0 var(--space-md) var(--space-lg);
-  }
-
-  .dev-console-drawer {
-    --drawer-w: 100vw;
-  }
+  .dev-console-drawer { --drawer-w: 100vw; }
 }
 
 /* Hide dev console in production */
