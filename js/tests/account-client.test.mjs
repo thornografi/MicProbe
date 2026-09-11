@@ -405,6 +405,21 @@ test('a failed cloud delete other than missing-report retains the report for ret
   assert.equal(history.getState().reports.length, 1);
 });
 
+test('a checkout rejected as already Premium refreshes the account without repeating payment', async () => {
+  const requests = [];
+  const account = new AccountAccess({ request: async path => {
+    requests.push(path);
+    return path.endsWith('/session')
+      ? Response.json({ ok: true, user: { id: 'A' }, purchaseLinked: true, premium: { unlocked: true } })
+      : Response.json({ ok: false, error: 'already_premium' }, { status: 409 });
+  } });
+  account.state = { ready: true, configured: true, user: { id: 'A' }, premium: { unlocked: false } };
+  await assert.rejects(account.startCheckout(), /already_premium/);
+  assert.equal(account.getState().premium.unlocked, true);
+  assert.equal(account.getState().purchaseLinked, true);
+  assert.deepEqual(requests, ['/api/account/checkout', '/api/account/session']);
+});
+
 test('pending purchase survives an offline session check and blocks another checkout', async () => {
   const requests = [];
   const account = new AccountAccess({ request: async path => { requests.push(path); throw new Error('offline'); } });

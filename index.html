@@ -400,6 +400,7 @@
         <div class="content-container">
           <section class="scenario-picker" id="scenarioPicker" aria-labelledby="scenarioPickerTitle">
             <header class="scenario-picker-header">
+              <h2 class="scenario-sidebar-title">Scenarios</h2>
               <h1 id="scenarioPickerTitle" tabindex="-1">What would you like to test?</h1>
               <p>Choose a simple microphone check or the way you plan to use it.</p>
             </header>
@@ -1005,10 +1006,11 @@
             <p class="premium-status" id="premiumStatus" hidden></p>
           </div>
         </div>
-      </div>
-      <div class="report-workflow-actions">
-        <button id="reportSetupBtn" class="btn btn--secondary btn--m" type="button">Back to test</button>
-        <button id="reportRetestBtn" class="btn btn--primary btn--m" type="button" hidden>Test again with these settings</button>
+        <!-- Actions scroll with the report so large text cannot squeeze out the result. -->
+        <div class="report-workflow-actions">
+          <button id="reportSetupBtn" class="btn btn--secondary btn--m" type="button">Back to test</button>
+          <button id="reportRetestBtn" class="btn btn--primary btn--m" type="button" hidden>Test again with these settings</button>
+        </div>
       </div>
   </dialog>
 

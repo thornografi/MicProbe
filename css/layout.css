@@ -98,6 +98,8 @@
   margin-bottom: var(--space-2xl);
 }
 
+.scenario-sidebar-title { display: none; }
+
 .scenario-picker-header h1 {
   margin: 0 0 var(--space-md);
   font-family: var(--font-display);
@@ -259,6 +261,7 @@
 }
 
 @media (max-width: 1023px) {
+  .scenario-picker--collapsed { display: none; }
   .app-shell { --workspace-gutter: var(--space-md); }
   /* Keep the same single-column grid across resizes; switching the shell to
      flex can collapse its contained main surface during breakpoint layout. */
@@ -267,6 +270,63 @@
     padding: var(--space-lg) var(--space-md);
   }
 
+}
+
+/* The same catalogue stays within reach beside the selected test on desktop. */
+@media (min-width: 1024px) {
+  .app-shell:has(.scenario-workspace:not([hidden])) { --app-content-max: 1240px; }
+
+  .content-container:has(.scenario-workspace:not([hidden])) {
+    width: 100%;
+    max-width: calc(var(--app-content-max) + 2 * var(--workspace-gutter));
+    align-self: center;
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    align-items: start;
+    align-content: start;
+    gap: var(--space-xl);
+  }
+
+  .scenario-picker--collapsed {
+    position: sticky;
+    top: var(--space-lg);
+    max-height: calc(100dvh - var(--space-xl));
+    overflow-y: auto;
+    scrollbar-width: thin;
+    margin: 0;
+    padding: var(--space-xs);
+  }
+
+  .scenario-picker--collapsed .scenario-picker-header {
+    margin-bottom: var(--space-lg);
+  }
+
+  .scenario-picker--collapsed .scenario-sidebar-title {
+    display: block;
+    margin: 0;
+    font-size: var(--fs-lg);
+  }
+
+  .scenario-picker--collapsed .scenario-picker-header > :not(.scenario-sidebar-title),
+  .scenario-picker--collapsed .scenario-choice-copy > span,
+  .scenario-picker--collapsed .scenario-scope,
+  .scenario-change {
+    display: none;
+  }
+
+  .scenario-picker--collapsed :is(.scenario-choices, .scenario-call-choices) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .scenario-picker--collapsed .scenario-choices { gap: var(--space-lg); }
+  .scenario-picker--collapsed .scenario-choice {
+    align-items: center;
+    min-height: var(--control-h-l);
+    padding: var(--space-ms);
+    gap: var(--space-sm);
+  }
+  .scenario-picker--collapsed .scenario-choice-copy strong { font-size: var(--fs-sm); }
 }
 
 /* Bilesen media kurallari kendi dosyalarindadir (components/controls/vu-meter/player/drawers). */

@@ -9,7 +9,8 @@
    micprobe-ui-state skill tablosu ile ayni):
      xs : (max-width: 479px)
      sm : (max-width: 767px)                          mobil tek kolon, gutter 16
-     md : (max-width: 1023px)                         mobil/tablet kabuk ve profil cekmecesi
+     md : (max-width: 1023px)                         mobil/tablet sayfa ici senaryo secimi
+          (min-width: 1024px)                         secim sonrasi kalici sol senaryo paneli
      lg : (min-width: 768px) and (max-width: 1199px)  konsol tek kolon
      xl : (min-width: 1200px)                         rail 248, konsol iki kolon
 

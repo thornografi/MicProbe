@@ -22,6 +22,7 @@
     "test:presentation-browser": "node js/tests/presentation-browser-runner.cjs",
     "test:scenario-browser": "node js/tests/scenario-selection-browser-runner.cjs",
     "test:report-browser": "node js/tests/report-browser-runner.cjs",
+    "test:report-layout-browsers": "node js/tests/report-layout-browser-runner.cjs",
     "test:review-browser": "node js/tests/review-browser-runner.cjs",
     "test:guided-browser": "node js/tests/guided-capture-browser-runner.cjs",
     "test:runtime-browser": "node js/tests/runtime-interactions-browser-runner.cjs",

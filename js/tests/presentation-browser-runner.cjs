@@ -62,8 +62,8 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
             `${width}: landing header, content and footer must share a left edge: ${JSON.stringify(edges)}`);
         }
         if (route === '/app/') {
-          const edges = await page.evaluate(() => ['.app-header .brand-mark', '.scenario-workspace', '.site-footer-content']
-            .map(selector => ({ selector, left: document.querySelector(selector).getBoundingClientRect().left })));
+          const edges = await page.evaluate(width => ['.app-header .brand-mark', width >= 1024 ? '#scenarioPicker' : '.scenario-workspace', '.site-footer-content']
+            .map(selector => ({ selector, left: document.querySelector(selector).getBoundingClientRect().left })), width);
           assert(edges.every(rect => Math.abs(rect.left - edges[0].left) < 1),
             `${width}: app header, workspace and footer must share an edge: ${JSON.stringify(edges)}`);
           assert.equal(await page.locator('#profileSidebar, #profileMenuBtn').count(), 0);
@@ -174,6 +174,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
     await phase(null);
     console.log(`PASS ${stateVariants} idle/preparing/capture/analysis button layout variants and footer locks`);
 
+    await page.setViewportSize({ width: 390, height: 900 });
     await page.locator('#changeScenarioBtn').click();
     await page.locator('#scenarioPicker').waitFor({ state: 'visible' });
     for (const width of widths) {
@@ -235,7 +236,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
     await accountDialog.locator('.account-dialog-body').evaluate(node => { node.scrollTop = node.scrollHeight; });
     assert(await accountDialog.locator('.account-dialog-body').evaluate(node => node.scrollTop > 0));
     assert.equal(await accountDialog.locator('.account-dialog-header').evaluate(node => node.getBoundingClientRect().top), headerTop);
-    assert.equal(await accountDialog.locator('.account-dialog-header .btn-overlay-close').evaluate(node => node.getBoundingClientRect().width), 32);
+    assert(await accountDialog.locator('.account-dialog-header .btn-overlay-close').evaluate(node => node.getBoundingClientRect().width >= 40));
     console.log('PASS narrow report/header containment and persistent account close control');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

@@ -64,8 +64,8 @@ const KEY = 'micprobe.lastScenario';
       assert.equal(await page.locator('#recordToggle').isVisible(), !isCall);
       assert.equal(await page.evaluate(() => document.activeElement.id), 'pageTitle');
       assert.equal(await page.evaluate(key => localStorage.getItem(key), KEY), id);
-      await page.locator('#changeScenarioBtn').click();
-      assert.equal(await page.evaluate(() => document.activeElement.id), 'scenarioPickerTitle');
+      assert(await page.locator('#scenarioPicker').isVisible(), 'Desktop keeps scenarios visible');
+      assert.equal(await page.locator('#changeScenarioBtn').isVisible(), false);
       assert.equal(await page.locator('#scenarioChoices [aria-current]').getAttribute('data-profile'), id);
     }
     console.log('PASS 11 widths, all scenarios, correct actions and keyboard focus');
@@ -73,16 +73,31 @@ const KEY = 'micprobe.lastScenario';
     await page.locator('#scenarioChoices [data-profile="discord"]').press('Enter');
     await page.locator('#customSettingsToggle').click();
     await page.locator('#customSettingsGrid [data-setting="bitrate"]').selectOption('96000');
-    await page.locator('#changeScenarioBtn').click();
     await page.locator('#scenarioChoices [data-profile="discord"]').click();
     assert.equal(await page.locator('#customSettingsGrid [data-setting="bitrate"]').inputValue(), '96000');
     await selectScenario(page, 'telegram-voice');
     await page.reload();
     await page.waitForFunction(() => document.body.classList.contains('app-mode'));
-    assert.equal(await page.locator('#scenarioPicker').isVisible(), false);
+    assert.equal(await page.locator('#scenarioPicker').isVisible(), true);
     assert.equal(await page.locator('.nav-item[aria-current]').getAttribute('data-profile'), 'telegram-voice');
     assert.equal(await page.evaluate(() => window.__captureRequests), 0);
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'selected-desktop.png'), fullPage: true });
+    for (const width of [390, 1023, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      assert.equal(await page.locator('#scenarioPicker').isVisible(), width >= 1024);
+      assert.equal(await page.locator('#changeScenarioBtn').isVisible(), width < 1024);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: selected overflow`);
+      if (width >= 1024) {
+        const picker = await page.locator('#scenarioPicker').boundingBox();
+        const workspace = await page.locator('#scenarioWorkspace').boundingBox();
+        assert(picker.x + picker.width <= workspace.x, `${width}: scenarios stay left of test`);
+      } else {
+        await page.locator('#changeScenarioBtn').click();
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'scenarioPickerTitle');
+        await selectScenario(page, 'telegram-voice');
+      }
+    }
     await context.close();
     console.log('PASS Enter activation, same-scenario settings preserved and scenario choice restored after reload');
 

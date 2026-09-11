@@ -95,9 +95,9 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-ms);
-  padding: var(--space-md) var(--space-lg);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
   border-top: 1px solid var(--border-secondary);
-  flex-shrink: 0;
 }
 
 .report-workflow-actions .btn {
@@ -149,16 +149,22 @@
   gap: var(--space-sm);
 }
 
+/* Hidden tools must not leave an empty grid row and its gap behind. */
+.report-popup-actions:not(:has(> :not([hidden]))) { display: none; }
+
 .report-download-button { gap: var(--space-sm); }
 
-/* Kapat/indir ikon butonlari: .btn-overlay-close (variables.css) */
+/* Kapat/indir ikon butonlari: .btn-overlay-close (shared.css) */
 
 /* --- Body (scrollable) --- */
 .report-popup-body {
   overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
   min-height: 0;
   padding: var(--space-lg);
-  flex: 1;
+  /* The dialog has an automatic height: size from content, not a zero basis. */
+  flex: 1 1 auto;
 }
 
 /* --- Score Badge --- */
@@ -385,6 +391,7 @@
 }
 
 .metric-card {
+  min-width: 0;
   /* .status-tile ile ayni bilgi-cipi yuzeyi */
   background: var(--bg-input);
   border: 1px solid var(--glass-border);
@@ -547,8 +554,7 @@
 
 @media (max-width: 767px) {
   .report-popup-header,
-  .report-popup-body,
-  .report-workflow-actions {
+  .report-popup-body {
     padding: var(--space-md);
   }
 }
@@ -564,9 +570,6 @@
 
 /* Short windows need reading space without shrinking the action targets. */
 @media (max-height: 479px) {
-  .report-popup-header,
-  .report-workflow-actions { padding-block: var(--space-sm); }
+  .report-popup-header { padding-block: var(--space-sm); }
   .report-popup-body { padding: var(--space-md); }
-  .report-workflow-actions { flex-wrap: nowrap; }
-  .report-workflow-actions .btn { flex: 1; min-width: 0; width: auto; padding-inline: var(--space-sm); }
 }

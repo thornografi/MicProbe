@@ -11,7 +11,7 @@
  * - Navigation event binding
  */
 
-import { createOverlayController } from './ui/OverlayController.js';
+import { createOverlayController, closeAllOverlays } from './ui/OverlayController.js';
 import { appPageTitle } from './modules/utils/ui.js';
 import APP_STYLESHEET_HREFS from './app-styles.js';
 import { initWaveAnimator } from './modules/WaveAnimator.js';
@@ -223,7 +223,8 @@ export async function showAppView(trigger = 'programmatic', historyMode = 'push'
     // its signed checkout parameters. Keep it until the session is checked.
     const newUrl = hasPurchaseRedirect || hasGoogleReturn ? window.location.href : '/app' + window.location.search;
     updateRoute(newUrl, historyMode);
-    const heading = appView.querySelector('#scenarioPicker:not([hidden]) h1, #scenarioWorkspace:not([hidden]) h1');
+    const heading = appView.querySelector('#scenarioWorkspace:not([hidden]) h1')
+      || appView.querySelector('#scenarioPicker h1');
     document.title = appPageTitle(heading);
     // An owned checkout can open a dialog during startup; keep its focus.
     if (!document.querySelector('dialog[open]')) heading?.focus({ preventScroll: true });
@@ -249,6 +250,7 @@ export function showLandingView({ hash = '', historyMode = 'push', smooth = fals
   ++viewRevision;
   setLoadStatus();
 
+  closeAllOverlays();
   document.body.classList.remove('app-mode');
   appModule?.syncAccountSignIn?.();
   if (initialRouteHandled) {

@@ -94,10 +94,16 @@
   .account-menu-button { padding-inline: var(--space-ms); }
   .account-dialog-header { padding-inline: var(--space-md); }
   .account-dialog-body { padding: var(--space-md); }
+  .account-field input { font-size: var(--fs-lg); }
   .account-tabs { padding-inline: var(--space-md); }
   .account-session { align-items: flex-start; flex-direction: column; gap: var(--space-sm); }
   .account-report { padding: var(--space-ms); }
   .account-report-heading { gap: var(--space-sm); }
+}
+
+/* Keep account editing readable on narrow screens and touch devices in landscape. */
+@media (pointer: coarse) {
+  .account-field input { font-size: var(--fs-lg); }
 }
 @media (max-width: 479px) {
   .account-comparison { scroll-margin-top: calc(2 * var(--control-h-m) + 4 * var(--space-sm)); }

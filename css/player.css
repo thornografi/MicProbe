@@ -154,7 +154,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
-  min-height: var(--control-h-s);
+  min-height: var(--control-h-m);
   padding: 0 var(--space-ms);
   background: var(--bg-input);
   color: var(--text-primary);
@@ -166,9 +166,13 @@
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   border: 1px solid var(--border-primary);
   cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+  .btn-download { min-height: var(--control-h-l); }
 }
 
 .btn-download:hover {

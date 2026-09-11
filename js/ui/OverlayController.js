@@ -271,3 +271,8 @@ export function createOverlayController(el, options = {}) {
 export function getOpenOverlayCount() {
   return stack.length;
 }
+
+/** A completed page navigation releases each overlay through its normal cleanup path. */
+export function closeAllOverlays(reason = 'navigation') {
+  [...stack].reverse().forEach(controller => controller.close(reason));
+}

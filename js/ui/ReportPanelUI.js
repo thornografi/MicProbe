@@ -56,6 +56,7 @@ class ReportPanelUI {
     this.showReportBtn = showReportBtnEl;
     this.downloadBtn = reportDownloadBtnEl;
     this.currentReport = null;
+    this._resetViewOnOpen = false;
     // Basarili premium fetch sonucu (PDF'e eklemek icin); rapor degisince sifirlanir
     this._lastDetailed = null;
     this._detailedReport = null;
@@ -105,7 +106,8 @@ class ReportPanelUI {
       adapter: 'dialog',
       closeEls: [this.closeBtn],
       triggerEl: this.showReportBtn,
-      initialFocus: () => this.closeBtn
+      initialFocus: () => this.closeBtn,
+      onClose: () => { this._checkoutRevision = (this._checkoutRevision || 0) + 1; }
     });
 
     this._onPremiumClick = () => this._startPremiumCheckout();
@@ -128,6 +130,7 @@ class ReportPanelUI {
     if (this.overlay?.isOpen()) return;
     this.syncWorkflowActions();
     this.overlay?.open({ opener: this.showReportBtn });
+    this._resetReportView();
     if (this.currentReport && premiumAccess.isUnlocked() && !this._lastDetailed) this._renderPremiumDetails();
   }
 
@@ -173,6 +176,7 @@ class ReportPanelUI {
 
   syncWorkflowActions() {
     const busy = !!this.workflow?.getIsBusy?.();
+    if (busy) this._checkoutRevision = (this._checkoutRevision || 0) + 1;
     const report = this.inlineReport;
     if (this.showReportBtn) this.showReportBtn.disabled = busy;
     if (this.retestBtn) {
@@ -233,7 +237,7 @@ class ReportPanelUI {
   }
 
   async _startPremiumCheckout() {
-    if (!this.premiumCtaEl || this._hasInsufficientAudio()) return;
+    if (!this.premiumCtaEl || this.premiumCtaEl.disabled || this._hasInsufficientAudio() || this.workflow?.getIsBusy?.()) return;
     if (premiumAccess.isUnlocked()) {
       this.premiumCtaEl.disabled = true;
       this._setPremiumStatus('Loading your instructions…');
@@ -241,15 +245,22 @@ class ReportPanelUI {
       finally { this.premiumCtaEl.disabled = false; }
       return;
     }
-    if (premiumAccess.getState().pending) {
+    const purchase = premiumAccess.getState();
+    if (purchase.pending || purchase.connectionError) {
       this.premiumCtaEl.disabled = true;
       this._setPremiumStatus('Checking your existing purchase…');
-      try { await accountAccess.refresh({ sessionOnly: true }); }
+      try { await premiumAccess.retryPurchaseVerification(); }
       finally { this.premiumCtaEl.disabled = false; this._syncPremiumState(); }
       return;
     }
+    if (purchase.purchaseLinked) { this.workflow?.onManagePurchase?.(); return; }
 
-    const originalText = this.premiumCtaEl.textContent;
+    const report = this.currentReport;
+    const owner = accountAccess.getState().user?.id;
+    const revision = this._checkoutRevision || 0;
+    const isCurrent = () => this.isOpen() && this.currentReport === report
+      && accountAccess.getState().user?.id === owner && (this._checkoutRevision || 0) === revision
+      && !this.workflow?.getIsBusy?.();
     this.premiumCtaEl.disabled = true;
     this.premiumCtaEl.textContent = 'Opening checkout...';
     this._setPremiumStatus('Redirecting to secure checkout.');
@@ -262,16 +273,22 @@ class ReportPanelUI {
     });
 
     try {
-      await premiumAccess.startCheckout();
+      await premiumAccess.startCheckout({ isCurrent: () => isCurrent() && !premiumAccess.getState().purchaseLinked });
     } catch (err) {
-      this.premiumCtaEl.disabled = false;
-      this.premiumCtaEl.textContent = originalText;
+      if (!isCurrent()) return;
       this._setPremiumStatus(err.message === 'account_sign_in_required'
         ? 'Sign in to keep your lifetime purchase with your account.'
+        : err.message === 'already_premium' ? 'Premium is already active. No new purchase is needed.'
         : err.message === 'purchase_verification_pending' ? 'Your purchase is waiting for verification. Retry purchase verification from Account.'
         : err.message === 'public_checkout_required' ? 'Open the public MicProbe site to purchase. Your test is preserved here.'
           : 'Checkout could not be opened. Please try again.');
       log.warning('Freemius checkout could not start', { error: err.message });
+    } finally {
+      this.premiumCtaEl.disabled = false;
+      // Refresh the label without replacing a specific checkout error.
+      const message = this.premiumStatusEl?.textContent || '';
+      this._syncPremiumState();
+      if (isCurrent() && message) this._setPremiumStatus(message);
     }
   }
 
@@ -291,10 +308,16 @@ class ReportPanelUI {
       return;
     }
     const pending = !!state.pending;
+    const inactive = state.purchaseLinked && !state.unlocked;
     this._setPremiumPrompt(
-      pending ? 'Purchase verification pending' : 'Detailed measurements and PDF export',
-      pending ? 'Your purchase is linked. You do not need to buy again.' : 'Premium includes the detailed findings for this recording and optional PDF downloads. A recording does not guarantee a diagnosis.',
-      pending ? 'Retry purchase verification' : 'Get Lifetime Premium'
+      pending ? 'Purchase verification pending' : state.connectionError ? 'Connection unavailable'
+        : inactive ? 'Premium access inactive' : 'Detailed measurements and PDF export',
+      pending ? 'We could not confirm purchase access yet. You do not need to buy again.'
+        : state.connectionError ? 'Reconnect to check your account and purchase access.'
+        : inactive ? 'A purchase is linked to your account. Review its status before making another payment.'
+        : 'Premium includes the detailed findings for this recording and optional PDF downloads. A recording does not guarantee a diagnosis.',
+      pending ? 'Retry purchase verification' : state.connectionError ? 'Retry account connection'
+        : inactive ? 'Review purchase' : 'Get Lifetime Premium'
     );
     if (premiumAccess.isUnlocked()) {
       if (this.premiumOverlayEl) this.premiumOverlayEl.hidden = true;
@@ -350,6 +373,11 @@ class ReportPanelUI {
     if (!report) return;
     const ownerId = report.run?.accountOwnerId;
     if (ownerId && ownerId !== accountAccess.getState().user?.id) return;
+    // A different report starts at its result; same-report async updates keep the reader's place.
+    if (!this.currentReport || this.currentReport.run?.id !== report.run?.id
+        || this.currentReport.run?.accountOwnerId !== ownerId) {
+      this._resetViewOnOpen = true;
+    }
     // A report owns its snapshot even if the caller later reuses its objects.
     this.currentReport = structuredClone(report);
     this._acceptedSummary = report.savedEvaluation?.public || null;
@@ -382,7 +410,17 @@ class ReportPanelUI {
     }
     this.syncWorkflowActions();
 
+    this._resetReportView();
     log.ui('Report popup rendered', { score: free.overall.score, findingCount: free.findings.length });
+  }
+
+  _resetReportView() {
+    // A hidden dialog has no layout; reset only after it opens, or after replacing an open report.
+    if (!this._resetViewOnOpen || !this.isOpen()) return;
+    const body = this.panelEl?.querySelector('.report-popup-body');
+    body?.querySelectorAll('details[open]').forEach(details => { details.open = false; });
+    if (body) { body.scrollTop = 0; body.scrollLeft = 0; }
+    this._resetViewOnOpen = false;
   }
 
   async _renderPremiumDetails() {

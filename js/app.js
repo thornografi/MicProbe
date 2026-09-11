@@ -380,13 +380,14 @@ const accountPanelUI = new AccountPanelUI({
   onRestoreLegacyPurchase: key => premiumAccess.restoreLegacyPurchase(key),
   onOpenReport: openSavedReport,
   onAccountChanged: () => reportPanelUI.clearReport(),
-  onCheckout: () => {
+  onCheckout: options => {
     checkoutStateSnapshot.save({ report: reportPanelUI.currentReport, ownerId: accountAccess.getState().user?.id || null,
       profileId: profileController.getCurrentProfileId() });
-    return premiumAccess.startCheckout();
+    return premiumAccess.startCheckout(options);
   }
 });
 reportPanelUI.setWorkflowActions({
+  onManagePurchase: () => accountPanelUI.open(),
   isReportSaved: runId => reportHistory.getState().reports.some(entry => entry.report.run.id === runId && !entry.pending),
   onReportSaved: () => reportHistory.reload(),
   waitForReportAccess: report => testAccess.waitForCompletion(report.run.id),

@@ -65,7 +65,8 @@ class ProfileUIManager {
 
   _showWorkspace(show, focus = false) {
     const { scenarioPicker, scenarioWorkspace } = this.elements;
-    setVisible(scenarioPicker, !show);
+    // Keep one catalogue: a persistent desktop sidebar, or a mobile chooser.
+    scenarioPicker?.classList.toggle('scenario-picker--collapsed', show);
     setVisible(scenarioWorkspace, show);
     if (document.body.classList.contains('app-mode')) {
       const title = show ? this.elements.pageTitle : scenarioPicker?.querySelector('h1');

@@ -113,14 +113,20 @@ assert.ok(BASE === 'http://localhost:8080' || BASE === 'https://micprobe.com', '
           await page.setViewportSize({ width, height: 844 });
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
           assert.equal(await page.locator('#reportRetestBtn').isVisible(), true);
+          await page.locator('.report-workflow-actions').scrollIntoViewIfNeeded();
           assert(await page.locator('.report-workflow-actions').evaluate(footer => {
             const outer = footer.getBoundingClientRect();
             const body = document.querySelector('.report-popup-body').getBoundingClientRect();
-            return outer.top >= body.bottom && outer.bottom <= innerHeight && [...footer.children].every(button => {
+            return outer.top >= body.top && outer.bottom <= body.bottom + 1 && [...footer.children].every(button => {
               const rect = button.getBoundingClientRect();
               return rect.left >= outer.left && rect.right <= outer.right && rect.bottom <= outer.bottom;
             });
-          }), `${width}: report recovery actions stay visible below scrolling content`);
+          }), `${width}: report recovery actions remain reachable inside scrolling content`);
+          assert(await page.getByRole('button', { name: 'Close report', exact: true }).evaluate(button => {
+            const rect = button.getBoundingClientRect();
+            return rect.top >= 0 && rect.bottom <= innerHeight;
+          }), 'Close report stays visible while the report scrolls');
+          await page.locator('.report-popup-body').evaluate(body => { body.scrollTop = 0; });
           if (width === 390) await page.screenshot({ path: '.tmp/ux-report-390.png' });
         }
         const pdfEvent = page.waitForEvent('download');

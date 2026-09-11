@@ -691,6 +691,7 @@ async function main() {
       await emptyHistoryRecoveryFlow(browser);
       await historyAccessFlow(browser); await firstPurchaseFlow(browser); await pendingPurchaseFlow(browser);
       await require('./account-portal-browser-runner.cjs').runPortalFlows(browser);
+      await require('./account-checkout-browser-runner.cjs').runCheckoutFlows(browser);
       console.log(JSON.stringify({ browser: name, status: 'passed', realGoogleSignIn: false }));
     } finally { await browser.close(); }
   }

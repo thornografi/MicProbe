@@ -524,14 +524,14 @@ details[open] > summary::after { transform: rotate(225deg); }
   border-color: var(--text-muted);
 }
 
-/* Overlay kapat/ikon butonu - tek gramer: 32x32, radius-md, ghost, ikon 20.
+/* Overlay close target: M40, enlarged to L48 for touch; icon stays 20px.
    Report popup, dev console, settings drawer ve account dialog ayni sinifi kullanir. */
 .btn-overlay-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control-h-m);
+  height: var(--control-h-m);
   flex-shrink: 0;
   padding: 0;
   border: none;
@@ -550,6 +550,10 @@ details[open] > summary::after { transform: rotate(225deg); }
 .btn-overlay-close svg {
   width: 20px;
   height: 20px;
+}
+
+@media (pointer: coarse) {
+  .btn-overlay-close { width: var(--control-h-l); height: var(--control-h-l); }
 }
 
 /* ========== ACCESSIBILITY: REDUCED MOTION ========== */

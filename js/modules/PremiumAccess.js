@@ -74,9 +74,14 @@ class PremiumAccess {
 
   getState() {
     const account = accountAccess.getState();
+    const unlocked = this.isUnlocked();
     return {
-      unlocked: this.isUnlocked(),
-      pending: !!(account.user && account.premium?.pending),
+      unlocked,
+      // A return awaiting its first link also needs recovery, but grants no access.
+      pending: !!(account.user && account.configured !== false && !unlocked
+        && (account.premium?.pending || this.pendingPurchase)),
+      purchaseLinked: !!(account.user && account.purchaseLinked),
+      connectionError: !!account.error,
       entitlement: this.entitlement,
       lastError: this.lastError,
       userId: account.user?.id || null
@@ -175,10 +180,21 @@ class PremiumAccess {
     this._notify();
   }
 
-  async startCheckout() {
-    await accountAccess.bootstrap();
-    if (accountAccess.getState().configured !== false) return accountAccess.startCheckout();
+  startCheckout(options = {}) {
+    if (!this.checkoutPromise) {
+      this.checkoutPromise = this._startCheckout(options).finally(() => { this.checkoutPromise = null; });
+    }
+    return this.checkoutPromise;
+  }
+
+  async _startCheckout({ isCurrent = () => true } = {}) {
+    // Finish an incoming purchase return before deciding whether another checkout is needed.
+    await this.bootstrap();
+    if (!isCurrent()) return false;
+    if (this.getState().pending) throw new Error('purchase_verification_pending');
+    if (accountAccess.getState().configured !== false) return accountAccess.startCheckout({ isCurrent });
     const config = await this._loadCheckoutConfig();
+    if (!isCurrent()) return false;
     const checkoutUrl = this._buildCheckoutUrl(config);
 
     if (!checkoutUrl) {
@@ -186,6 +202,25 @@ class PremiumAccess {
     }
 
     window.location.assign(checkoutUrl);
+    return true;
+  }
+
+  async retryPurchaseVerification() {
+    const owner = accountAccess.getState().user?.id;
+    const wasPending = !!accountAccess.getState().premium?.pending;
+    await accountAccess.refresh({ sessionOnly: true });
+    const account = accountAccess.getState();
+    if (owner && account.user?.id === owner && !account.error) {
+      // A linked pending purchase resolved by the session needs no purchase replay.
+      if (wasPending && account.premium?.unlocked) this._clearPendingPurchase();
+      else if (!account.premium?.unlocked && !account.premium?.pending && this.pendingPurchase) await this._completeAccountPurchase();
+    }
+    return this.getState();
+  }
+
+  _clearPendingPurchase() {
+    this.pendingPurchase = '';
+    try { sessionStorage.removeItem(PENDING_PURCHASE_KEY); } catch { /* Storage can be unavailable. */ }
   }
 
   async _processRedirectIfPresent() {
@@ -203,6 +238,7 @@ class PremiumAccess {
         try { sessionStorage.setItem(PENDING_PURCHASE_KEY, this.pendingPurchase); }
         catch { /* The current page still owns the pending return. */ }
       }
+      this._notify();
       this._cleanFreemiusParamsFromUrl();
       if (!accountAccess.requireSignIn('purchase')) {
         this._showStatusMessage('Sign in to finish linking your purchase. Your test is preserved.', 'warning');
@@ -250,15 +286,14 @@ class PremiumAccess {
 
   _completeAccountPurchase() {
     if (this.purchasePromise) return this.purchasePromise;
-    if (!this.pendingPurchase || this.getState().pending) return Promise.resolve(this.getState());
+    if (!this.pendingPurchase || accountAccess.getState().premium?.pending) return Promise.resolve(this.getState());
     const ownerId = accountAccess.getState().user?.id;
     const purchaseUrl = this.pendingPurchase;
     this.purchasePromise = (async () => {
       try {
         await accountAccess.api('/purchase', { method: 'POST', body: { url: purchaseUrl } });
         if (accountAccess.getState().user?.id !== ownerId || this.pendingPurchase !== purchaseUrl) return this.getState();
-        this.pendingPurchase = '';
-        try { sessionStorage.removeItem(PENDING_PURCHASE_KEY); } catch { /* Storage can be unavailable. */ }
+        this._clearPendingPurchase();
         await accountAccess.refresh();
         if (accountAccess.getState().user?.id !== ownerId) return this.getState();
         if (this.isUnlocked()) {
@@ -272,7 +307,7 @@ class PremiumAccess {
         if (accountAccess.getState().user?.id !== ownerId || this.pendingPurchase !== purchaseUrl) return this.getState();
         this._showStatusMessage(this.getState().pending
           ? 'Purchase verification is pending. Use Retry purchase verification in Account; you do not need to buy again.'
-          : 'Your purchase could not be linked yet. Sign in with the account used for checkout and retry by reloading this page.', 'warning');
+          : 'Your purchase could not be linked yet. Sign in with the account used for checkout and use Retry purchase verification in Account.', 'warning');
       }
       this._notify();
       return this.getState();

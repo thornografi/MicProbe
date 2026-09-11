@@ -62,6 +62,40 @@ test('a hosted return that cannot link remains retryable and never announces Pre
   assert.equal(env.premium.pendingPurchase, env.premium.redirectHref);
   assert.equal(env.messages[0].tone, 'warning');
   assert.equal(env.saved.has('micprobe:premium-access:v1'), false);
+  assert.equal(env.premium.getState().pending, true);
+  await assert.rejects(env.premium.startCheckout(), /purchase_verification_pending/);
+});
+
+test('retrying an unlinked return checks the session then retries the existing purchase once', async () => {
+  let attempts = 0;
+  const env = fixture({ purchase: async state => { attempts++; state.premium.unlocked = true; } });
+  env.state.premium.unlocked = false;
+  env.premium.pendingPurchase = 'https://micprobe.example/app?signature=pending';
+  await env.premium.retryPurchaseVerification();
+  assert.equal(attempts, 1);
+  assert.equal(env.premium.getState().pending, false);
+  assert.equal(env.premium.isUnlocked(), true);
+});
+
+test('verification retry must not send the old return when the session changes account', async () => {
+  let attempts = 0;
+  const env = fixture({ refresh: state => { state.user = { id: 'B' }; }, purchase: async () => { attempts++; } });
+  env.state.premium.unlocked = false;
+  env.premium.pendingPurchase = 'https://micprobe.example/app?signature=account-A';
+  await env.premium.retryPurchaseVerification();
+  assert.equal(attempts, 0);
+  assert.ok(env.premium.pendingPurchase);
+});
+
+test('a linked pending purchase confirmed by the session clears recovery without a purchase replay', async () => {
+  let attempts = 0;
+  const env = fixture({ refresh: state => { state.premium = { unlocked: true }; }, purchase: async () => { attempts++; } });
+  env.state.premium = { unlocked: false, pending: true };
+  env.premium.pendingPurchase = 'https://micprobe.example/app?signature=already-linked';
+  await env.premium.retryPurchaseVerification();
+  assert.equal(attempts, 0);
+  assert.equal(env.premium.pendingPurchase, '');
+  assert.equal(env.premium.getState().pending, false);
 });
 
 test('expired sessions and confirmed revocations refresh access without resending a report', async () => {

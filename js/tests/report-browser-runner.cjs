@@ -74,7 +74,8 @@ const BASE = 'http://localhost:8080';
     assert.equal(await page.locator('#accountMenuBtn').isDisabled(), true, 'History menu is locked during capture');
     assert.equal(await page.locator('#changeScenarioBtn').isDisabled(), true, 'Scenario navigation is locked during capture');
     await page.locator('#changeScenarioBtn').dispatchEvent('click');
-    assert.equal(await page.locator('#scenarioPicker').isVisible(), false, 'Programmatic navigation cannot interrupt capture');
+    assert.equal(await page.locator('#scenarioWorkspace').isVisible(), true, 'Programmatic navigation cannot interrupt capture');
+    assert(await page.locator('#scenarioChoices button').evaluateAll(nodes => nodes.every(node => node.disabled)), 'Sidebar choices are locked during capture');
     await page.evaluate(async () => (await import('/js/ui/ProfileUIManager.js')).default.handleProfileSelect('raw'));
     assert.equal(await page.locator('.nav-item[aria-current]').getAttribute('data-profile'), 'discord');
     // Bypass the native menu lock to exercise the saved-report action's independent ownership guard.

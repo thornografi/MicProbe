@@ -95,14 +95,18 @@ const BASE = 'http://localhost:8080';
       const { context, page } = await open();
       await page.locator('#heroLaunchBtn').click(); await appReady(page);
       const count = await page.evaluate(() => history.length);
+      await page.locator('#accountMenuBtn').click();
       await page.evaluate(async () => (await import('/js/app/AppState.js')).setIsPreparing(true));
       await page.evaluate(() => history.back());
       await page.waitForURL(BASE + '/app');
       assert.equal(await page.evaluate(() => document.body.classList.contains('app-mode')), true);
       assert.equal(await page.evaluate(() => history.length), count, 'Busy guard must not add a new entry');
+      assert(await page.locator('#accountDialog').evaluate(dialog => dialog.open), 'Rejected navigation keeps the current overlay');
       await page.evaluate(async () => (await import('/js/app/AppState.js')).setIsPreparing(false));
       await page.goBack(); await landingReady(page);
       assert.equal(new URL(page.url()).pathname, '/');
+      assert(await page.evaluate(() => !document.querySelector('#accountDialog').open
+        && !document.documentElement.classList.contains('is-scroll-locked')), 'Accepted navigation releases the overlay and scroll lock');
       await context.close();
       console.log('PASS active preparation restores accepted history entry without growing history');
     }

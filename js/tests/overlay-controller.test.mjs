@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOverlayController, getOpenOverlayCount } from '../ui/OverlayController.js';
+import { createOverlayController, getOpenOverlayCount, closeAllOverlays } from '../ui/OverlayController.js';
 
 // Minimal DOM taklidi: OverlayController'in dokundugu API yuzeyi kadar.
 function fakeElement({ visible = true, focusable = true } = {}) {
@@ -146,6 +146,35 @@ test('modal overlays lock scroll with a counter and inert targets with refcounts
   a.close();
   assert.equal(main.inert, false);
   assert.equal(html.classes.has('is-scroll-locked'), false);
+});
+
+test('navigation closes the entire overlay stack and releases shared locks', t => {
+  const { html, body } = harness(t);
+  const main = fakeElement();
+  const closed = [];
+  const drawer = createOverlayController(fakeElement(), {
+    inertTargets: () => [main], onClose: reason => closed.push(['drawer', reason])
+  });
+  const dialogEl = fakeDialog();
+  // Real native close events are queued; navigation cleanup must be synchronous.
+  dialogEl.close = () => { dialogEl.open = false; };
+  const dialog = createOverlayController(dialogEl, {
+    adapter: 'dialog', onClose: reason => closed.push(['dialog', reason])
+  });
+  const disclosure = createOverlayController(fakeElement(), {
+    modal: false, onClose: reason => closed.push(['disclosure', reason])
+  });
+  drawer.open(); dialog.open(); disclosure.open();
+  closeAllOverlays();
+  assert.deepEqual(closed, [['disclosure', 'navigation'], ['dialog', 'navigation'], ['drawer', 'navigation']]);
+  assert.equal(getOpenOverlayCount(), 0);
+  assert.equal(dialogEl.open, false);
+  assert.equal(main.inert, false);
+  assert.equal(html.classes.has('is-scroll-locked'), false);
+  assert.equal(document.activeElement, body);
+  dialogEl.dispatch('close');
+  closeAllOverlays();
+  assert.equal(closed.length, 3, 'Late native events and repeated navigation do not repeat cleanup');
 });
 
 test('backdrop click closes only its own overlay', t => {

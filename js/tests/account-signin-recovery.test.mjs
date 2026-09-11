@@ -10,7 +10,7 @@ function panelFixture() {
   let options, checkouts = 0;
   const panel = Object.assign(Object.create(AccountPanelUI.prototype), {
     googleContainer: container, googleHint: { textContent: '' }, googleRetry: { hidden: true },
-    dialog: { open: true }, accountState: { user: null }, signInRevision: 1, intent: 'checkout',
+    dialog: { open: true }, view: 'account', accountState: { user: null }, signInRevision: 1, intent: 'checkout',
     google: { cancel() {}, renderButton: async (_container, value) => { options = value; } },
     onCheckout: async () => { checkouts++; }, message(value) { this.statusText = value; }
   });

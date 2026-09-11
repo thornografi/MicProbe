@@ -30,7 +30,7 @@ export class AccountAccess {
   _notify() { this.listeners.forEach(listener => listener(this.getState())); }
 
   async refreshRejectedAccess(code, expectedOwner) {
-    if (!['sign_in_required', 'account_changed', 'premium_access_required'].includes(code)) return;
+    if (!['sign_in_required', 'account_changed', 'premium_access_required', 'already_premium'].includes(code)) return;
     if (code === 'sign_in_required' && expectedOwner === this.state.user?.id) {
       ++this.revision;
       this.state = { ...this.state, user: null, purchaseLinked: false, premium: { unlocked: false }, error: '' };
@@ -59,7 +59,7 @@ export class AccountAccess {
     if (!response.ok || !payload.ok) {
       if (checkOwner) await this.refreshRejectedAccess(payload.error, expectedOwner);
       if (response.status === 503 && payload.error === 'billing_temporarily_unavailable'
-          && ['/purchase', '/restore'].includes(path) && expectedOwner === this.state.user?.id) {
+          && ['/purchase', '/restore', '/checkout'].includes(path) && expectedOwner === this.state.user?.id) {
         await this.refresh({ sessionOnly: true });
       }
       throw Object.assign(new Error(payload.error || 'account_unavailable'), {
@@ -126,18 +126,26 @@ export class AccountAccess {
     this._notify();
   }
   async restorePurchase(licenseKey) {
+    const owner = this.state.user?.id;
     await this.api('/restore', { method: 'POST', body: { licenseKey } });
+    // The link succeeded even if the following session read is interrupted.
+    if (owner && this.state.user?.id === owner) this.state.purchaseLinked = true;
     return this.refresh();
   }
-  async startCheckout() {
+  async startCheckout({ isCurrent = () => true } = {}) {
     if (!this.requireSignIn('checkout')) throw new Error('account_sign_in_required');
+    if (!isCurrent()) return false;
     if (this.state.premium?.pending) throw new Error('purchase_verification_pending');
+    if (this.state.error) throw new Error('account_unavailable');
+    if (this.state.premium?.unlocked) throw new Error('already_premium');
     const result = await this.api('/checkout', { method: 'POST', body: {} });
+    if (!isCurrent()) return false;
     const url = new URL(result.checkoutUrl);
     if (url.protocol !== 'https:' || url.hostname !== 'checkout.freemius.com') {
       throw new Error('invalid_checkout_url');
     }
     window.location.assign(url.href);
+    return true;
   }
 }
 
