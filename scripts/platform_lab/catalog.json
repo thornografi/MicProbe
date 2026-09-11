@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-10",
+  "purpose": "Measurement inventory, not a claim of platform support or client equivalence",
+  "simulationPolicy": {
+    "reference": "PLATFORM_SIMULATION_TARGETS.md",
+    "oneModelPerPlatform": true,
+    "baselineSurface": "desktop-web",
+    "referenceBrowser": "Chrome on Windows; record exact version each run",
+    "clientSelector": false,
+    "automaticClientModelSwitch": false,
+    "crossClientAveraging": false,
+    "nativeEvidenceRole": "supporting comparison; not a required new test branch",
+    "requiredDefaults": "Verified web defaults; a desktop document is insufficient",
+    "advancedSettingsScope": "Verified preferences of the platform web client",
+    "unsupportedWebCalling": "Explicit research gap; no silent native replacement"
+  },
+  "platforms": ["teams", "webex", "zoom", "meet", "discord", "whatsapp", "telegram"],
+  "surfaces": ["desktop-app", "desktop-web", "mobile-app", "mobile-web"],
+  "firstComparisons": [
+    {"platform": "teams", "status": "historical-research; not a required future client matrix", "senderSurfaces": ["desktop-app", "desktop-web"], "receiverPolicy": "same receiver client/version/device for both"},
+    {"platform": "webex", "status": "historical-research; not a required future client matrix", "senderSurfaces": ["desktop-app", "desktop-web"], "receiverPolicy": "same receiver client/version/device for both"}
+  ],
+  "collectors": [
+    {"id": "chrome-dump", "implemented": true, "input": "User-exported JSON or gzip", "liveContinuityVerified": false},
+    {"id": "normalized-rtp", "implemented": true, "input": "Run-bound JSONL from an authorized adapter", "livePlatformAdapterImplemented": true, "verifiedConditions": ["Teams web sender/receiver 2026-09-09 controlled run", "Teams Windows to web receiver 2026-09-10 controlled run", "MicProbe local loopback 2026-09-10", "Webex Windows 46.9.0.35800 to Chrome receiver 2026-09-10: counters captured; energy counter disagrees with decoded PCM", "Webex Chrome sender and receiver 2026-09-10: complete measurement-window RTP; zero-payload slots kept distinct"], "unverifiedPlatforms": ["zoom", "meet", "discord", "whatsapp", "telegram"]},
+    {"id": "windows-pcm", "implemented": true, "input": "Explicitly selected DirectShow recording endpoints via ffmpeg", "hardwareRoutingVerified": true, "verifiedScope": "Concurrent source PCM from isolated Voicemeeter B1 in the controlled Teams and MicProbe runs; arbitrary receiver loopback routes remain unverified"},
+    {"id": "windows-source-levels", "implemented": true, "input": "Explicit active capture endpoint id; read-only Core Audio notifications and timestamped readbacks", "verifiedScope": "2026-09-10 B1 registration, persisted initial state, heartbeat, clean stop/unregister. Complete live Webex web reference window covered, initial/final 0 dB and no change notification. Native callback payload and overflow tested synthetically; OS delivery during a real level change still awaits observation.", "processAttribution": false},
+    {"id": "browser-pcm-rtp", "implemented": true, "source": "js/tests/platform-lab/browser-receiver.js", "input": "Authorized selected audio PeerConnection; optional explicit observed trackId for multi-slot audio; durable PCM/getStats export", "verifiedScope": "Teams web taps, MicProbe loopback, Webex Chrome receiver explicit slot. Webex Windows run: three speech sections matched, eight unverified, changing source level. Separate 2026-09-10 Webex web sender/receiver run: 110 PCM chunks and 112 stats each, automatic stop, full 44-second reference alignment, 11 section ranges, concurrent source PCM/level history. Unknown app build and defaults, receiver account differs from native run; no simulation equivalence."},
+    {"id": "audio-file", "implemented": true, "input": "Source and receiver recordings from desktop or mobile"},
+    {"id": "native-technology", "implemented": true, "input": "Dated observations linked to local logs/screenshots or official documentation", "automaticPrivateLogDecoder": false}
+  ],
+  "micprobeNeeds": [
+    {"field": "web defaults / optional user overrides", "source": "2026 primary documents plus documented initial-state web client observations; defaults-evidence.json", "use": "Begin with verified web defaults; only supported web preferences become optional settings. Retain other client evidence without averaging it into the web model."},
+    {"field": "codec/packetization/FEC/DTX", "source": "Endpoint RTP + codec linkage or dated client diagnostics", "use": "Local codec scenario suitability; native uplink is separate from receiver codec"},
+    {"field": "actual/target bitrate", "source": "Continuous RTP counters; target kept separate", "use": "Observed ranges for local scenarios, never a fixed universal default"},
+    {"field": "jitter/loss/concealment", "source": "Receiver counters", "use": "Separate transport effects from PCM quality observations"},
+    {"field": "capture API/media engine/AudioWorklet", "source": "2026 runtime evidence or primary documentation", "use": "Implementation context; matching APIs do not prove matching sound"},
+    {"field": "RMS/peak/true peak/LUFS/saturation/channels/spectrum", "source": "Unnormalized full recorded PCM", "use": "Reuse MicProbe reference definitions and report semantics"},
+    {"field": "quiet speech/noise/gain/band changes", "source": "Aligned known reference + source + receiver segments", "use": "Observe processing effects; isolate algorithms only with matched conditions"},
+    {"field": "AEC/latency/THD", "source": "Additional acoustic/synchronization/calibration prerequisites", "use": "Explicit unavailable until prerequisites and corresponding analysis are implemented"}
+  ],
+  "diagnosticSources2026": [
+    {"platform": "teams", "url": "https://learn.microsoft.com/en-us/microsoftteams/teams-client-diagnostic-logging", "pageDate": "2026-02-17", "reviewedAt": "2026-09-09", "scope": "Admin diagnostic log collection, Windows non-VDI/Mac; not assumed available in Teams Free and not a decoded codec guarantee"},
+    {"platform": "webex", "url": "https://help.webex.com/en-us/article/ns63yvy/Check-the-performance-of-your-Webex-meetings", "pageDate": "2026-08-26", "reviewedAt": "2026-09-09", "scope": "Meeting Statistics/Health Checker; export action may send a problem report, not assumed to create a local continuous RTP file"}
+  ]
+}

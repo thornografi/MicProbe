@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-11",
+  "purpose": "Research evidence by field and client; not a production preset or a claim that all defaults are verified",
+  "entries": [
+    {
+      "id": "zoom-web-audio-defaults-pending-20260911",
+      "platform": "zoom",
+      "surface": "desktop-web",
+      "field": "backgroundNoiseSuppressionEngine",
+      "documentedDefault": null,
+      "documentedAlternatives": ["Zoom background noise removal", "Browser built-in noise suppression"],
+      "status": "capabilities-and-observed-web-settings; factory-default-unverified",
+      "observedCondition": {"date": "2026-09-11", "runId": "ec0cb811-0074-4252-a277-3c369060bed1", "report": ".tmp/platform-lab/2026-09-11/zoom-web-controlled-v1/HAZIRLIK.md", "appBuild": "7.1.0(12514.t0yhnoq)", "browserReportedVersion": "Chrome 152.0.0.0", "noiseEngine": "Zoom background noise removal", "factoryDefaultVerified": false, "referencePlayed": false},
+      "controlledTransfer": {"date": "2026-09-11", "runId": "825986bf-34e0-4558-a758-f5f14a013808", "report": ".tmp/platform-lab/2026-09-11/zoom-web-controlled-v2/SONUC.md", "direction": "Chrome web sender to Windows Zoom 6.7.8.32670 receiver", "referencePlayed": true, "capturePoints": ["virtual-source", "browser-input", "Windows-render-endpoint"], "captureSampleRate": 48000, "captureChannels": 2, "browserInputChannelsIdenticalInMeasuredSections": true, "rtpCodec": null, "rtpBitrate": null, "dtx": null, "fec": null, "factoryDefaultVerified": false, "limitations": ["Whole Windows render endpoint; not process-isolated", "Receiver differs from earlier web-receiver tests", "Continuous numeric output-level history unavailable", "Observed capture settings are not codec or factory defaults"]},
+      "source": {"kind": "official-document", "date": null, "reviewedAt": "2026-09-11", "url": "https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0059985", "locator": "Zoom Web App section, Background noise suppression"},
+      "contextSource": {"date": "2026-07-20", "url": "https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0066432", "locator": "Web App release notes: home.zoom.us and waiting-room audio test; no codec or processing defaults"},
+      "report": ".tmp/platform-lab/2026-09-11/zoom-web-review-v1/SONUC.md",
+      "technicalRevisionHistoryVerified": false,
+      "limitations": ["Audio-help publication date not established; not accepted as a dated 2026 default", "Web UI and capture settings observed; complete media path, codec/bitrate and output remain unverified", "Desktop high-fidelity parameters do not establish web values", "Existing MicProbe zoom-hifi profile is not validated by this research"]
+    },
+    {
+      "id": "webex-app-desktop-smart-audio-20260616",
+      "platform": "webex",
+      "surface": "desktop-app",
+      "field": "smartAudioMode",
+      "documentedDefault": "Noise removal",
+      "documentedAlternatives": ["Optimize for my voice", "Optimize for all voices", "Music mode"],
+      "status": "documented-field; current-client-verification-pending",
+      "source": {"kind": "official-document", "date": "2026-06-16", "url": "https://help.webex.com/en-us/article/yrsw3l/Webex-Remove-Background-Noise-in-Calls-and-Meetings", "locator": "Desktop, Webex smart audio; first option explicitly marked Default"},
+      "technicalRevisionHistoryVerified": false,
+      "limitations": ["Computer audio only", "The page date is 2026; exact section revision history and deployment to the local version are not verified", "Does not establish default AGC/AEC, codec, bitrate or acoustic bandwidth", "Do not transfer the Desktop default label to browser or mobile"]
+    },
+    {
+      "id": "webex-app-music-opt-in-20260303",
+      "platform": "webex",
+      "surface": "desktop-app",
+      "field": "musicMode",
+      "documentedDefault": false,
+      "status": "documented-field; current-client-verification-pending",
+      "source": {"kind": "official-document", "date": "2026-03-03", "url": "https://help.webex.com/article/h7tezj", "locator": "Paragraph before meeting instructions: microphone starts optimized for speech; music mode must be enabled"},
+      "technicalRevisionHistoryVerified": false,
+      "limitations": ["A saved user preference can change future calls", "No numeric codec or DSP settings are derived from this document", "Browser/mobile equivalence not established"]
+    },
+    {
+      "id": "webex-web-defaults-pending-20260910",
+      "platform": "webex",
+      "surface": "desktop-web",
+      "status": "unknown",
+      "documentedDefault": null,
+      "reason": "2026 audio-settings page has a separate Web section about device selection, without a Smart Audio default table. Current logged-in web client was measured but its clean initial factory state is not documented; preserve unknown default status.",
+      "observedCondition": {"date": "2026-09-10", "runId": "278955b8-1435-49c3-b460-6ab96f195ad2", "report": ".tmp/platform-lab/2026-09-10/webex-web-reference-v2/SONUC.md", "smartAudioMode": "Noise removal", "browserReportedCapture": {"autoGainControl": true, "noiseSuppression": true, "echoCancellation": true}, "factoryDefaultVerified": false, "appBuild": null},
+      "contextSource": {"date": "2026-03-07", "url": "https://help.webex.com/article/n139bv9", "locator": "Web section"},
+      "followupReview": {"date": "2026-09-11", "status": "still-unknown", "report": ".tmp/platform-lab/2026-09-11/web-preencode-review-v1/SONUC.md", "exclusions": ["External audio default on n139bv9 applies to Webex Calling, not the meeting microphone", "June 11, 2026 BNR release on n3v7ldh applies to Contact Center WebRTC agents", "noj81j8 full article could not be retrieved this turn; indexed availability wording was not accepted as an enabled processing default"], "freshBrowserProfileAloneProvesAccountDefaults": false}
+    },
+    {
+      "id": "teams-free-defaults-pending-20260910",
+      "platform": "teams",
+      "edition": "Free",
+      "surfaces": ["desktop-app", "desktop-web"],
+      "status": "unknown",
+      "documentedDefault": null,
+      "reason": "No accepted 2026 primary source for the complete Free client defaults found in the bounded search. Rooms documents and community/AI replies are different evidence scopes. Preserve prior runs as observed settings.",
+      "contextSource": {"url": "https://support.microsoft.com/en-us/teams/free/get-started/what-s-new-in-microsoft-teams-free", "locator": "2026 release sections do not establish audio defaults; the audio-menu item is in June 2024 and is not accepted for this claim"},
+      "followupReview": {"date": "2026-09-11", "status": "still-unknown", "report": ".tmp/platform-lab/2026-09-11/web-preencode-review-v1/SONUC.md", "source": {"url": "https://support.microsoft.com/en-us/teams/free/settings/manage-your-device-settings-in-microsoft-teams-free", "publicationDate": null, "locator": "Opening desktop-only note and Outside a meeting device settings"}, "reason": "The Free device-settings page names controls but does not prove web initial values; visible 2026 publication/update date not established", "freshBrowserProfileAloneProvesAccountDefaults": false}
+    }
+  ]
+}
