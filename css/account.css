@@ -1,15 +1,14 @@
 /* Account and saved measurements share the existing application palette. */
-.account-menu-button { margin-left: auto; white-space: nowrap; }
 /* Account and report toolbar controls share the readable M40 size. */
 .workspace-account-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-ms); flex-shrink: 0; }
-.account-button, .account-menu-button, .report-history-button {
+.account-button, .report-history-button {
   display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-h-m);
   border: 1px solid var(--border-primary); background: var(--bg-elevated); color: var(--text-primary);
   border-radius: var(--radius-md); padding: 0 var(--space-md); font-size: var(--fs-sm); line-height: 1.2; cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 .report-history-button { min-height: var(--control-h-m); padding: 0 var(--space-ms); }
-.account-button:hover:not(:disabled), .account-menu-button:hover:not(:disabled), .report-history-button:hover:not(:disabled) { background: var(--gradient-accent-muted); border-color: var(--color-accent-text); }
+.account-button:hover:not(:disabled), .report-history-button:hover:not(:disabled) { background: var(--gradient-accent-muted); border-color: var(--color-accent-text); }
 .account-button:disabled { opacity: var(--opacity-disabled); cursor: not-allowed; }
 /* Overlay sozlesmesi (variables.css --overlay-*): rapor popup'i ile ayni yuzey/kenar/radius/golge/scrim */
 .account-dialog { color: var(--text-primary); background: var(--overlay-bg); border: 1px solid var(--overlay-border); border-radius: var(--overlay-radius); box-shadow: var(--overlay-shadow); width: min(var(--overlay-w-lg), calc(100% - 2 * var(--space-md))); max-width: none; max-height: calc(100vh - 2 * var(--overlay-viewport-gap)); max-height: calc(100dvh - 2 * var(--overlay-viewport-gap)); padding: 0; margin: auto; }
@@ -26,7 +25,6 @@
 .account-tabs button[aria-selected="true"] { border-bottom-color: var(--color-accent-text); color: var(--text-primary); font-weight: 600; }
 .account-tabs button:hover { color: var(--text-primary); }
 .account-profile { display: flex; align-items: center; gap: var(--space-md); }
-.account-avatar { display: flex; align-items: center; justify-content: center; width: var(--control-h-l); height: var(--control-h-l); flex: 0 0 auto; border-radius: var(--radius-lg); background: var(--bg-elevated); color: var(--color-purple-light); font-size: var(--fs-md); font-weight: 600; }
 .account-profile-info { min-width: 0; }
 .account-profile-info h3, .account-email { overflow-wrap: anywhere; }
 .account-email { margin: 0; color: var(--text-primary); font-size: var(--fs-sm); line-height: 1.6; }
@@ -50,6 +48,10 @@
 .account-restore summary { cursor: pointer; color: var(--text-secondary); }
 .account-field { display: flex; flex-direction: column; gap: var(--space-sm); flex: 1; font-size: var(--fs-xs); color: var(--text-secondary); min-width: 0; }
 .account-field input { width: 100%; box-sizing: border-box; min-height: var(--control-h-m); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-input); padding: 0 var(--space-ms); font-size: var(--fs-sm); line-height: 1.2; }
+/* Align with the input, not the label block; wrap before the key field becomes cramped. */
+.account-purchase-form { align-items: flex-end; }
+.account-purchase-form .account-field { flex-basis: 20em; overflow-wrap: anywhere; }
+.account-purchase-form > .account-button { max-width: 100%; overflow-wrap: anywhere; }
 .account-google { min-height: var(--control-h-m); margin: var(--space-md) 0; }
 /* An empty provider host still needs a measurable width before rendering. */
 .account-google:empty { min-height: 0; margin-block: 0; }

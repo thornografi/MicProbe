@@ -13,7 +13,7 @@ export default defineConfig({
     // Worklets and classic workers need real same-origin URLs under the CSP.
     assetsInlineLimit: 0,
     rolldownOptions: {
-      input: ['index.html', 'micprobe.html', 'privacy.html', 'terms.html', '404.html'].map(file => resolve(root, file))
+      input: ['index.html', 'micprobe.html', 'privacy.html', 'terms.html', 'contact.html', '404.html'].map(file => resolve(root, file))
     }
   },
   plugins: [{
@@ -30,6 +30,11 @@ export default defineConfig({
       const target = resolve(options.dir, 'js/lib/opus');
       mkdirSync(target, { recursive: true });
       cpSync(resolve(root, 'js/lib/opus'), target, { recursive: true });
+      // The hashed VAD binary is emitted by its URL import; ship its notices too.
+      const vadNotices = resolve(options.dir, 'js/lib/fvad');
+      mkdirSync(vadNotices, { recursive: true });
+      for (const file of ['LICENSE', 'PATENTS', 'AUTHORS', 'PROVENANCE.txt'])
+        cpSync(resolve(root, 'js/lib/fvad', file), resolve(vadNotices, file));
       // One application document, two entry URLs. Give non-JavaScript crawlers
       // the correct /app metadata without maintaining a second copy of the UI.
       const appDocument = readFileSync(resolve(options.dir, 'index.html'), 'utf8')

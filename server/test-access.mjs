@@ -52,7 +52,7 @@ export function createTestAccess({ db, accounts, billing, legacy, origin, now = 
       premium = true;
     }
     const day = Math.floor(timestamp / DAY), owner = user?.id || null;
-    const limit = premium ? Number.MAX_SAFE_INTEGER : owner ? 5 : 1;
+    const limit = premium ? Number.MAX_SAFE_INTEGER : owner ? 5 : 2;
     const guestNetwork = !owner && !premium ? network : null;
     const statements = [
       stmt('DELETE FROM test_runs WHERE day < ?', day - 2),
@@ -67,10 +67,10 @@ export function createTestAccess({ db, accounts, billing, legacy, origin, now = 
       SELECT ?, ?, ?, ?, 'reserved', ?, ? WHERE
       (SELECT COUNT(*) FROM test_runs WHERE ${identity} AND day = ?
         AND (state = 'completed' OR (state = 'reserved' AND expires_at > ?))) < ?
-      AND (? IS NULL OR NOT EXISTS (SELECT 1 FROM test_runs WHERE guest_network_hash = ? AND day = ?
-        AND (state = 'completed' OR (state = 'reserved' AND expires_at > ?))))
+      AND (? IS NULL OR (SELECT COUNT(*) FROM test_runs WHERE guest_network_hash = ? AND day = ?
+        AND (state = 'completed' OR (state = 'reserved' AND expires_at > ?))) < ?)
       ON CONFLICT(run_id) DO NOTHING`, input.runId, id, owner, day, timestamp + LEASE, guestNetwork,
-    owner || id, day, timestamp, limit, guestNetwork, guestNetwork, day, timestamp));
+    owner || id, day, timestamp, limit, guestNetwork, guestNetwork, day, timestamp, limit));
     statements.push(stmt('SELECT * FROM test_runs WHERE run_id = ? AND visitor_id = ?', input.runId, id));
     const results = await db.batch(statements);
     const run = results.at(-1).results[0];
@@ -83,7 +83,7 @@ export function createTestAccess({ db, accounts, billing, legacy, origin, now = 
     const run = await stmt('SELECT * FROM test_runs WHERE run_id = ? AND visitor_id = ?', input.runId, id).first();
     if (!run) throw problem('test_session_expired');
     if (run.state !== 'reserved') return { ok: true }; // terminal and idempotent
-    const valid = action === 'complete' && hasSufficientAudio({ audioMetrics: input.evidence });
+    const valid = action === 'complete' && hasSufficientAudio({ audioMetrics: input.evidence, recording: input.evidence?.recording });
     // Expired reservations never displace a later admitted test.
     await stmt(`UPDATE test_runs SET state = ? WHERE run_id = ? AND visitor_id = ? AND state = 'reserved'`,
       valid && run.expires_at > timestamp ? 'completed' : 'released', input.runId, id).run();
@@ -142,7 +142,15 @@ export function createTestAccess({ db, accounts, billing, legacy, origin, now = 
 function validEvidence(value) {
   const object = v => v && typeof v === 'object' && !Array.isArray(v);
   const only = (v, keys) => object(v) && Object.keys(v).every(key => keys.includes(key));
-  return only(value, ['status', 'sampleCount', 'durationMs', 'signal', 'clipping'])
+  const range = v => v === null || (only(v, ['startMs', 'endMs'])
+    && ['startMs', 'endMs'].every(key => v[key] === null || Number.isFinite(v[key])));
+  const timing = v => only(v, ['stopReason', 'guidedSegments'])
+    && (v.stopReason === undefined || [null, 'user', 'guided-complete', 'duration-limit', 'device-ended', 'memory-limit', 'capture-error'].includes(v.stopReason))
+    && (v.guidedSegments === undefined || (only(v.guidedSegments, ['version', 'method', 'interrupted', 'quiet', 'speaking'])
+      && v.guidedSegments.version === 1 && v.guidedSegments.method === 'user-guided-file-segments'
+      && typeof v.guidedSegments.interrupted === 'boolean' && range(v.guidedSegments.quiet) && range(v.guidedSegments.speaking)));
+  return only(value, ['status', 'sampleCount', 'durationMs', 'signal', 'clipping', 'recording'])
+    && (value.recording === undefined || timing(value.recording))
     && ['measured', 'unavailable'].includes(value.status)
     && ['sampleCount', 'durationMs'].every(key => value[key] === null || (Number.isFinite(value[key]) && value[key] >= 0))
     && only(value.signal, ['rmsDb', 'peakDb']) && only(value.clipping, ['status', 'method', 'rate'])

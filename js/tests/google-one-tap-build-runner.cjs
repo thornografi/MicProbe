@@ -80,14 +80,15 @@ async function ready(page) {
       await page.getByRole('button', { name: 'Account', exact: true }).waitFor();
       assert.deepEqual(env.choices, [false], 'One Tap must not select persistent remember-me');
       assert.equal(await page.locator('#accountDialog').evaluate(node => node.open), false);
+      assert.equal(await page.locator('#userMessage').isVisible(), false, 'One Tap sign-in does not show a toast');
       await page.locator('#accountMenuBtn').click();
       await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-      await page.keyboard.press('Escape'); await page.reload(); await ready(page);
+      await page.keyboard.press('Escape'); await page.waitForURL(BASE + '/app'); await page.reload(); await ready(page);
       assert.equal(await page.evaluate(() => window.__oneTap.loads), 0, 'Reload after sign-out must not reoffer');
       await page.locator('#accountMenuBtn').click();
       await page.locator('#googleButtonFixture').click();
       await page.getByRole('button', { name: 'Account', exact: true }).waitFor();
-      assert.deepEqual(env.choices, [false, false]);
+      assert.deepEqual(env.choices, [false, true]);
       assert.deepEqual(env.errors, []);
       console.log('PASS compiled landing, explicit One Tap, session-only login, logout/reload suppression and manual fallback');
     } finally { await env.context.close(); }

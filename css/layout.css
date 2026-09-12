@@ -11,7 +11,7 @@
   min-height: 100vh;
 }
 
-/* One centered task surface, with a shared header and footer. */
+/* First use is a centered chooser; the selected desktop test has a left rail. */
 .app-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -71,12 +71,13 @@
   padding-inline: var(--workspace-gutter);
 }
 
-/* The workspace keeps all shared destinations in a compact footer. */
-.app-shell .site-footer-content { max-width: var(--app-content-max); grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }
-.app-shell .site-footer-identity { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); }
-.app-shell .site-footer-description { font-size: var(--fs-sm); max-width: none; }
-.app-shell .site-footer-meta { margin-left: auto; }
-.app-shell .site-footer-links { grid-column: 1; display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-xl); }
+/* The app needs a utility bar, while the landing retains its full footer. */
+.app-shell .site-footer { padding: var(--space-ms) var(--space-lg); }
+.app-shell .site-footer-content { max-width: none; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); }
+.app-shell :is(.site-footer-brand, .site-footer-description, .site-footer-heading) { display: none; }
+.app-shell .site-footer-identity { display: block; }
+.app-shell .site-footer-meta { margin: 0; }
+.app-shell .site-footer-links { display: flex; flex-wrap: wrap; gap: 0 var(--space-lg); }
 .app-shell .site-footer-group { flex-direction: row; flex-wrap: wrap; gap: 0 var(--space-lg); }
 
 /* ========== RESPONSIVE ========== */
@@ -98,7 +99,8 @@
   margin-bottom: var(--space-2xl);
 }
 
-.scenario-sidebar-title { display: none; }
+.scenario-sidebar-title,
+.scenario-group-toggle { display: none; }
 
 .scenario-picker-header h1 {
   margin: 0 0 var(--space-md);
@@ -122,10 +124,6 @@
   gap: var(--space-xl);
 }
 
-.scenario-group:first-child {
-  grid-column: 1 / -1;
-}
-
 .scenario-group {
   min-width: 0;
 }
@@ -140,9 +138,24 @@
 
 .scenario-group h2 {
   margin: 0 0 var(--space-ms);
-  color: var(--text-muted);
+  color: var(--text-primary);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.scenario-general-presets {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.scenario-general-presets h3 {
+  margin: 0 0 var(--space-ms);
+  color: var(--text-secondary);
   font-size: var(--fs-sm);
   font-weight: 500;
+  line-height: 1.5;
 }
 
 .scenario-choice {
@@ -192,6 +205,7 @@
 }
 
 .scenario-choice:focus-visible,
+.scenario-group-toggle:focus-visible,
 .scenario-change:focus-visible {
   outline: 2px solid var(--color-purple-light);
   outline-offset: 3px;
@@ -236,10 +250,7 @@
 
 /* The same chooser and task order remain on phones. */
 @media (max-width: 767px) {
-  .app-shell .site-footer-identity { display: grid; justify-items: start; }
-  .app-shell .site-footer-meta { margin-left: 0; }
-  .app-shell .site-footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app-shell .site-footer-group { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; }
+  .app-shell .site-footer { padding-inline: var(--space-md); }
 
   .scenario-picker {
     margin: var(--space-sm) auto;
@@ -254,9 +265,6 @@
     gap: var(--space-lg);
   }
 
-  .scenario-group:first-child {
-    grid-column: auto;
-  }
   .scenario-call-choices { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -274,37 +282,70 @@
 
 /* The same catalogue stays within reach beside the selected test on desktop. */
 @media (min-width: 1024px) {
-  .app-shell:has(.scenario-workspace:not([hidden])) { --app-content-max: 1240px; }
+  .app-shell:has(.scenario-workspace:not([hidden])) {
+    --sidebar-width: 272px;
+    --app-content-max: 1600px;
+    --workspace-gutter: clamp(24px, 3vw, 48px);
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-rows: var(--header-height) minmax(0, 1fr) auto;
+    height: 100dvh;
+    min-height: 0;
+  }
 
+  /* Promote the existing catalogue, workspace and shared footer into the shell
+     grid without moving or duplicating their DOM controls. The content and
+     navigation scroll within the space between the header and utility footer. */
+  .app-shell:has(.scenario-workspace:not([hidden])) .main-content,
   .content-container:has(.scenario-workspace:not([hidden])) {
-    width: 100%;
-    max-width: calc(var(--app-content-max) + 2 * var(--workspace-gutter));
-    align-self: center;
-    display: grid;
-    grid-template-columns: 248px minmax(0, 1fr);
-    align-items: start;
-    align-content: start;
-    gap: var(--space-xl);
+    display: contents;
+  }
+
+  .scenario-workspace:not([hidden]) {
+    grid-area: 2 / 2 / 3 / 3;
+    min-height: 0;
+    height: 100%;
+    max-width: none;
+    overflow-y: auto;
+    padding: var(--space-xl) var(--workspace-gutter);
+  }
+
+  .scenario-workspace > :is(.page-header, .test-console) { margin-inline: auto; }
+
+  .app-shell:has(.scenario-workspace:not([hidden])) .site-footer {
+    grid-area: 3 / 1 / 4 / -1;
+  }
+
+  .app-shell:has(.scenario-workspace:not([hidden])) .site-footer-content {
+    margin-inline: 0;
   }
 
   .scenario-picker--collapsed {
-    position: sticky;
-    top: var(--space-lg);
-    max-height: calc(100dvh - var(--space-xl));
+    display: flex;
+    flex-direction: column;
+    grid-area: 2 / 1 / 3 / 2;
+    min-height: 0;
+    height: 100%;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     scrollbar-width: thin;
     margin: 0;
-    padding: var(--space-xs);
+    padding: var(--space-md);
+    border-right: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
   }
 
   .scenario-picker--collapsed .scenario-picker-header {
-    margin-bottom: var(--space-lg);
+    flex: none;
+    margin-bottom: var(--space-md);
+    padding-inline: var(--space-sm);
   }
 
   .scenario-picker--collapsed .scenario-sidebar-title {
     display: block;
     margin: 0;
     font-size: var(--fs-lg);
+    font-weight: 600;
+    line-height: 1.5;
   }
 
   .scenario-picker--collapsed .scenario-picker-header > :not(.scenario-sidebar-title),
@@ -316,17 +357,125 @@
 
   .scenario-picker--collapsed :is(.scenario-choices, .scenario-call-choices) {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-sm);
+    gap: var(--space-2xs);
   }
 
-  .scenario-picker--collapsed .scenario-choices { gap: var(--space-lg); }
+  .scenario-picker--collapsed .scenario-choices {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    gap: var(--space-xs);
+  }
+  /* Only the expanded option list shrinks, keeping the other usage types in
+     view on short screens without pinning content to viewport coordinates. */
+  .scenario-picker--collapsed .scenario-group { flex: none; }
+  .scenario-picker--collapsed .scenario-group:has(.scenario-group-toggle[aria-expanded="true"]) {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+  .scenario-picker--collapsed .scenario-group h2 {
+    flex: none;
+    margin: 0;
+  }
+  .scenario-picker--collapsed .scenario-group-label,
+  .scenario-picker--collapsed .scenario-group--recording h2 { display: none; }
+
+  .scenario-picker--collapsed .scenario-group-toggle {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: var(--space-ms);
+    width: 100%;
+    min-height: var(--control-h-m);
+    padding: var(--space-sm);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: var(--fs-md);
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+  }
+  .scenario-category-icon { width: 20px; height: 20px; }
+  .scenario-category-chevron {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .scenario-group-toggle[aria-expanded="true"] .scenario-category-chevron { transform: rotate(90deg); }
+  .scenario-picker--collapsed .scenario-group-toggle[aria-expanded="true"],
+  .scenario-picker--collapsed .scenario-group:has(.scenario-choice.active) .scenario-group-toggle {
+    color: var(--text-primary);
+  }
+  .scenario-picker--collapsed .scenario-group-options {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    margin-inline-start: calc(var(--space-lg) + var(--space-xs));
+    padding-block: var(--space-xs) var(--space-sm);
+  }
+  .scenario-picker--collapsed .scenario-general-presets {
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+  }
+  .scenario-picker--collapsed .scenario-general-presets h3 {
+    margin-bottom: var(--space-xs);
+    padding-inline: var(--space-ms);
+    font-size: var(--fs-xs);
+    color: var(--text-muted);
+  }
   .scenario-picker--collapsed .scenario-choice {
     align-items: center;
-    min-height: var(--control-h-l);
-    padding: var(--space-ms);
+    min-height: var(--control-h-m);
+    margin: 0;
+    padding: var(--space-xs) var(--space-ms);
     gap: var(--space-sm);
+    border-color: transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
   }
-  .scenario-picker--collapsed .scenario-choice-copy strong { font-size: var(--fs-sm); }
+  .scenario-picker--collapsed .scenario-choice .nav-icon { display: none; }
+  .scenario-picker--collapsed .scenario-choice-copy strong {
+    font-size: var(--fs-base);
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+  .scenario-picker--collapsed .scenario-choice:hover,
+  .scenario-picker--collapsed .scenario-group-toggle:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+  .scenario-picker--collapsed .scenario-choice.active {
+    background: rgba(var(--color-purple-rgb), 0.12);
+    color: var(--text-primary);
+  }
+  .scenario-picker--collapsed .scenario-group--recording .scenario-choice {
+    padding: var(--space-sm);
+    gap: var(--space-ms);
+  }
+  .scenario-picker--collapsed .scenario-group--recording .nav-icon {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    color: inherit;
+  }
+  .scenario-picker--collapsed .scenario-group--recording .nav-icon svg { opacity: 1; }
+  .scenario-picker--collapsed .scenario-group--recording strong {
+    font-size: var(--fs-md);
+    font-weight: 500;
+  }
 }
 
 /* Bilesen media kurallari kendi dosyalarindadir (components/controls/vu-meter/player/drawers). */

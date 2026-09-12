@@ -94,7 +94,7 @@ class TestRecordingFlow {
           return;
         }
         eventBus.emit(EVENTS.UI_MESSAGE, { message: 'Microphone disconnected. Finishing the captured test sample.', tone: 'warning' });
-        this.stopRecording().catch(err => log.error('Test device-ended stop failed', { error: err.message }));
+        this.stopRecording('device-ended').catch(err => log.error('Test device-ended stop failed', { error: err.message }));
       };
       run.stream.getAudioTracks().forEach(track => track.addEventListener('ended', run.onTrackEnded));
 
@@ -142,7 +142,7 @@ class TestRecordingFlow {
       endPreparing(this.deps);
 
       // Timer baslat
-      run.guide.start(run.startedAt, () => this.stopRecording().catch(err => log.error('Guided test stop failed', { error: err.message })));
+      run.guide.start(run.startedAt, () => this.stopRecording('guided-complete').catch(err => log.error('Guided test stop failed', { error: err.message })));
       if (!run.guide.guided) this._startTimer(run);
       eventBus.emit(EVENTS.TEST_RECORDING_STARTED, { durationMs: run.guide.durationMs, runSnapshot: this.runSnapshot });
       log.stream(`Test recording started (${run.guide.durationMs / 1000}s)`);
@@ -164,23 +164,25 @@ class TestRecordingFlow {
   /**
    * Test kaydini durdur ve playback'e gec
    */
-  stopRecording() {
+  stopRecording(reason = 'user') {
     if (this._stopPromise) return this._stopPromise;
     if (this.testPhase !== 'recording') return Promise.resolve();
-    this._stopPromise = this._stopRecording(this._run);
+    this._stopPromise = this._stopRecording(this._run, reason);
     return this._stopPromise;
   }
 
-  async _stopRecording(run) {
+  async _stopRecording(run, reason) {
     if (!this._isCurrent(run)) return;
     // GUARD: stopRecording async surecindeyken (timer fire + erken tiklama yarisi)
     // ikinci kez girilmesin - aksi halde onstop overwrite olur ve ilk promise asla resolve olmaz
     if (this.testPhase === 'stopping') return;
     this.testPhase = 'stopping';
+    run.stopReason = reason;
+    beginPreparing(this.deps, 'test-recording');
 
     this._clearTimer();
     run.durationMs = performance.now() - run.startedAt;
-    run.guidedSegments = run.guide.finish(run.durationMs);
+    run.guidedSegments = run.guide.finish(run.durationMs, reason);
 
     log.stream('Test recording stopping', {});
 
@@ -261,6 +263,7 @@ class TestRecordingFlow {
     }
 
     this.testPhase = 'analysing';
+    this.deps.setIsPreparing(false);
     this.deps.setCurrentMode('test-analysing');
     this.deps.uiStateManager?.updateButtonStates();
     eventBus.emit(EVENTS.TEST_ANALYSING_STARTED);
@@ -339,24 +342,24 @@ class TestRecordingFlow {
    * @private
    */
   _startTimer(run = this._run) {
-    let remaining = TEST.DURATION_MS;
+    const deadline = performance.now() + TEST.DURATION_MS;
 
     // Ilk countdown
-    eventBus.emit(EVENTS.TEST_COUNTDOWN, { remainingSec: Math.ceil(remaining / 1000) });
+    const countdown = () => eventBus.emit(EVENTS.TEST_COUNTDOWN, { runId: run.snapshot.runId, phase: 'capture',
+      remainingSec: Math.max(0, Math.ceil((deadline - performance.now()) / 1000)) });
+    countdown();
 
     // Countdown interval (her saniye)
     this.testCountdownInterval = setInterval(() => {
       if (!this._isCurrent(run)) return;
-      remaining -= 1000;
-      const remainingSec = Math.ceil(remaining / 1000);
-      eventBus.emit(EVENTS.TEST_COUNTDOWN, { remainingSec: remainingSec > 0 ? remainingSec : 0 });
+      countdown();
     }, 1000);
 
     // Ana timer (7 sn sonra dur)
     // Fire-and-forget: wrapAsyncHandler kapsaminin DISINDA -> .catch() zorunlu (unhandled rejection + UI kilidi onleme)
     this.testTimerId = setTimeout(() => {
       if (!this._isCurrent(run)) return;
-      this.stopRecording().catch(err => log.error('Test auto-stop failed', { error: err.message }));
+      this.stopRecording('duration-limit').catch(err => log.error('Test auto-stop failed', { error: err.message }));
     }, TEST.DURATION_MS);
   }
 
@@ -439,6 +442,7 @@ class TestRecordingFlow {
       encoder: ENCODER_TYPES.MEDIARECORDER,
       encoderReportedBitrate: Number.isFinite(reportedBitrate) && reportedBitrate > 0 ? reportedBitrate : null,
       durationSource: 'capture-clock',
+      stopReason: run.stopReason || null,
       guidedSegments: run.guidedSegments || null
     });
   }

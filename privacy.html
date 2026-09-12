@@ -39,7 +39,7 @@
     </header>
     <main class="legal-content">
       <h1>Privacy Policy</h1>
-      <p>Last updated: September 11, 2026. This policy describes how MicProbe handles information when you test your microphone, sign in, save reports or purchase Premium.</p>
+      <p>Last updated: September 12, 2026. This policy describes how MicProbe handles information when you test your microphone, sign in, save reports or purchase Premium.</p>
       <h2>Who is responsible for your information</h2>
       <p>MicProbe is operated from Türkiye by Burak ÖZER, the data controller for the information handled through MicProbe. For privacy questions or requests about your information, contact <a href="mailto:support@micprobe.com">support@micprobe.com</a>.</p>
       <h2>How and why information is processed</h2>
@@ -52,8 +52,9 @@
       <p>Free testing has a daily limit. A first-party <strong>micprobe_visitor</strong> cookie contains a random browser identifier for up to 30 days; the server stores its hash. Signed-in limits use your account identifier. To manage interrupted tests, this tab may temporarily keep a test identifier and a small measurement summary. Audio recordings are never sent with these requests.</p>
       <p>Test-access records contain identifiers, dates and completion status. Old records and expired browser identifiers are removed during subsequent test-access checks. A daily salted hash of the connection IP limits anonymous testing from the same IP address and excessive creation of browser identifiers. Clearing the visitor cookie does not reset this anonymous allowance. People sharing an IP address can sign in to use their separate account allowances. Raw IP addresses are not stored in these records.</p>
       <h2 id="sign-in">Google sign-in and sessions</h2>
-      <p>When you choose Google sign-in, Google provides your account identifier, name and verified email address. MicProbe stores these to recognize your account, associate saved reports with you and link verified purchases. MicProbe does not request access to Gmail, Google Drive, contacts or your Google password.</p>
-      <p>MicProbe uses a session cookie to keep you signed in during your browser session. If you select &ldquo;Keep me signed in on this device&rdquo; when signing in, that cookie is saved for up to 30 days. Browser session-restore features may also retain session cookies, so sign out on shared devices. Signing out ends that session; it does not delete your saved reports or purchase association. Sign-in security cookies expire after 10 minutes or are removed when sign-in succeeds.</p>
+      <p>The home page and test screen check your existing MicProbe session to show the right account and purchase actions. The home page does not load Google's sign-in interface or your saved reports.</p>
+      <p>When you choose Google sign-in, Google provides your account identifier, name, verified email address and, when available, a profile picture URL. MicProbe stores these to recognize and display your account, associate saved reports with you and link verified purchases. Your picture loads from Google's image service without sending the MicProbe page address as a referrer. If it is unavailable, we display your initials. MicProbe does not request access to Gmail, Google Drive, contacts or your Google password.</p>
+      <p>The Google sign-in form selects &ldquo;Keep me signed in on this device&rdquo; by default. Leaving it selected saves the sign-in cookie for up to 30 days; unchecking it uses a browser-session cookie. The optional Google One Tap prompt uses a browser-session cookie. Browser session-restore features may also retain session cookies, so sign out on shared devices. Signing out ends that session; it does not delete your saved reports or purchase association. Sign-in security cookies expire after 10 minutes or are removed when sign-in succeeds.</p>
       <p>These first-party cookies are named <strong>micprobe_session</strong> (your signed-in session) and <strong>micprobe_login_nonce_*</strong> (proof that a sign-in request started in this browser). When accounts are enabled, Google's sign-in service may load as you enter the test screen to offer an optional Google One Tap sign-in, or when you open the sign-in panel. One Tap requires your choice to continue and uses a browser-session cookie; it does not select the optional 30-day sign-in cookie. A flag in this tab's session storage prevents repeated automatic prompts during the same visit. You can dismiss the suggestion and keep testing without an account. Browser settings may prevent the suggestion from appearing.</p>
       <h2>Saved information and your controls</h2>
       <p>New reports captured for a Premium account are saved to that account. Free-account results are not added to a new browser or account archive. You can delete individual saved reports from Saved reports. Pending saves remain with their original account; older pending items are not automatically uploaded when you sign in or upgrade. Signing out hides your saved reports on this browser.</p>
@@ -92,12 +93,14 @@
             <p class="site-footer-heading">Explore</p>
             <a href="/#features">Features</a>
             <a href="/#how-it-works">How it works</a>
+            <a href="/#pricing">Pricing</a>
           </div>
           <div class="site-footer-group">
             <p class="site-footer-heading">Information</p>
             <a href="/privacy.html">Privacy</a>
             <a href="/terms.html">Terms</a>
-            <a href="mailto:support@micprobe.com" class="site-footer-contact">Support</a>
+            <a href="/#faq">FAQ</a>
+            <a href="/contact.html" class="site-footer-contact">Contact</a>
           </div>
         </nav>
       </div>

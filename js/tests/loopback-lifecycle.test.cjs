@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { captureOutcome } = require('../modules/CaptureOutcome.js');
 
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -37,7 +38,7 @@ function testFlow(overrides = {}) {
     .replace('export default class CaptureGuide', 'class CaptureGuide') + '\n'
     + read('js/controllers/TestRecordingFlow.js').replace(/^import .*;$/gm, '')
     .replace('export default TestRecordingFlow;', 'TestRecordingFlow;');
-  const Flow = vm.runInNewContext(code, { ...constants, ...(overrides.timers || timers), Blob, AbortController, DOMException,
+  const Flow = vm.runInNewContext(code, { ...constants, ...(overrides.timers || timers), Blob, AbortController, DOMException, captureOutcome,
     eventBus: { emit(type, data) { events.push({ type, data }); } },
     log: new Proxy({}, { get: (_, type) => (message, details) => logs.push({ type, message, details }) }), stopStreamTracks,
     performance: { now: () => now += 1000 },

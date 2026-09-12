@@ -265,43 +265,6 @@ class DiagnosticReportBuilder {
 
   // === PUBLIC: Build ===
 
-  /**
-   * A user-requested help report has its own identity and no measured sample.
-   * Do not begin/reset a run here: an active capture and its pending analysis keep ownership.
-   */
-  createGuidanceReport(runSnapshot) {
-    if (typeof runSnapshot?.runId !== 'string' || !runSnapshot.runId.trim()) {
-      throw new TypeError('A new run snapshot is required for a troubleshooting report.');
-    }
-    return {
-      version: '2.0',
-      generatedAt: new Date().toISOString(),
-      sessionId: this._deps.logManager?.sessionId || null,
-      run: { id: runSnapshot.runId, accountOwnerId: runSnapshot.accountOwnerId || null, type: 'troubleshooting' },
-      environment: this._buildEnvironment(runSnapshot),
-      communicationContext: {
-        ...(runSnapshot.communicationContext || UNKNOWN_COMMUNICATION_CONTEXT),
-        usage: runSnapshot.troubleshooting?.usage || 'unknown'
-      },
-      troubleshooting: runSnapshot.troubleshooting || UNKNOWN_TROUBLESHOOTING_CONTEXT,
-      device: null,
-      profile: {
-        id: null,
-        label: 'Troubleshooting',
-        category: null,
-        approximation: false,
-        scope: 'Guidance based on your description; no audio was captured or measured.'
-      },
-      recording: null,
-      loopback: null,
-      audioMetrics: null,
-      deepAnalysis: null,
-      system: null,
-      sanityCheck: null,
-      logs: null
-    };
-  }
-
   build() {
     const { logManager } = this._deps;
 

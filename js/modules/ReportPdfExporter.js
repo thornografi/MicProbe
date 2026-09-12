@@ -57,7 +57,8 @@ async function loadJsPDF() {
 export async function downloadReportPdf({ report, free, detailed, canDownload }) {
   if (!detailed || !canDownload?.()) return false;
   ({ report, free, detailed } = structuredClone({ report, free, detailed }));
-  if (detailed.summary) free = { ...free, ...detailed.summary, findings: detailed.findings || free.findings };
+  if (detailed.summary) free = { ...free, ...detailed.summary, nextStep: detailed.summary.nextStep || '',
+    findings: detailed.findings || free.findings };
   const JsPDF = await loadJsPDF();
   if (!canDownload()) return false;
   const doc = new JsPDF({ unit: 'pt', format: 'a4' });
@@ -65,6 +66,7 @@ export async function downloadReportPdf({ report, free, detailed, canDownload })
 
   writeHeader(writer, report);
   writeOverall(writer, free);
+  writeRecommendations(writer, detailed.recommendations || []);
   writeFindings(writer, free);
   if (free.scope) {
     writer.sectionTitle('What Was Measured');
@@ -73,7 +75,6 @@ export async function downloadReportPdf({ report, free, detailed, canDownload })
   if (report.run?.type !== 'troubleshooting') writeDeviceProfile(writer, report);
   writeTroubleshootingContext(writer, report);
   if (report.run?.type !== 'troubleshooting') writeDetailedMetrics(writer, detailed.metrics || []);
-  writeRecommendations(writer, detailed.recommendations || []);
   writeFooter(doc);
 
   const filename = `mic-probe-report-${report.run?.id || report.sessionId || 'unknown'}.pdf`;
@@ -174,6 +175,10 @@ function writeOverall(writer, free) {
   writer.body(`${overall.label || 'Unknown'}${stars}`, { style: 'bold', size: 12 });
   if (free.summary) writer.body(free.summary);
   if (free.scopeSummary) writer.body(free.scopeSummary);
+  if (free.nextStep) {
+    writer.body('What you can do', { style: 'bold' });
+    writer.body(free.nextStep);
+  }
 }
 
 function writeFindings(writer, free) {
@@ -232,22 +237,22 @@ function writeTroubleshootingContext(writer, report) {
 }
 
 function writeRecommendations(writer, recommendations) {
-  writer.sectionTitle('What to do');
+  writer.sectionTitle('Guidance and measurement notes');
   if (!recommendations.length) {
-    writer.body('No additional recommendations found.');
+    writer.body('No additional action is suggested by these measurements.');
     return;
   }
 
   // ReportPanelUI._renderRecommendations ile ayni kategori gruplama/sirasi
   const CATEGORY_LABELS = {
     troubleshooting: 'Steps for your system and app', setting: 'Settings', microphone: 'Microphone', system: 'System / Performance',
-    environment: 'Environment', profile: 'Test scope', observation: 'Observations — no quality penalty'
+    environment: 'Your surroundings', observation: 'About these measurements'
   };
   const ORDER = ['troubleshooting', 'setting', 'microphone', 'system', 'environment', 'observation', 'profile'];
 
   const groups = {};
   for (const r of recommendations) {
-    const cat = r.category || 'profile';
+    const cat = !r.action || ['observation', 'profile'].includes(r.category) ? 'observation' : r.category || 'setting';
     (groups[cat] = groups[cat] || []).push(r);
   }
   const cats = Object.keys(groups).sort(
@@ -259,10 +264,10 @@ function writeRecommendations(writer, recommendations) {
     writer.gap(8);
     writer.body(CATEGORY_LABELS[cat] || cat, { style: 'bold', size: 11 });
     for (const r of groups[cat]) {
-      const confidence = r.confidence ? ` (confidence: ${r.confidence})` : '';
-      writer.body(`- ${r.reason || r.message || ''}${confidence}`, { indent: 8 });
+      const action = cat === 'observation' ? '' : r.action;
+      writer.body(`- ${action || r.reason || r.message || ''}`, { indent: 8 });
+      if (action && (r.reason || r.message)) writer.small(r.reason || r.message, { indent: 16 });
       if (r.evidence) writer.small(r.evidence, { indent: 16 });
-      if (r.action) writer.small(r.action, { indent: 16 });
       for (const [index, step] of (r.steps || []).entries()) writer.body(`${index + 1}. ${step}`, { indent: 16 });
       if (r.expected) writer.small(`What to check: ${r.expected}`, { indent: 16 });
       if (r.next) writer.small(`If it continues: ${r.next}`, { indent: 16 });

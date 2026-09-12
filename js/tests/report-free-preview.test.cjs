@@ -11,6 +11,7 @@ const constants = vm.runInNewContext(read('js/modules/constants.js').replaceAll(
 const evaluator = vm.runInNewContext(read('js/modules/ReportEvaluator.js').replace(/^import .*;$/gm, '')
   .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants, structuredClone,
     usableReport: require('../modules/MeasurementValidity.js').usableReport,
+    captureOutcome: require('../modules/CaptureOutcome.js').captureOutcome,
     ...require('../modules/CaptureContext.js') });
 const plain = value => JSON.parse(JSON.stringify(value));
 
@@ -142,7 +143,7 @@ test('limited preview stays short while expanded scope retains unmeasured noise,
   assert.equal(result.overall.score, 'limited');
   assert.equal(result.overall.stars, null);
   assert.equal(result.assessment.status, 'limited');
-  assert.equal(result.summary, 'The available checks found no signs of very low recording level or audio exceeding its recording limits.');
+  assert.equal(result.summary, 'Unavailable measurements are not assessed.');
   assert.match(result.scopeSummary, /speech clarity and recipient audio are unmeasured/);
   assert.match(result.scopeSummary, /^First 1 s of saved audio only/);
   assert.doesNotMatch(result.summary, /looks good|excellent|all clear|controlled quiet|intelligibility/i);
@@ -214,4 +215,33 @@ test('a low sustained level summary does not claim that a brief loud moment was 
   assert.match(result.summary, /low sound level/);
   assert.doesNotMatch(result.summary, /loudest|peak|LUFS/);
   assert.match(result.findings[0].message, /brief louder moment/);
+});
+
+test('basic next steps follow measured findings without inviting technical experimentation', () => {
+  for (const [metrics, , severity] of CASES) {
+    const result = evaluator.evaluateFree(report(metrics));
+    assert.ok(result.nextStep);
+    assert.doesNotMatch(result.nextStep, /bitrate|sample rate|codec|buy|premium|increase.*gain/i);
+    if (severity === 'info') assert.match(result.nextStep, /no setting change is needed/);
+  }
+  const quiet = evaluator.evaluateFree(report({ signal: { rmsDb: -55, peakDb: -48, maxBlockRmsDb: -50 } }));
+  assert.match(quiet.nextStep, /selected microphone.*speaking distance/);
+  const mixed = evaluator.evaluateFree(report({ signal: { rmsDb: -55, peakDb: 0, maxBlockRmsDb: -50 },
+    clipping: { status: 'measured', method: 'sample-saturation', rate: 0.01 } }));
+  assert.match(mixed.nextStep, /distorted.*farther.*lower/);
+  assert.doesNotMatch(mixed.nextStep, /closer|increase|turn up/);
+  const silent = evaluator.evaluateFree(report({ signal: { rmsDb: -80, peakDb: -70, maxBlockRmsDb: -75 } }));
+  assert.match(silent.nextStep, /selected and unmuted/);
+  assert.doesNotMatch(silent.nextStep, /gain|fault/);
+});
+
+test('unavailable optional measurements do not require repeating a usable recording', () => {
+  const input = report({ noiseFloor: { status: 'unavailable' }, snr: { status: 'unavailable' },
+    guidedNoise: { status: 'unavailable', reason: 'processing-limits-snr-estimate' } });
+  const result = evaluator.evaluateFree(input);
+  assert.match(result.nextStep, /no setting change is needed/);
+  assert.doesNotMatch(result.nextStep, /record again|repeat|another sample/);
+  const insufficient = evaluator.evaluateFree({ audioMetrics: { status: 'unavailable' } });
+  assert.match(insufficient.nextStep, /selected and unmuted.*until the test finishes/);
+  assert.equal(insufficient.assessment.status, 'insufficient');
 });

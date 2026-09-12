@@ -16,6 +16,7 @@ function freeEvaluator() {
   return vm.runInNewContext(read('js/modules/ReportEvaluator.js').replace(/^import .*;$/gm, '')
     .replace('export default reportEvaluator;', 'reportEvaluator;'), { ...constants, structuredClone,
       usableReport: require('../modules/MeasurementValidity.js').usableReport,
+      captureOutcome: require('../modules/CaptureOutcome.js').captureOutcome,
       ...require('../modules/CaptureContext.js') });
 }
 const server = require('../../server/premium-report-evaluator.js').evaluatePremiumReport;
@@ -267,6 +268,7 @@ function uiHarness(fetchDetailedReport, loadPdf) {
     .replace('const reportPanelUI = new ReportPanelUI();', '')
     .replace('export default reportPanelUI;', 'ReportPanelUI;');
   const UI = vm.runInNewContext(code, { premiumAccess, reportEvaluator: freeEvaluator(), structuredClone,
+    purchaseAccessNotice: require('../modules/PurchaseAccessNotice.js').purchaseAccessNotice,
     log: { ui() {}, warning() {}, error() {} }, eventBus: { emit() {} }, EVENTS: {}, loadPdf });
   const ui = Object.create(UI.prototype);
   Object.assign(ui, { currentReport: null, _lastDetailed: null, _detailedReport: null, _premiumRequestId: 0, _pendingPremiumReport: null, _isDownloadingPdf: false,
@@ -475,14 +477,15 @@ test('premium PDF separates observations and test scope from corrective advice',
   const pdf = vm.runInNewContext(code + '\n({writeRecommendations})');
   const text = [], writer = { sectionTitle() {}, ensureSpace() {}, gap() {}, body(value) { text.push(value); }, small(value) { text.push(value); } };
   pdf.writeRecommendations(writer, detailed.recommendations);
-  assert(text.includes('Test scope'));
-  assert(text.includes('Observations — no quality penalty'));
+  assert(text.includes('About these measurements'));
+  assert(!text.includes('confidence:') && !text.includes('quality penalty'));
   assert(!text.includes('observation'));
   assert.doesNotMatch(text.join(' '), /Fix:/);
   for (const id of ['LOW_HEADROOM', 'LOW_TREBLE_ENERGY']) {
     const item = detailed.recommendations.find(item => item.id === id);
     assert(item, id);
-    if (item.action) assert(text.includes(item.action));
+    assert(text.some(line => line.includes(item.reason)), 'The measurement explanation remains available');
+    if (item.action) assert(!text.includes(item.action), 'An observation is not presented as a corrective action');
   }
 });
 

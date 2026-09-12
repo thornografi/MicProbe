@@ -12,6 +12,13 @@ const MAX_HISTORY = 1000;
 // Technical filtre icin kategori grubu (webaudio + stream + recorder)
 const TECHNICAL_CATEGORIES = ['webaudio', 'stream', 'recorder'];
 
+function createLogLine(message, category) {
+  const line = document.createElement('div');
+  line.className = `log-line log-${category}`;
+  line.textContent = message;
+  return line;
+}
+
 class Logger {
   constructor(elementId) {
     this.el = document.getElementById(elementId);
@@ -41,13 +48,7 @@ class Logger {
     }
 
     // Aktif filtre varsa ve kategori uyusmuyorsa gosterme
-    if (this.activeFilter) {
-      if (this.activeFilter === 'technical') {
-        if (!TECHNICAL_CATEGORIES.includes(category)) return;
-      } else if (this.activeFilter !== category) {
-        return;
-      }
-    }
+    if (this.activeFilter && !this.matchesFilter(category)) return;
 
     this.appendToDisplay(formattedMessage, category);
 
@@ -58,10 +59,7 @@ class Logger {
   appendToDisplay(message, category) {
     if (!this.el) return;
 
-    const line = document.createElement('div');
-    line.className = `log-line log-${category}`;
-    line.textContent = message;
-    this.el.appendChild(line);
+    this.el.appendChild(createLogLine(message, category));
 
     // PERF-2 fix: DOM node sayisini MAX_HISTORY ile sinirla (sinirsiz buyume onleme)
     while (this.el.childElementCount > MAX_HISTORY) {
@@ -88,20 +86,12 @@ class Logger {
   renderFilteredLogs() {
     if (!this.el) return;
 
-    this.el.replaceChildren();
-
-    const filteredLogs = this.activeFilter
-      ? this.history.filter(h => {
-          if (this.activeFilter === 'technical') {
-            return TECHNICAL_CATEGORIES.includes(h.category);
-          }
-          return h.category === this.activeFilter;
-        })
-      : this.history;
-
-    filteredLogs.forEach(h => {
-      this.appendToDisplay(h.message, h.category);
-    });
+    const fragment = document.createDocumentFragment();
+    const logs = this.getFilteredHistory();
+    for (const entry of logs.slice(-MAX_HISTORY)) fragment.appendChild(createLogLine(entry.message, entry.category));
+    this.el.replaceChildren(fragment);
+    // Read layout once after the complete filter result is attached.
+    if (logs.length) this.el.scrollTop = this.el.scrollHeight;
   }
 
   updateFilterButtons(activeCategory) {
@@ -134,13 +124,14 @@ class Logger {
 
   getFilteredHistory() {
     return this.activeFilter
-      ? this.history.filter(h => {
-          if (this.activeFilter === 'technical') {
-            return TECHNICAL_CATEGORIES.includes(h.category);
-          }
-          return h.category === this.activeFilter;
-        })
+      ? this.history.filter(h => this.matchesFilter(h.category))
       : this.history;
+  }
+
+  matchesFilter(category) {
+    return this.activeFilter === 'technical'
+      ? TECHNICAL_CATEGORIES.includes(category)
+      : this.activeFilter === category;
   }
 
   /**

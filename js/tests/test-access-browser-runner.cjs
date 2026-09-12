@@ -55,26 +55,30 @@ const BASE = 'http://localhost:8080';
         const id = await page.evaluate(() => window.__reports[0].run.id);
         assert.equal((await db.prepare('SELECT state FROM test_runs WHERE run_id = ?').bind(id).first()).state, 'completed');
         await page.locator(action).click();
+        await page.waitForFunction(() => window.__reports.length === 2, null, { timeout: 35000 });
+        await page.waitForFunction(() => !document.body.dataset.appState || document.body.dataset.appState === 'idle');
+        await page.locator(action).click();
         await page.locator('#testAccessDialog[open]').waitFor();
         assert.match(await page.locator('#testAccessMessage').innerText(), /Sign in for free/);
-        assert.equal(await page.evaluate(() => window.__requests), 1, 'Blocked attempt never requests a microphone');
-        assert.equal(await page.evaluate(() => window.__reports.length), 1, 'Current report survives refusal');
+        assert.equal(await page.evaluate(() => window.__requests), 2, 'Third guest attempt never requests a microphone');
+        assert.equal(await page.evaluate(() => window.__reports.length), 2, 'Current report survives refusal');
         assert.equal(await page.locator('#testAccessDialog').evaluate(el => el.scrollWidth <= el.clientWidth), true);
         await page.locator('#testAccessDialog [aria-label="Close"]').click();
         await page.locator('#playBtn').click();
         assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause');
         await page.locator('#playBtn').click();
         const downloadPromise = page.waitForEvent('download');
+        await page.locator('#downloadMenuBtn').click();
         await page.locator('#downloadBtn').click();
         const download = await downloadPromise;
         assert.equal(await download.failure(), null);
-        // Sign-in adopts the guest test; four further measured runs exhaust five.
+        // Sign-in adopts both guest tests; three further measured runs exhaust five.
         owner = 'quota-browser-user';
         await page.evaluate(async () => (await import('/js/modules/AccountAccess.js')).default.refresh());
         await page.evaluate(async () => {
           const evidence = { status: 'measured', sampleCount: 48000, durationMs: 1000,
             signal: { rmsDb: -24, peakDb: -12 }, clipping: { status: 'measured', method: 'sample-saturation', rate: 0 } };
-          for (let i = 0; i < 4; i++) for (const action of ['start', 'complete']) {
+          for (let i = 0; i < 3; i++) for (const action of ['start', 'complete']) {
             const response = await fetch(`/api/tests/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json',
               'X-MicProbe-Request': '1', 'X-MicProbe-Account': 'quota-browser-user' },
               body: JSON.stringify({ runId: `seed-account-${i}`, ...(action === 'complete' ? { evidence } : {}) }) });
@@ -84,12 +88,12 @@ const BASE = 'http://localhost:8080';
         await page.locator(action).click();
         await page.locator('#testAccessDialog[open]').waitFor();
         assert.equal(await page.locator('#testAccessMessage').innerText(), 'Continue testing with Premium.');
-        assert.equal(await page.evaluate(() => window.__requests), 1);
+        assert.equal(await page.evaluate(() => window.__requests), 2);
         await page.locator('#testAccessDialog [aria-label="Close"]').click();
         premium = true;
         await page.evaluate(async () => (await import('/js/modules/AccountAccess.js')).default.refresh());
         await page.locator(action).click();
-        await page.waitForFunction(() => window.__requests === 2);
+        await page.waitForFunction(() => window.__requests === 3);
         await page.locator(action).click(); // cancel preparation, keeping this check short
         await page.waitForFunction(() => document.body.dataset.appState === 'idle');
         assert.ok(requests.every(request => !/"(?:audio|pcm|blob|logs|device)"/.test(request.body)));

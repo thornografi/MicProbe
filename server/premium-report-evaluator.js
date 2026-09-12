@@ -71,7 +71,9 @@ function formatDetailedMetrics(report) {
     metric('flatTop', 'Samples Flat at the Ceiling', percent(measured(m.ceiling, 'flatTopRate')), '%'),
     metric('channelLayout', 'Channel Layout', typeof m.channelLayout === 'string' ? m.channelLayout : null),
     metric('snr', m.guidedNoise ? 'Estimated SNR (guided)' : 'Signal / Noise', snr, 'dB', rate(snr, 20, QUALITY.SNR_WARNING_DB)),
-    metric('noiseFloor', m.guidedNoise ? 'Recorded Quiet-segment Level' : 'Measured Noise Floor', noise, 'dBFS', reverse(noise, -45, QUALITY.NOISE_FLOOR_WARNING_DB)),
+    metric('noiseFloor', m.guidedNoise?.excludedQuietMs > 0 ? 'Recorded Steady Quiet-portion Level' : m.guidedNoise ? 'Recorded Quiet-segment Level' : 'Measured Noise Floor', noise, 'dBFS', reverse(noise, -45, QUALITY.NOISE_FLOOR_WARNING_DB)),
+    ...(m.guidedNoise?.quietVariable || m.guidedNoise?.excludedQuietMs > 0
+      ? [metric('wholeQuietLevel', 'Whole Quiet-section Level (including disturbances)', m.guidedNoise.quietTotalDb, 'dBFS')] : []),
     ...(m.guidedNoise ? [metric('segmentContrast', 'Speaking / Quiet Segment Contrast', measured(m.guidedNoise, 'contrastDb'), 'dB')] : []),
     metric('lowLevel', 'Quietest Sections', m.lowLevel?.percentileDb, 'dBFS'),
     metric('dynamicRange', 'Level Variation', measured(m.dynamicRange, 'db'), 'dB'),
@@ -152,6 +154,8 @@ function analyzeMeasurements(report) {
   if (noise === null || snr === null) recs.push(recommendation('NOISE_UNMEASURED',
     m.snr?.reason === 'processing-limits-snr-estimate'
       ? 'Recorded quiet and speaking levels are available. Active or unknown browser processing prevents an SNR estimate.'
+      : noise !== null ? 'The recorded quiet level is available, but a reliable speaking-to-noise estimate could not be made.'
+      : m.guidedNoise?.reason === 'quiet-below-resolution' ? 'The recorded quiet section was below the measurable level. This cannot establish a noise-free room or an infinite SNR.'
       : m.guidedNoise ? 'This guided recording did not provide enough usable quiet and speaking data for an SNR estimate.'
         : 'Noise floor and signal-to-noise need separate quiet and speaking segments. Quiet sections alone cannot identify microphone noise.',
     'Other valid findings still apply. Missing SNR alone does not require another recording.', { category: 'observation' }));

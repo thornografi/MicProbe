@@ -20,7 +20,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
     const noOverflow = async label => assert(await page.evaluate(() =>
       document.documentElement.scrollWidth <= document.documentElement.clientWidth), `${label}: horizontal overflow`);
     let footerReference;
-    for (const route of ['/', '/app/', '/privacy.html', '/terms.html']) {
+    for (const route of ['/', '/app/', '/privacy.html', '/terms.html', '/contact.html']) {
       await page.goto(BASE + route);
       if (route === '/app/') {
         await page.waitForFunction(() => document.body.classList.contains('app-mode'));
@@ -32,10 +32,10 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
       assert.deepEqual(links, footerReference, `${route}: footer navigation parity`);
       for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
-        // Resize completion precedes the frame that applies media queries to all layout boxes.
-        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+        // Allow media-query layout and dependent control geometry to finish after a resize.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await noOverflow(`${route} ${width}`);
-        assert(await page.locator('.site-footer-brand').isVisible());
+        assert.equal(await page.locator('.site-footer-brand').isVisible(), route !== '/app/');
         for (const link of await page.locator('.site-footer-links a').all()) {
           assert(await link.isVisible());
           assert(await link.evaluate(node => node.getBoundingClientRect().height >= 40));
@@ -62,10 +62,17 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
             `${width}: landing header, content and footer must share a left edge: ${JSON.stringify(edges)}`);
         }
         if (route === '/app/') {
-          const edges = await page.evaluate(width => ['.app-header .brand-mark', width >= 1024 ? '#scenarioPicker' : '.scenario-workspace', '.site-footer-content']
+          const edges = await page.evaluate(width => (width >= 1024
+            ? ['.page-header', '.test-console']
+            : ['.app-header .brand-mark', '.scenario-workspace'])
             .map(selector => ({ selector, left: document.querySelector(selector).getBoundingClientRect().left })), width);
           assert(edges.every(rect => Math.abs(rect.left - edges[0].left) < 1),
-            `${width}: app header, workspace and footer must share an edge: ${JSON.stringify(edges)}`);
+            `${width}: test title and controls must share an edge: ${JSON.stringify(edges)}`);
+          if (width >= 1024) {
+            const sidebar = await page.locator('#scenarioPicker').boundingBox();
+            assert.equal(sidebar.x, 0, `${width}: sidebar must begin at the viewport edge`);
+            assert(edges[0].left - sidebar.width <= 48, `${width}: content must stay close to navigation`);
+          }
           assert.equal(await page.locator('#profileSidebar, #profileMenuBtn').count(), 0);
           assert(await page.evaluate(() => {
             const mic = document.querySelector('.mic-selector-row').getBoundingClientRect();
@@ -77,7 +84,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
         }
       }
     }
-    console.log('PASS 44 page/width variants and shared footer content, visibility and target sizes');
+    console.log('PASS 55 page/width variants and shared footer content, visibility and target sizes');
 
     await page.goto(`${BASE}/#how-it-works`);
     assert(await page.locator('#how-it-works-title').evaluate(node => {
@@ -119,6 +126,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
       if (await page.locator('#customSettingsToggle').getAttribute('aria-expanded') !== 'true') await page.locator('#customSettingsToggle').click();
       for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await noOverflow(`${profile} ${width}, expanded settings`);
       }
     }
@@ -130,7 +138,9 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
         state.setCurrentMode(mode);
         state.setIsPreparing(preparing);
         (await import('/js/modules/UIStateManager.js')).default.updateButtonStates();
-        document.querySelector('#testCountdown').textContent = '7';
+        const countdown = document.querySelector('#recordingTimer');
+        countdown.textContent = preparing ? 'Starting in 2s' : 'Finishes in 7s';
+        countdown.hidden = !mode || mode === 'test-analysing';
       }, { mode, preparing });
     }
     let stateVariants = 0;
@@ -143,7 +153,7 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
         await phase(current, preparing);
         for (const width of [320, 480, 768, 1200]) {
           await page.setViewportSize({ width, height: 900 });
-          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           const metrics = await page.locator(profile === 'discord' ? '#testBtn' : '#recordToggle').evaluate(node => {
             const rect = node.getBoundingClientRect();
             const children = [...node.children].filter(child => {
@@ -179,17 +189,16 @@ const widths = [320, 479, 480, 767, 768, 1023, 1024, 1199, 1200, 1440, 1920];
     await page.locator('#scenarioPicker').waitFor({ state: 'visible' });
     for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => resolve())));
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       assert(await page.locator('#scenarioPicker').isVisible());
       assert(await page.evaluate(() => !document.documentElement.classList.contains('is-scroll-locked') && !document.querySelector('.main-content').inert));
       assert(await page.evaluate(() => {
         const picker = document.querySelector('#scenarioPicker').getBoundingClientRect();
-        const footer = document.querySelector('.site-footer-content').getBoundingClientRect();
-        return Math.abs(picker.left - footer.left) < 1 && Math.abs(picker.right - footer.right) < 1;
-      }), `${width}: chooser and footer edges must align`);
+        return picker.left >= 16 && picker.right <= innerWidth - 16 && picker.width <= 960;
+      }), `${width}: first-use chooser retains readable bounds`);
       if (width >= 768) assert(await page.evaluate(() => {
         const calls = [...document.querySelectorAll('.scenario-call-choices .scenario-choice')].slice(0, 2).map(node => node.getBoundingClientRect());
-        const groups = [...document.querySelectorAll('.scenario-choices > .scenario-group')].slice(-2).map(node => node.getBoundingClientRect());
+        const groups = [...document.querySelectorAll('.scenario-choices > .scenario-group')].slice(1, 3).map(node => node.getBoundingClientRect());
         return groups.every((rect, index) => Math.abs(rect.left - calls[index].left) < 1 && Math.abs(rect.width - calls[index].width) < 1);
       }), `${width}: scenario groups must use the same column edges`);
     }

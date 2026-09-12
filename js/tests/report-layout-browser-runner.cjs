@@ -6,7 +6,10 @@ const { evaluateIndependentReport } = require('../../server/independent-report.j
 const BASE = 'http://localhost:8080';
 const sizes = [[320, 568], [375, 667], [390, 670], [479, 800], [480, 800],
   [768, 900], [844, 390], [667, 375], [320, 360], [1280, 900]];
-const settle = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+const settle = page => page.evaluate(async () => {
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await Promise.all(document.querySelector('#reportPanel').getAnimations().map(animation => animation.finished.catch(() => {})));
+});
 
 async function checkLayout(page, label, minimum = 150) {
   await settle(page);
@@ -16,6 +19,7 @@ async function checkLayout(page, label, minimum = 150) {
     const close = dialog.querySelector('.btn-overlay-close').getBoundingClientRect();
     return {
       bodyHeight: body.clientHeight,
+      bounds: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, width: innerWidth, height: innerHeight },
       contained: rect.top >= 0 && rect.bottom <= innerHeight + 1 && rect.left >= 0 && rect.right <= innerWidth + 1,
       horizontalOverflow: body.scrollWidth - body.clientWidth,
       closeVisible: close.top >= rect.top && close.bottom <= body.getBoundingClientRect().top,
@@ -25,7 +29,7 @@ async function checkLayout(page, label, minimum = 150) {
     };
   });
   assert(metrics.bodyHeight >= minimum, `${label}: reading area collapsed (${metrics.bodyHeight}px)`);
-  assert(metrics.contained, `${label}: dialog leaves viewport`);
+  assert(metrics.contained, `${label}: dialog leaves viewport ${JSON.stringify(metrics.bounds)}`);
   assert(metrics.horizontalOverflow <= 1, `${label}: body overflows by ${metrics.horizontalOverflow}px`);
   assert(metrics.closeVisible && metrics.closeSize >= 48, `${label}: touch close must stay visible`);
   assert.deepEqual(metrics.clipped, [], `${label}: metric text must wrap`);
@@ -49,7 +53,7 @@ async function checkLayout(page, label, minimum = 150) {
   for (const engine of engines ? [engines] : ['chromium', 'firefox', 'webkit']) {
     const browser = await playwright[engine].launch({ headless: true, ...(engine === 'chromium' ? { channel: 'chrome' } : {}) });
     try {
-      for (const mode of ['guest', 'free', 'premium']) {
+      for (const mode of ['guest', 'free', 'premium', 'inactive']) {
         const context = await browser.newContext({
           ...(engine === 'firefox' ? { hasTouch: true } : playwright.devices['iPhone 13']),
           viewport: { width: 390, height: 670 }, reducedMotion: 'reduce'
@@ -75,7 +79,8 @@ async function checkLayout(page, label, minimum = 150) {
           if (path === '/api/account/config') return route.fulfill({ json: { ok: true, configured: true } });
           if (path === '/api/account/session') return route.fulfill({ json: { ok: true,
             user: mode === 'guest' ? null : { id: 'layout-user', name: 'Layout', email: 'layout@example.test' },
-            premium: { unlocked: mode === 'premium' } } });
+            purchaseLinked: mode === 'inactive',
+            premium: { unlocked: mode === 'premium', inactiveReason: mode === 'inactive' ? 'license_plan_mismatch' : '' } } });
           if (path === '/api/account/reports') return route.fulfill({ json: { ok: true, reports: [] } });
           if (path === '/api/freemius/config') return route.fulfill({ json: { configured: false } });
           if (path === '/api/report/detailed') {

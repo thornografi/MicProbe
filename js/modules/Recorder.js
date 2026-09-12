@@ -502,7 +502,7 @@ class Recorder {
       this.isRecording = false;
       this.stopReason = reason;
       this.captureDurationMs = Math.max(0, performance.now() - this.startTime);
-      this.guidedSegments = this.captureGuide?.finish(this.captureDurationMs) || null;
+      this.guidedSegments = this.captureGuide?.finish(this.captureDurationMs, reason) || null;
       eventBus.emit(EVENTS.RECORDING_CAPTURE_STOPPED, {
         durationMs: this.captureDurationMs, stopReason: reason, runSnapshot: this.runSnapshot
       });

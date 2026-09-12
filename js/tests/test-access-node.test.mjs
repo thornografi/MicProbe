@@ -28,7 +28,8 @@ test('Node HTTP adapter routes guest admission and settles without an account co
       status: 'measured', sampleCount: 48000, durationMs: 1000, signal: { rmsDb: -20, peakDb: -10 },
       clipping: { status: 'measured', method: 'sample-saturation', rate: 0 }
     } })).status, 200);
-    assert.equal((await send('start', { runId: 'node-second-test' })).value.error, 'guest_test_limit');
+    assert.equal((await send('start', { runId: 'node-second-test' })).status, 200);
+    assert.equal((await send('start', { runId: 'node-third-test' })).value.error, 'guest_test_limit');
   } finally {
     await new Promise(resolve => server.close(resolve));
     // SQLite is held by the adapter until this test process exits on Windows.

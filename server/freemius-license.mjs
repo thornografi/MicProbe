@@ -54,7 +54,14 @@ export function createFreemiusLicenses(config, fetchImpl = fetch) {
     if (config.pricingId && String(license.pricing_id) !== String(config.pricingId)) throw billingProblem('license_pricing_mismatch');
     if (!license.user_id) throw billingProblem('license_owner_missing');
     if (expectedOwner && String(license.user_id) !== String(expectedOwner)) throw billingProblem('license_owner_changed');
-    if (license.is_cancelled !== false) throw billingProblem('license_inactive');
+    // A partial provider reply is not proof that a paid license was revoked.
+    if (typeof license.is_cancelled !== 'boolean') {
+      throw billingProblem('billing_temporarily_unavailable', 503);
+    }
+    if (license.is_cancelled) throw billingProblem('license_inactive');
+    if (license.expiration !== null && typeof license.expiration !== 'string') {
+      throw billingProblem('billing_temporarily_unavailable', 503);
+    }
     if (lifetimeOnly && license.expiration !== null) throw billingProblem('lifetime_license_required');
     let expiration = '';
     if (!lifetimeOnly && license.expiration !== null) {

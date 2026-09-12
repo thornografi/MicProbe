@@ -50,7 +50,7 @@ import { registerCheckboxLoggers, registerRadioGroups, registerLoopbackToggle } 
 import {
   setupButtonHandlers,
   setupOverlays,
-  setupTestCountdownHandlers
+  setupTestProgressHandlers
 } from './app/ButtonHandlers.js';
 
 // App Modulleri
@@ -58,11 +58,8 @@ import { getCurrentMode, getIsPreparing } from './app/AppState.js';
 import {
   getSettingElements,
   setSettingDisabled,
-  setOptionDisabled,
   getRadioValue,
-  syncToCustomPanel,
-  updateBufferInfo,
-  updateTimesliceInfo
+  syncToCustomPanel
 } from './app/SettingHelpers.js';
 import {
   initProfileController,
@@ -137,7 +134,9 @@ const statusManager = new StatusManager({
   pending: diagnosticReportBuilder.isReportPending(),
   category: profileController.getCurrentProfile()?.category,
   access: deviceInfo.accessState,
-  hasResult: !!reportPanelUI.inlineReport
+  hasResult: !!reportPanelUI.inlineReport,
+  finalizing: getCurrentMode() === 'recording' ? recorder.getIsStopping()
+    : getCurrentMode() === 'test-recording' && testRecordingFlow.testPhase === 'stopping'
 }));
 
 // ============================================
@@ -170,16 +169,11 @@ registerRadioGroups(
   },
   {
     syncToCustomPanel,
-    updateAllStates,
-    updateBufferInfo: (val) => updateBufferInfo(val, UIElements.bufferInfoText),
-    updateTimesliceInfo: (val) => updateTimesliceInfo(val, UIElements.timesliceInfoEl),
-    profileController,
-    bufferSizeContainer: UIElements.bufferSizeContainer
+    updateAllStates
   }
 );
 
 registerLoopbackToggle(UIElements.loopbackToggle, {
-  opusBitrateContainer: UIElements.opusBitrateContainer,
   updateAllStates,
   profileController,
   eventBus
@@ -211,22 +205,15 @@ initProfileController(
     stopRecording,
     startRecording: () => recordingController.start(),
     updateButtonStates: () => uiStateManager.updateButtonStates(),
-    updateBufferInfo: (val) => updateBufferInfo(val, UIElements.bufferInfoText),
-    updateTimesliceInfo: (val) => updateTimesliceInfo(val, UIElements.timesliceInfoEl),
     updateCategoryUI: (profileId) => updateCategoryUI(profileId, UIElements),
     getRadioValue,
     setSettingDisabled,
-    setOptionDisabled,
     getSettingElements,
     resetPlayer: () => player.reset()
   },
   {
     loopbackToggle: UIElements.loopbackToggle,
-    customSettingsGrid: UIElements.customSettingsGrid,
-    pipelineSection: UIElements.pipelineSection,
-    webrtcSection: UIElements.webrtcSection,
-    developerSection: UIElements.developerSection,
-    settingContainers: UIElements.settingContainers
+    customSettingsGrid: UIElements.customSettingsGrid
   },
   { currentMode: getCurrentMode, isPreparing: getIsPreparing,
     isReportPending: () => diagnosticReportBuilder.isReportPending() }
@@ -236,8 +223,6 @@ initUIStateManager(
   uiStateManager,
   {
     ...UIElements,
-    timesliceContainerEl: UIElements.timesliceContainerEl,
-    recordingPlayerCardEl: UIElements.recordingPlayerCardEl,
     playBtnEl: UIElements.playBtnEl,
     progressBarEl: UIElements.progressBarEl,
     downloadBtnEl: UIElements.downloadBtnEl
@@ -246,6 +231,7 @@ initUIStateManager(
     currentMode: getCurrentMode,
     isPreparing: getIsPreparing,
     isRecordingFinalizing: () => recorder.getIsStopping(),
+    isTestFinalizing: () => getCurrentMode() === 'test-recording' && testRecordingFlow.testPhase === 'stopping',
     currentProfileId: () => profileController.getCurrentProfileId(),
     isWorkletSupported: () => WORKLET_SUPPORTED,
     isWasmOpusSupported: () => WASM_OPUS_SUPPORTED
@@ -317,7 +303,7 @@ if (initialProfile) profileController.applyProfile(initialProfile);
 // restore edilen profil nav/baslikta gorunmezdi.
 if (initialProfile) customSettingsPanelHandler.updatePanel(initialProfile);
 
-syncInitialUI(UIElements, WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
+syncInitialUI(WORKLET_SUPPORTED, WASM_OPUS_SUPPORTED);
 
 initDebugConsole(debugConsole, {
   eventBus,
@@ -362,6 +348,20 @@ const openSavedReport = report => {
   diagnosticReportBuilder.restoreReport(report);
   reportPanelUI.open();
 };
+let pendingSignInContinuation = null;
+const continueAfterSignIn = intent => {
+  const state = accountAccess.getState();
+  if (!document.body.classList.contains('app-mode')) {
+    pendingSignInContinuation = { intent, owner: state.user?.id };
+    return;
+  }
+  if (intent === 'report' && reportPanelUI.currentReport) reportPanelUI.open();
+  else {
+    const target = UIElements.scenarioWorkspace.hidden ? UIElements.scenarioPicker.querySelector('h1')
+      : profileController.getCurrentProfile()?.canTest ? UIElements.testBtn : UIElements.recordToggleBtn;
+    target?.focus({ preventScroll: true });
+  }
+};
 const accountPanelUI = new AccountPanelUI({
   elements: {
     dialog: UIElements.accountDialogEl,
@@ -380,6 +380,7 @@ const accountPanelUI = new AccountPanelUI({
   onRestoreLegacyPurchase: key => premiumAccess.restoreLegacyPurchase(key),
   onOpenReport: openSavedReport,
   onAccountChanged: () => reportPanelUI.clearReport(),
+  onContinue: continueAfterSignIn,
   onCheckout: options => {
     checkoutStateSnapshot.save({ report: reportPanelUI.currentReport, ownerId: accountAccess.getState().user?.id || null,
       profileId: profileController.getCurrentProfileId() });
@@ -397,8 +398,7 @@ reportPanelUI.setWorkflowActions({
     if (isWorkflowBusy()) return;
     reportPanelUI.close();
     const target = UIElements.scenarioWorkspace.hidden
-      ? UIElements.scenarioPicker.querySelector('h1') : UIElements.customSettingsToggle;
-    if (target === UIElements.customSettingsToggle && target.getAttribute('aria-expanded') !== 'true') target.click();
+      ? UIElements.scenarioPicker.querySelector('h1') : UIElements.micSelector;
     target?.scrollIntoView({ block: 'center' });
     target?.focus({ preventScroll: true });
   },
@@ -421,7 +421,17 @@ const unsubscribeWorkflowHistory = reportHistory.subscribe(state => {
 const unsubscribeHistoryBusy = [EVENTS.STATUS_CHANGED, EVENTS.TEST_CANCELLED, EVENTS.DIAGNOSTIC_REPORT_READY]
   .map(event => eventBus.on(event, () => queueMicrotask(() => accountPanelUI.syncBusyState())));
 // Preparing emits synchronously before getUserMedia: cancel Google UI before permission UI opens.
-export function syncAccountSignIn() { accountPanelUI.syncGoogleSignIn(); }
+export function syncAccountSignIn() {
+  accountPanelUI.syncGoogleSignIn();
+  if (accountPanelUI.dialog?.open) accountPanelUI.publishRoute(accountPanelUI.intent || accountPanelUI.view);
+  if (pendingSignInContinuation && document.body.classList.contains('app-mode')) {
+    const continuation = pendingSignInContinuation;
+    pendingSignInContinuation = null;
+    if (continuation.owner === accountAccess.getState().user?.id) continueAfterSignIn(continuation.intent);
+  }
+}
+export function openAccount(intent) { accountPanelUI.open(intent); }
+export function closeAccount() { accountPanelUI.close(); }
 const unsubscribeGoogleWorkflow = eventBus.on(EVENTS.UI_STATE_CHANGED, syncAccountSignIn);
 const cancelGoogleForDialog = event => {
   if (event.target?.matches('dialog') && event.newState === 'open') accountPanelUI.google.cancelPrompt();
@@ -450,20 +460,16 @@ const restoreOwnedCheckout = state => {
     reportHistory.open(restored, openSavedReport);
   }
   if (googleReturn) {
-    accountPanelUI.open('account');
+    accountPanelUI.open(googleReturn.error || ['confirm', 'switch'].includes(googleReturn.mode) ? 'account' : googleReturn.intent);
     if (googleReturn.error) accountPanelUI.showError(new Error(googleReturn.error));
-    else accountPanelUI.message(googleReturn.mode === 'confirm'
-      ? 'Google account confirmed. Select Manage purchase to continue.'
-      : 'Signed in. New reports will be saved. Premium requires a verified purchase.');
+    else if (googleReturn.mode === 'confirm') void accountPanelUI.openPurchasePortal();
+    else void accountPanelUI.completeSignIn(googleReturn.intent).catch(error => accountPanelUI.showError(error));
   }
 };
 const unsubscribeCheckoutRestore = accountAccess.subscribe(restoreOwnedCheckout);
 premiumAccess.bootstrap().then(() => restoreOwnedCheckout(accountAccess.getState()));
-const refreshVisibleAccount = () => {
-  syncAccountSignIn();
-  if (document.visibilityState === 'visible' && accountAccess.getState().ready
-    && accountAccess.getState().configured) accountAccess.refresh({ sessionOnly: true });
-};
+// The shared header owns session refresh in both landing and app views.
+const refreshVisibleAccount = syncAccountSignIn;
 window.addEventListener('focus', refreshVisibleAccount);
 document.addEventListener('visibilitychange', refreshVisibleAccount);
 
@@ -500,7 +506,7 @@ setupButtonHandlers(
   { recordingController, testRecordingFlow }
 );
 
-const cleanupCountdownHandlers = setupTestCountdownHandlers(UIElements.testCountdownEl, UIElements.testProgressFillEl, eventBus);
+const cleanupProgressHandlers = setupTestProgressHandlers(UIElements.testProgressFillEl, eventBus);
 
 // ============================================
 // BASLANGIC - PRE-INITIALIZATION
@@ -548,7 +554,15 @@ markStartupDiag('app.ready', {
 // ============================================
 // CLEANUP - PAGE UNLOAD
 // ============================================
-window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', event => {
+  if (!isWorkflowBusy()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+// A dismissed exit prompt must leave the active capture intact. Cleanup only
+// after navigation is accepted; a cached page retains its event subscriptions.
+window.addEventListener('pagehide', event => {
+  if (event.persisted) return;
   void testAccess.close();
   vuMeter.destroy();
   captureGuideUI.destroy();
@@ -576,7 +590,7 @@ window.addEventListener('beforeunload', () => {
   debugConsole.destroy();
   statusManager.destroy();
   devConsoleCtrl.destroy();
-  cleanupCountdownHandlers();
+  cleanupProgressHandlers();
 });
 
 // ============================================

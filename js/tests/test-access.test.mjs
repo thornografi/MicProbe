@@ -37,25 +37,29 @@ function fixture(t, options = {}) {
   return { db, browser, premiums, setTime: value => { time = value; }, advance: ms => { time += ms; } };
 }
 
-test('guest has one completed test; repeats are idempotent and logout does not grant more', async t => {
+test('guest has two completed tests; repeats are idempotent and a third requires sign-in', async t => {
   const { browser, db } = fixture(t), guest = browser();
   const first = await guest.start();
   assert.equal(first.status, 200);
   assert.match(first.headers.get('Set-Cookie'), /HttpOnly; SameSite=Lax; Max-Age=2592000; Secure/);
-  assert.equal((await guest.start()).body.error, 'guest_test_limit', 'Reservations occupy capacity');
+  const second = await guest.start();
+  assert.equal(second.status, 200);
+  assert.equal((await guest.start()).body.error, 'guest_test_limit', 'Two reservations occupy capacity');
   await guest.complete(first.id);
   await guest.complete(first.id);
   assert.equal((await guest.start(first.id)).body.error, 'test_run_finished', 'Cannot replay a completed run to start again');
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM test_runs WHERE state = 'completed'").first()).n, 1);
+  await guest.complete(second.id);
   assert.equal((await guest.start()).body.error, 'guest_test_limit');
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM account_reports').first()).n, 0, 'No guest report persisted');
 });
 
-test('guest test carries into five account tests across tabs/devices, without identity leakage', async t => {
+test('two guest tests carry into five total account tests across tabs/devices', async t => {
   const { browser, premiums } = fixture(t), a = browser();
   const first = await a.start(); await a.complete(first.id);
+  const second = await a.start(); await a.complete(second.id);
   a.owner = 'account-a';
-  for (let i = 0; i < 4; i++) { const run = await a.start(); assert.equal(run.status, 200); await a.complete(run.id); }
+  for (let i = 0; i < 3; i++) { const run = await a.start(); assert.equal(run.status, 200); await a.complete(run.id); }
   assert.equal((await a.start()).body.error, 'free_test_limit');
   assert.equal((await browser('account-a').start()).body.error, 'free_test_limit', 'A fresh device cannot reset account usage');
   a.owner = null;
@@ -111,8 +115,11 @@ test('visitor-creation burst never blocks authenticated accounts; releases resto
 test('clearing cookies cannot reset the daily anonymous IP allowance; account quotas stay independent', async t => {
   const { browser, db, advance } = fixture(t);
   const first = browser(), run = await first.start();
+  const second = await first.start();
+  assert.equal(second.status, 200);
   assert.equal((await browser().start()).body.error, 'guest_test_limit', 'Another browser shares active reservation');
   await first.complete(run.id);
+  await first.complete(second.id);
   first.cookie = '';
   assert.equal((await first.start()).body.error, 'guest_test_limit', 'Cookie reset cannot reset network quota');
   for (const user of ['household-a', 'household-b']) {
@@ -131,7 +138,7 @@ test('clearing cookies cannot reset the daily anonymous IP allowance; account qu
 test('simultaneous fresh visitors cannot race past the anonymous network allowance', async t => {
   const { browser, advance } = fixture(t);
   const results = await Promise.all(Array.from({ length: 8 }, () => browser().start()));
-  assert.equal(results.filter(result => result.status === 200).length, 1);
+  assert.equal(results.filter(result => result.status === 200).length, 2);
   advance(10 * 60000 + 1);
   assert.equal((await browser().start()).status, 200, 'An abandoned reservation releases network capacity');
 });
@@ -145,4 +152,23 @@ test('strict origin, ownership, body allowlist and missing database fail closed'
   assert.equal((await a.send('complete', { runId: first.id, evidence: { ...evidence, pcm: [0, 1] } })).status, 400);
   const unavailable = createTestAccess({ accounts: {}, billing: {} });
   assert.equal((await unavailable.handle(new Request(`${origin}/api/tests/start`, { method: 'POST' }))).status, 503);
+});
+
+test('guided early/incomplete and hidden captures release quota; sufficient early speech still counts', async t => {
+  const { browser } = fixture(t), visitor = browser();
+  for (const [durationMs, interrupted] of [[1000, false], [4000, false], [6500, false], [10000, true]]) {
+    const run = await visitor.start(); assert.equal(run.status, 200);
+    const recording = { stopReason: 'user', guidedSegments: { version: 1, method: 'user-guided-file-segments', interrupted,
+      quiet: durationMs < 3000 ? null : { startMs: 500, endMs: 2500 },
+      speaking: durationMs < 3000 ? null : { startMs: 3500, endMs: durationMs - 500 } } };
+    assert.equal((await visitor.send('complete', { runId: run.id, evidence: { ...evidence, durationMs, recording } })).status, 200);
+  }
+  const recording = { stopReason: 'user', guidedSegments: { version: 1, method: 'user-guided-file-segments', interrupted: false,
+    quiet: { startMs: 500, endMs: 2500 }, speaking: { startMs: 3500, endMs: 6500 } } };
+  for (let i = 0; i < 2; i++) {
+    const run = await visitor.start(); assert.equal(run.status, 200);
+    assert.equal((await visitor.send('complete', { runId: run.id,
+      evidence: { ...evidence, durationMs: 7000, recording } })).status, 200);
+  }
+  assert.equal((await visitor.start()).status, 429);
 });

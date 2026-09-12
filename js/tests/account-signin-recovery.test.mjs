@@ -32,12 +32,38 @@ test('closing and reopening sign-in while its reply is pending cannot inherit th
 });
 
 test('an uninterrupted explicit sign-in continues its checkout once', async t => {
-  t.mock.method(accountAccess, 'signInWithGoogle', async () => {});
   const f = panelFixture();
+  t.mock.method(accountAccess, 'signInWithGoogle', async () => { f.panel.accountState.user = { id: 'chosen' }; });
   await f.panel.renderGoogle();
   await f.options().onCredential('chosen');
   assert.equal(f.checkouts(), 1);
   assert.equal(f.panel.intent, null);
+});
+
+test('sign-in continues testing or the open report without promising free report storage', async () => {
+  for (const intent of ['signin', 'test-limit', 'report']) {
+    const f = panelFixture();
+    f.panel.accountState = { user: { id: 'chosen' }, premium: { unlocked: false } };
+    let continued;
+    f.panel.close = () => { f.panel.dialog.open = false; };
+    f.panel.onContinue = value => { continued = value; };
+    await f.panel.completeSignIn(intent);
+    assert.equal(f.panel.dialog.open, false);
+    assert.equal(continued, intent);
+    assert.equal(f.checkouts(), 0);
+  }
+});
+
+test('sign-in with an existing or pending purchase does not start another checkout', async () => {
+  for (const premium of [{ unlocked: false }, { unlocked: false, pending: true }, { unlocked: true }]) {
+    const f = panelFixture();
+    f.panel.accountState = { user: { id: 'chosen' }, purchaseLinked: true, premium };
+    f.panel.close = () => { f.panel.dialog.open = false; };
+    await f.panel.completeSignIn('checkout');
+    assert.equal(f.checkouts(), 0);
+    if (!premium.unlocked) assert.match(f.panel.statusText, /Review your purchase status/);
+    else assert.equal(f.panel.dialog.open, false);
+  }
 });
 
 test('a failed session recheck still explains the error after the signed-out view was replaced', async t => {
@@ -83,6 +109,35 @@ test('expiry removes the inactive Google button and exposes one explicit retry',
   await f.panel.renderGoogle();
   assert.equal(f.container.children.length, 1);
   assert.equal(f.panel.googleRetry.hidden, true);
+});
+
+test('long Google verification expires without signing out the account and accepts only a fresh retry', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = panelFixture(); let callback, exchanges = 0;
+  f.panel.accountState.user = { id: 'account-a' };
+  f.panel.switchAccountOwner = 'account-a'; f.panel.intent = 'switch';
+  f.panel.close = () => { f.panel.dialog.open = false; };
+  f.panel.google = new GoogleSignIn({
+    account: { getSignInConfig: async () => ({ configured: true, googleClientId: 'test', nonce: 'test-nonce' }) },
+    load: async () => ({ initialize: options => { callback = options.callback; },
+      renderButton: () => {}, cancel() {} })
+  });
+  t.after(() => f.panel.google.cancel());
+  t.mock.method(accountAccess, 'signInWithGoogle', async (_credential, options) => {
+    exchanges++; assert.equal(options.switchFrom, 'account-a');
+  });
+  await f.panel.renderGoogle();
+  const oldCallback = callback;
+  t.mock.timers.tick(9 * 60 * 1000);
+  assert.equal(f.panel.accountState.user.id, 'account-a');
+  assert.equal(f.panel.googleRetry.hidden, false);
+  assert.match(f.panel.statusText, /expired/);
+  await oldCallback({ credential: 'late-after-phone-confirmation' });
+  assert.equal(exchanges, 0);
+  await f.panel.renderGoogle();
+  await callback({ credential: 'fresh-proof' });
+  assert.equal(exchanges, 1);
+  assert.equal(f.panel.dialog.open, false);
 });
 
 test('lost sign-in replies refresh the session without replay or automatic checkout approval', async () => {

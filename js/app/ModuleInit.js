@@ -10,13 +10,9 @@ import { PROFILES } from '../modules/Config.js';
 export function initProfileController(profileController, callbacks, elements, stateGetters) {
   profileController.init({
     loopbackToggle: elements.loopbackToggle,
-    customSettingsGrid: elements.customSettingsGrid,
-    pipelineSection: elements.pipelineSection,
-    webrtcSection: elements.webrtcSection,
-    developerSection: elements.developerSection
+    customSettingsGrid: elements.customSettingsGrid
   });
 
-  profileController.setSettingContainers(elements.settingContainers);
   profileController.setCallbacks(callbacks);
   profileController.setStateGetters(stateGetters);
 }
@@ -28,22 +24,17 @@ export function initUIStateManager(uiStateManager, elements, stateGetters, profi
   uiStateManager.init({
     recordToggleBtn: elements.recordToggleBtn,
     testBtn: elements.testBtn,
-    testCountdownEl: elements.testCountdownEl,
     loopbackToggle: elements.loopbackToggle,
     ecCheckbox: elements.ecCheckbox,
     nsCheckbox: elements.nsCheckbox,
     agcCheckbox: elements.agcCheckbox,
-    pipelineContainer: elements.pipelineContainer,
-    encoderContainer: elements.encoderContainer,
-    timesliceContainer: elements.timesliceContainerEl,
-    recordingPlayerCard: elements.recordingPlayerCardEl,
     playBtn: elements.playBtnEl,
     progressBar: elements.progressBarEl,
     downloadBtn: elements.downloadBtnEl,
     downloadMp3Btn: elements.downloadMp3BtnEl,
+    downloadMenuBtn: elements.downloadMenuBtnEl,
     micSelector: elements.micSelector,
     refreshMicsBtn: elements.refreshMicsBtn,
-    timerEl: elements.timerEl,
     headerBrandLink: elements.headerBrandLink,
     customSettingsToggle: elements.customSettingsToggle,
     accountMenuBtn: elements.accountMenuBtnEl,
@@ -52,9 +43,6 @@ export function initUIStateManager(uiStateManager, elements, stateGetters, profi
 
   uiStateManager.setRadioGroups(radioGroups);
   uiStateManager.setStateGetters(stateGetters);
-  uiStateManager.setProfileCollections({
-    navItems: [...elements.navItems]
-  });
   uiStateManager.setProfileController(profileController);
 }
 
@@ -127,9 +115,7 @@ export function updateCategoryUI(profileId, elements) {
 /**
  * Baslangic UI senkronizasyonu
  */
-export function syncInitialUI(elements, workletSupported, wasmOpusSupported) {
-  setVisible(elements.encoderContainer, true);
-
+export function syncInitialUI(workletSupported, wasmOpusSupported) {
   if (!workletSupported) {
     log.system('AudioWorklet not supported - Worklet options disabled', {});
   }

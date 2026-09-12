@@ -32,6 +32,32 @@ function fixture({ request, refresh, purchase } = {}) {
   return { premium, state, saved, messages, requests, refreshes, rejections };
 }
 
+test('linked inactive purchase has one explicit provider recheck and picks up the refreshed session', async () => {
+  let calls = 0;
+  const env = fixture({ purchase: async (state, path) => {
+    calls++; assert.equal(path, '/purchase/recheck'); state.premium.unlocked = true;
+    return { ok: true };
+  } });
+  env.state.premium.unlocked = false; env.state.purchaseLinked = true;
+  const first = env.premium.retryPurchaseVerification();
+  assert.equal(env.premium.retryPurchaseVerification(), first);
+  await first;
+  assert.equal(calls, 1); assert.equal(env.premium.isUnlocked(), true);
+  assert.equal(env.refreshes.length, 2);
+});
+
+test('a switched or unreachable account never triggers a provider recheck', async () => {
+  for (const changed of [true, false]) {
+    let calls = 0;
+    const env = fixture({ refresh: state => {
+      if (changed) state.user = { id: 'B' }; else state.error = 'network_unavailable';
+    }, purchase: () => { calls++; } });
+    env.state.purchaseLinked = true; env.state.premium.unlocked = false;
+    await env.premium.retryPurchaseVerification();
+    assert.equal(calls, 0);
+  }
+});
+
 test('hosted checkout without state uses account verification and announces Premium only after a confirmed session refresh', async () => {
   const purchases = [];
   const env = fixture({

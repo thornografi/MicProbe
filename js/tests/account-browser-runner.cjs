@@ -21,8 +21,8 @@ after.audioMetrics.signal.rmsDb = -18;
 after.profile.appliedConstraints.noiseSuppression = true;
 const privateReport = report('00000000-0000-4000-8000-000000000003', 'Private account report', '2026-09-05T10:10:00.000Z', -12);
 
-async function createPage(browser, { signedIn = false, configured = signedIn, purchasePending = false, purchaseLinked = signedIn, comparisonReports = false,
-  userName = 'Fixture account', userEmail = 'fixture@example.test' } = {}) {
+async function createPage(browser, { signedIn = false, configured = signedIn, purchasePending = false, purchaseLinked = signedIn, inactiveReason = '', comparisonReports = false,
+  userName = 'Fixture account', userEmail = 'fixture@example.test', userPicture = '' } = {}) {
   const accountConfigured = configured;
   let premiumUnlocked = signedIn && purchaseLinked && !purchasePending;
   let sessionUnavailable = false;
@@ -34,6 +34,7 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
   }));
   let observedCheckoutSnapshot;
   const signInChoices = [];
+  let currentAccountId = 'fixture-account-A', nextAccountId = 'fixture-account-B';
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   await context.addInitScript(({ legacyPremium, pendingReturn }) => {
     window.__accountTestMicRequests = 0;
@@ -85,6 +86,7 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
           document.body.append(button);
         },
         renderButton(container){const callback=this.options.callback;
+          window.__googleFixture.buttonCallback=()=>callback({credential:'synthetic-google-credential'});
           const button=document.createElement('button');button.textContent='Continue with Google (test fixture)';
           button.addEventListener('click',()=>callback({credential:'synthetic-google-credential'}));container.append(button);
         }
@@ -92,11 +94,12 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
   await page.route('https://checkout.freemius.com/**', route => route.fulfill({ status: 200, contentType: 'text/html',
     body: '<!doctype html><title>Local checkout fixture</title><a id="returnFromCheckout" href="http://localhost:8080/app?signature=synthetic-signature&amp;checkout_state=synthetic-checkout-state">Return to MicProbe</a>' }));
   await page.route('**/api/freemius/config', route => route.fulfill({ json: { configured: false, mode: 'sandbox' } }));
+  await page.route('**/api/pricing', route => route.fulfill({ json: { amount: 7.99, currency: 'USD', billingCycle: 'lifetime' } }));
   await page.route('**/api/account/**', async route => {
     const request = route.request(); const pathname = new URL(request.url()).pathname;
     accountRequests.push({ path: pathname, method: request.method() });
     if (!['/api/account/config', '/api/account/session', '/api/account/google'].includes(pathname)) {
-      assert.equal(request.headers()['x-micprobe-account'], signedIn ? 'fixture-account-A' : 'anonymous');
+      assert.equal(request.headers()['x-micprobe-account'], signedIn ? currentAccountId : 'anonymous');
     }
     if (request.method() !== 'GET') {
       mutations.push(pathname);
@@ -105,13 +108,13 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
     let payload;
     if (pathname.endsWith('/config')) payload = { ok: true, configured: accountConfigured, googleClientId: accountConfigured ? 'test-client.apps.googleusercontent.com' : null, nonce: accountConfigured ? 'test-only-nonce' : null };
     else if (pathname.endsWith('/session')) payload = sessionUnavailable ? { ok: false, error: 'account_unavailable' }
-      : { ok: true, user: signedIn ? { id: 'fixture-account-A', name: userName, email: userEmail } : null,
-        purchaseLinked: signedIn && purchaseLinked, premium: { unlocked: premiumUnlocked, pending: purchasePending, mode: 'sandbox' } };
+      : { ok: true, user: signedIn ? { id: currentAccountId, name: userName, email: userEmail, picture: userPicture } : null,
+        purchaseLinked: signedIn && purchaseLinked, premium: { unlocked: premiumUnlocked, pending: purchasePending, inactiveReason, mode: 'sandbox' } };
     else if (pathname.endsWith('/reports') && request.method() === 'GET' && historyUnavailable) {
       await route.fulfill({ status: 503, json: { ok: false, error: 'account_unavailable' } }); return;
     }
     else if (pathname.endsWith('/reports') && request.method() === 'GET') payload = { ok: true,
-      reports: signedIn ? [...savedReports.values()] : [], nextCursor: null };
+      reports: signedIn && currentAccountId === 'fixture-account-A' ? [...savedReports.values()] : [], nextCursor: null };
     else if (pathname.endsWith('/reports') && request.method() === 'POST') {
       const body = request.postDataJSON();
       const entry = [...savedReports.values()].find(entry => entry.report.run.id === body.report.run.id)
@@ -127,6 +130,14 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
       savedReports.delete(pathname.split('/').pop());
       payload = { ok: true };
     }
+    else if (pathname.endsWith('/google/switch') && request.method() === 'POST') {
+      assert.equal(request.headers()['x-micprobe-account'], currentAccountId);
+      assert.equal(request.postDataJSON().credential, 'synthetic-google-credential');
+      signInChoices.push(request.postDataJSON().rememberMe);
+      if (currentAccountId !== nextAccountId) { premiumUnlocked = false; purchaseLinked = false; }
+      currentAccountId = nextAccountId;
+      payload = { ok: true, user: { id: currentAccountId }, premium: { unlocked: premiumUnlocked, mode: 'sandbox' } };
+    }
     else if (pathname.endsWith('/google') && request.method() === 'POST') {
       signInChoices.push(request.postDataJSON().rememberMe);
       assert.equal(request.postDataJSON().credential, 'synthetic-google-credential'); signedIn = true;
@@ -134,6 +145,8 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
     } else if (pathname.endsWith('/checkout') && request.method() === 'POST') {
       observedCheckoutSnapshot = await page.evaluate(() => JSON.parse(sessionStorage.getItem('micprobe:checkout-snapshot:v1')));
       payload = { ok: true, checkoutUrl: 'https://checkout.freemius.com/product/123/plan/456/?test=1' };
+    } else if (pathname.endsWith('/purchase/recheck') && request.method() === 'POST') {
+      payload = { ok: true };
     } else if (pathname.endsWith('/purchase') && request.method() === 'POST') {
       assert.match(request.postDataJSON().url, /checkout_state=synthetic-checkout-state/);
       premiumUnlocked = true; purchaseLinked = true; payload = { ok: true, premium: { unlocked: true, mode: 'sandbox' } };
@@ -149,7 +162,8 @@ async function createPage(browser, { signedIn = false, configured = signedIn, pu
     ok: true, decision: { eligible: false, status: 'UNSUPPORTED', title: 'Account UI fixture' }
   } }));
   await page.route('**/api/reviews/load', route => route.fulfill({ json: { ok: true, review: null } }));
-  return { context, page, pageErrors, consoleErrors, mutations, accountRequests, signInChoices, checkoutSnapshot: () => observedCheckoutSnapshot,
+  return { context, page, pageErrors, consoleErrors, mutations, accountRequests, signInChoices,
+    setNextAccount: id => { nextAccountId = id; }, checkoutSnapshot: () => observedCheckoutSnapshot,
     clearReports: () => savedReports.clear(), setHistoryUnavailable: value => { historyUnavailable = value; },
     verifyPurchase: () => { purchasePending = false; premiumUnlocked = true; purchaseLinked = true; },
     setPremiumUnlocked: value => { premiumUnlocked = value; },
@@ -216,11 +230,12 @@ async function rememberMeFlow(browser) {
     await page.locator('#accountMenuBtn').click();
     const remember = page.getByRole('checkbox', { name: 'Keep me signed in on this device', exact: true });
     await remember.waitFor();
-    assert.equal(await remember.isChecked(), false);
-    await remember.check();
+    assert.equal(await remember.isChecked(), true);
+    assert.equal(await page.locator('#accountRememberHint').textContent(), 'Avoid on shared devices.');
+    await remember.uncheck();
     await page.keyboard.press('Escape');
     await page.locator('#accountMenuBtn').click();
-    assert.equal(await remember.isChecked(), false, 'Closing sign-in resets the unsubmitted preference');
+    assert.equal(await remember.isChecked(), true, 'Closing sign-in restores the checked default');
     for (const choice of [true, false]) {
       await page.setViewportSize({ width: choice ? 1280 : 390, height: 900 });
       await remember.setChecked(choice);
@@ -228,14 +243,16 @@ async function rememberMeFlow(browser) {
       assert.equal(await remember.isChecked(), choice, 'An account refresh preserves the visible choice');
       await verifyStyles(page);
       await page.getByRole('button', { name: 'Continue with Google (test fixture)', exact: true }).click();
+      await page.waitForFunction(() => !document.getElementById('accountDialog').open);
+      await page.locator('#accountMenuBtn').click();
       const logout = page.getByRole('button', { name: 'Sign out', exact: true });
       await logout.waitFor();
       assert.equal(env.signInChoices.at(-1), choice);
       await logout.click(); await remember.waitFor();
-      assert.equal(await remember.isChecked(), false, 'Signing out never preselects a persistent login');
+      assert.equal(await remember.isChecked(), true, 'Signing out restores the checked default');
     }
     assert.deepEqual(env.pageErrors, []); assert.deepEqual(env.consoleErrors, []);
-    console.log('PASS remember-me: explicit opt-in, default session, refresh, dismissal, logout, desktop and mobile');
+    console.log('PASS remember-me: checked default, session-only opt-out, refresh, dismissal, logout, desktop and mobile');
   } finally { await env.context.close(); }
 }
 
@@ -277,7 +294,7 @@ async function historyFlow(browser) {
   env.setPremiumUnlocked(false);
   try {
     await page.goto(`${BASE}/#app`); await ready(page);
-    assert.equal(await page.locator('#accountMenuBtn').innerText(), 'Account');
+    assert.equal(await page.locator('#accountMenuBtn').getAttribute('aria-label'), 'Account');
     await page.locator('#accountMenuBtn').click();
     await page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
     const dialog = page.locator('#accountDialog');
@@ -296,8 +313,8 @@ async function historyFlow(browser) {
     await cards.first().getByRole('button', { name: 'Save note', exact: true }).click();
     await page.waitForFunction(expected => document.querySelector('#accountHistoryList input[type="text"]')?.value === expected, draft);
     assert.equal(await page.locator('#accountHistoryList img').count(), 0, 'A report note must never become HTML');
-    await page.reload(); await ready(page); await page.locator('#accountMenuBtn').click();
-    await page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
+    await page.reload(); await ready(page);
+    await page.locator('#accountReports').waitFor({ state: 'visible' });
     assert.equal(await cards.count(), 2);
     assert.equal(await cards.first().locator('.account-note').evaluate(node => node.open), false, 'Saved notes start compact after reload');
     await cards.first().locator('.account-note > summary').click();
@@ -507,28 +524,32 @@ async function pendingPurchaseFlow(browser) {
     await identity.getByRole('button', { name: 'Retry purchase verification', exact: true }).click();
     await page.waitForFunction(() => document.getElementById('accountStatus').textContent !== 'Working…');
     assert.deepEqual(env.accountRequests.slice(firstRetry), [{ path: '/api/account/session', method: 'GET' }]);
-    assert.match(await identity.innerText(), /Purchase verification pending/);
+    assert.match(await identity.innerText(), /Connection unavailable/);
     env.setSessionUnavailable(false);
     await page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
     await page.locator('#accountHistoryList').getByRole('button', { name: 'Open report', exact: true }).click();
     const cta = page.locator('#premiumCta');
-    assert.equal(await cta.innerText(), 'Retry purchase verification');
+    assert.equal(await cta.innerText(), 'Retry account connection');
     assert.doesNotMatch(await page.locator('#premiumOverlay').innerText(), /Get Lifetime Premium|One payment/);
     const secondRetry = env.accountRequests.length;
     await cta.click();
     await page.waitForFunction(() => !document.getElementById('premiumCta').disabled);
-    assert.deepEqual(env.accountRequests.slice(secondRetry), [{ path: '/api/account/session', method: 'GET' }]);
+    assert.deepEqual(env.accountRequests.slice(secondRetry), [
+      { path: '/api/account/session', method: 'GET' },
+      { path: '/api/account/purchase/recheck', method: 'POST' },
+      { path: '/api/account/session', method: 'GET' }
+    ]);
     assert.equal(await cta.innerText(), 'Retry purchase verification');
-    assert.deepEqual(env.mutations, [], 'Pending purchase retries must not repeat checkout or purchase POSTs');
+    assert.deepEqual(env.mutations, ['/api/account/purchase/recheck'], 'Pending purchase retries only recheck access');
     assert.equal(await page.evaluate(() => sessionStorage.getItem('micprobe:checkout-snapshot:v1')), null,
       'Verification retry must not create a new checkout snapshot');
     env.verifyPurchase();
     await cta.click();
     await openPremiumMeasurements(page);
-    assert.deepEqual(env.mutations, [], 'Confirmed verification must not replay a pending signed return');
+    assert.deepEqual(env.mutations, ['/api/account/purchase/recheck'], 'Confirmed verification must not replay a pending signed return');
     assert.deepEqual(env.pageErrors, []); assert.deepEqual(env.consoleErrors, []);
     console.log(JSON.stringify({ test: 'account-pending-purchase-browser', status: 'passed', noRepeatPurchase: true,
-      sessionOnlyRetries: true, pendingSurvivesConnectionFailure: true, verifiedReportUnlocked: true, pageErrors: 0, consoleErrors: 0 }));
+      explicitProviderRecheck: true, pendingSurvivesConnectionFailure: true, verifiedReportUnlocked: true, pageErrors: 0, consoleErrors: 0 }));
   } finally { await env.context.close(); }
 }
 
@@ -550,6 +571,7 @@ async function oneTapFlow(browser) {
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await page.getByRole('button', { name: 'Continue with Google (test fixture)', exact: true }).waitFor();
     await page.keyboard.press('Escape');
+    await page.waitForURL(BASE + '/app');
     assert.equal(await page.locator('#googleOneTapFixture').count(), 0);
     await page.reload(); await ready(page);
     assert.equal(await page.evaluate(() => window.__googleFixture.loads), 0, 'Reload after logout must not reopen One Tap');
@@ -580,8 +602,9 @@ async function oneTapFlow(browser) {
     assert.equal(await busy.page.evaluate(() => window.__googleFixture.initializations), beforeRefresh,
       'Routine session refresh must preserve the active consent callback');
     await busy.page.getByRole('button', { name: 'Continue with Google (test fixture)', exact: true }).click();
-    await busy.page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
-    assert.deepEqual(busy.signInChoices, [false]);
+    await busy.page.waitForFunction(() => !document.getElementById('accountDialog').open);
+    assert.equal(await busy.page.locator('#accountMenuBtn').getAttribute('aria-label'), 'Account');
+    assert.deepEqual(busy.signInChoices, [true]);
     assert.deepEqual(busy.pageErrors, []); assert.deepEqual(busy.consoleErrors, []);
     console.log(JSON.stringify({ test: 'google-one-tap-cancellation-browser', status: 'passed',
       preparationCancels: true, staleCredentialIgnored: true, manualFallbackWorks: true, refreshPreservesConsent: true }));
@@ -607,7 +630,7 @@ async function signInRecoveryFlow(browser) {
     await retry.click(); await google.waitFor();
     assert.equal(await retry.isVisible(), false);
     await google.click();
-    await page.waitForFunction(() => document.getElementById('accountMenuBtn').textContent === 'Account');
+    await page.waitForFunction(() => document.getElementById('accountMenuBtn').getAttribute('aria-label') === 'Account');
     assert.deepEqual(env.pageErrors, []);
     console.log(JSON.stringify({ test: 'sign-in-recovery-browser', status: 'passed', singleButton: true, providerRetry: true }));
   } finally { await env.context.close(); }
@@ -636,8 +659,8 @@ async function accountNavigationFlow(browser) {
     await reports.press('Home');
     assert.equal(await account.getAttribute('aria-selected'), 'true');
     await page.getByText('Account data and deletion', { exact: true }).click();
-    assert.equal(await page.getByRole('link', { name: 'Email an account request' }).getAttribute('href'),
-      'mailto:support@micprobe.com?subject=MicProbe%20account%20data%20request');
+    assert.equal(await page.getByRole('link', { name: 'Account request instructions (opens in a new tab)' }).getAttribute('href'),
+      '/contact.html#account');
     assert.equal(await page.getByRole('button', { name: /delete account/i }).count(), 0, 'A support request is not an immediate account deletion');
     await account.press('End');
     assert.equal(await card.getByRole('textbox').inputValue(), 'Keep this note while switching account sections');
@@ -697,5 +720,5 @@ async function main() {
   }
 }
 
-module.exports = { createPage, ready };
+module.exports = { createPage, ready, rememberMeFlow, oneTapFlow };
 if (require.main === module) main().catch(error => { console.error(JSON.stringify({ status: 'failed', error: error.stack })); process.exitCode = 1; });

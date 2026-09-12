@@ -15,11 +15,7 @@
   height: 6px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.mic-activity-status[data-state="detected"]::before {
-  background: var(--vu-local);
+  background: var(--signal-color, var(--text-muted));
 }
 
 .mic-activity-meter {
@@ -34,8 +30,8 @@
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--vu-local);
-  transition: width 0.1s ease-out;
+  background: var(--signal-color, var(--vu-local));
+  /* Width and color already share a timed envelope in VuMeter. */
 }
 
 .mic-activity-meter::after {
@@ -89,17 +85,12 @@
   height: 6px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--vu-color);
+  background: var(--signal-color, var(--text-muted));
   opacity: 0.6;
-  transition: background var(--transition-fast), opacity var(--transition-fast);
+  transition: opacity var(--transition-fast);
 }
 
-.signal-dot.active {
-  opacity: 1;
-}
-
-.signal-dot.clipping {
-  background: var(--accent-danger);
+.signal-dot:is(.detected, .high, .clipping) {
   opacity: 1;
 }
 
@@ -114,9 +105,9 @@
 .vu-meter-bar {
   height: 100%;
   width: 0;
-  background: var(--vu-color);
+  background: var(--signal-color, var(--vu-color));
   border-radius: inherit;
-  transition: width 0.1s ease-out;
+  /* RMS integration already supplies the detail meter's smoothing. */
 }
 
 .vu-meter-peak {

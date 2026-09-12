@@ -40,7 +40,7 @@ export function measureTruePeak(channels, sampleRate, samplePeak) {
 }
 
 /** Measurements from every decoded sample. No signal/noise or hardware diagnosis. */
-export function analyzePcm(channels, sampleRate, { guidedSegments = null } = {}) {
+export function analyzePcm(channels, sampleRate, { guidedSegments = null, speechActivity = null } = {}) {
   const frameCount = channels[0]?.length || 0;
   if (!channels.length || !frameCount || !Number.isFinite(sampleRate) || sampleRate < 8000
     || channels.some(channel => channel.length !== frameCount)) throw new Error('Invalid PCM buffers');
@@ -192,6 +192,6 @@ export function analyzePcm(channels, sampleRate, { guidedSegments = null } = {})
     stability: { status: 'measured', dbStdDev: +Math.sqrt(variance).toFixed(2), method: '10ms-rms-variation' },
     lufs, weakSignal: { frames: weakFrames, rate: weakFrames / frameCount },
     frequencyResponse: null, frequencyProfile: null,
-    ...(guidedSegments ? measureGuidedNoise(channels, sampleRate, guidedSegments) : {})
+    ...(guidedSegments ? measureGuidedNoise(channels, sampleRate, guidedSegments, speechActivity) : {})
   };
 }

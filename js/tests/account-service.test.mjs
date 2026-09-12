@@ -150,18 +150,18 @@ test('configured Google sign-in with a missing database fails unavailable instea
 test('session distinguishes pending verification from free, active and cancelled purchases', async t => {
     const f = fixture(t);
     const session = async cookie => (await (await f.send('/api/account/session', { cookie })).json()).premium;
-    assert.deepEqual(await session(''), { unlocked: false, pending: false, mode: 'sandbox' });
+    assert.deepEqual(await session(''), { unlocked: false, pending: false, inactiveReason: '', mode: 'sandbox' });
     const alice = await f.login('alice');
-    assert.deepEqual(await session(alice.cookie), { unlocked: false, pending: false, mode: 'sandbox' });
+    assert.deepEqual(await session(alice.cookie), { unlocked: false, pending: false, inactiveReason: '', mode: 'sandbox' });
     await f.service.saveLicense(alice.user.id, license(100, { active: false, verifiedAt: 0 }));
-    assert.deepEqual(await session(alice.cookie), { unlocked: false, pending: true, mode: 'sandbox' });
+    assert.deepEqual(await session(alice.cookie), { unlocked: false, pending: true, inactiveReason: '', mode: 'sandbox' });
     for (const state of [
         { active: true, verifiedAt: 0 },
         { active: true, verifiedAt: Date.now() },
         { active: false, verifiedAt: Date.now() }
     ]) {
         await f.service.updateLicense('100', state);
-        assert.deepEqual(await session(alice.cookie), { unlocked: state.active, pending: false, mode: 'sandbox' });
+        assert.deepEqual(await session(alice.cookie), { unlocked: state.active, pending: false, inactiveReason: '', mode: 'sandbox' });
     }
 });
 
@@ -189,8 +189,28 @@ test('local migrations upgrade an existing 0001 database once while preserving p
             assert.equal(user.google_verified_at, null);
             assert.equal((await db.prepare('SELECT active FROM account_licenses').first()).active, 1);
             assert.equal((await db.prepare('SELECT note FROM account_reports').first()).note, 'Preserved note');
-            assert.equal((await db.prepare('SELECT count(*) AS n FROM account_schema_migrations').first()).n, 10);
+            assert.equal((await db.prepare('SELECT count(*) AS n FROM account_schema_migrations').first()).n, 12);
+            assert.equal(user.picture_url, '', 'Existing accounts keep an initials fallback until their next verified login');
+            assert.equal((await db.prepare('SELECT inactive_reason FROM account_licenses').first()).inactive_reason, '');
         } finally { db.close(); }
+    }
+});
+
+test('verified Google photos update display data while identity and Premium remain independent', async t => {
+    const f = fixture(t);
+    const first = await f.login('photo-owner', { picture: 'https://lh3.googleusercontent.com/first=s96-c' });
+    assert.equal(first.user.picture, 'https://lh3.googleusercontent.com/first=s96-c');
+    assert.equal(first.premium.unlocked, false);
+    const updated = await f.login('photo-owner', { picture: 'https://lh4.googleusercontent.com/new=s96-c' });
+    assert.equal(updated.user.id, first.user.id);
+    assert.equal(updated.user.picture, 'https://lh4.googleusercontent.com/new=s96-c');
+    const session = await (await f.send('/api/account/session', { cookie: updated.cookie })).json();
+    assert.equal(session.user.picture, updated.user.picture);
+    for (const picture of [undefined, 'http://lh3.googleusercontent.com/a', 'https://lh3.googleusercontent.com.evil.example/a',
+        'https://example.com/tracker', 'javascript:alert(1)', 'https://user@lh3.googleusercontent.com/a']) {
+        const fallback = await f.login('photo-owner', { picture });
+        assert.equal(fallback.user.id, first.user.id);
+        assert.equal(fallback.user.picture, '');
     }
 });
 
@@ -268,6 +288,65 @@ test('sign-in consumes the browser nonce once, rotates sessions, and identifies 
     assert.equal(rotated.status, 200);
     assert.doesNotMatch(rotated.headers.getSetCookie().find(value => value.startsWith('micprobe_session=')), /Max-Age|Expires/i);
     assert.equal(await f.service.getUser(f.request('/api/account/session', { cookie: sessionToken })), null);
+});
+
+for (const selected of ['alice', 'bob']) test(`verified switch to ${selected} preserves or replaces only the current session`, async t => {
+    const f = fixture(t), original = await f.login('alice'), proof = await f.challenge();
+    const before = await f.db.prepare('SELECT * FROM account_sessions').all();
+    const cookie = `${original.cookie}; ${proof.cookie}`;
+    const options = { method: 'POST', cookie, headers: { 'X-MicProbe-Account': original.user.id },
+        body: { credential: JSON.stringify(makeClaims(selected, proof.nonce)), rememberMe: true } };
+    assert.equal((await f.send('/api/account/google/switch', { ...options, headers: {} })).status, 409);
+    assert.deepEqual(await f.db.prepare('SELECT * FROM account_sessions').all(), before);
+    const response = await f.send('/api/account/google/switch', options);
+    assert.equal(response.status, 200, await response.clone().text());
+    const result = await response.json();
+    const session = response.headers.getSetCookie().find(value => value.startsWith('micprobe_session='));
+    if (selected === 'alice') {
+        assert.equal(result.user.id, original.user.id);
+        assert.equal(session, undefined, 'Choosing the same account preserves cookie persistence and expiry');
+        assert.deepEqual(await f.db.prepare('SELECT * FROM account_sessions').all(), before);
+    } else {
+        assert.notEqual(result.user.id, original.user.id);
+        assert.equal(result.premium.unlocked, false);
+        assert.match(session, /Max-Age=2592000/);
+        assert.equal((await (await f.send('/api/account/session', { cookie: original.cookie })).json()).user, null);
+        assert.equal((await (await f.send('/api/account/session', { cookie: session.split(';')[0] })).json()).user.id, result.user.id);
+    }
+});
+
+test('rejected switch credentials leave the current session intact', async t => {
+    const f = fixture(t), original = await f.login('alice'), proof = await f.challenge();
+    const response = await f.send('/api/account/google/switch', { method: 'POST',
+        cookie: `${original.cookie}; ${proof.cookie}`, headers: { 'X-MicProbe-Account': original.user.id },
+        body: { credential: JSON.stringify(makeClaims('bob', proof.nonce, { aud: 'wrong-client' })) } });
+    assert.equal(response.status, 401);
+    assert.equal((await (await f.send('/api/account/session', { cookie: original.cookie })).json()).user.id, original.user.id);
+});
+
+test('logout between switch verification and session replacement cannot resurrect a session', async t => {
+    const f = fixture(t), original = await f.login('alice'), proof = await f.challenge();
+    const addSession = AccountStore.prototype.addSession;
+    t.mock.method(AccountStore.prototype, 'addSession', async function (...args) {
+        await f.send('/api/account/logout', { method: 'POST', cookie: original.cookie, body: {} });
+        return addSession.apply(this, args);
+    });
+    const response = await f.send('/api/account/google/switch', { method: 'POST', cookie: `${original.cookie}; ${proof.cookie}`,
+        headers: { 'X-MicProbe-Account': original.user.id }, body: { credential: JSON.stringify(makeClaims('bob', proof.nonce)) } });
+    assert.equal(response.status, 409);
+    assert.equal((await f.db.prepare('SELECT count(*) AS n FROM account_sessions').first()).n, 0);
+    assert.equal(response.headers.getSetCookie().length, 0);
+});
+
+test('competing account switches cannot both replace the same session', async t => {
+    const f = fixture(t), original = await f.login('alice');
+    const responses = await Promise.all(['bob', 'carol'].map(async sub => {
+        const proof = await f.challenge();
+        return f.send('/api/account/google/switch', { method: 'POST', cookie: `${original.cookie}; ${proof.cookie}`,
+            headers: { 'X-MicProbe-Account': original.user.id }, body: { credential: JSON.stringify(makeClaims(sub, proof.nonce)) } });
+    }));
+    assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
+    assert.equal((await f.db.prepare('SELECT count(*) AS n FROM account_sessions').first()).n, 1);
 });
 
 test('only explicit remember-me creates a persistent session; both modes retain expiry and logout protection', async t => {

@@ -177,27 +177,6 @@ body[data-app-state="preparing"] .btn-action[aria-pressed="true"] :is(.icon-circ
   display: none;
 }
 
-/* Countdown uses the reserved trailing slot without shifting the action label. */
-.test-countdown {
-  flex-shrink: 0;
-  min-width: var(--control-h-xs);
-  height: var(--control-h-xs);
-  padding: 0 var(--space-xs);
-  background: rgba(var(--color-white-rgb), 0.16);
-  color: white;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  font-family: var(--font-mono);
-  border-radius: var(--radius-full);
-  display: none;
-  align-items: center;
-  justify-content: center;
-}
-
-body[data-app-state="testing"] .btn-test .test-countdown {
-  display: flex;
-}
-
 /* Test analysing progress bar - butonun altinda ince determinate cubuk */
 .test-progress-bar {
   position: absolute;

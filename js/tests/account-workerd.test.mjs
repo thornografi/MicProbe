@@ -19,6 +19,7 @@ test('workerd verifies Google signatures, recovers from key outages and enforces
     bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022' });
   let keyStatus = 503, keyRequests = 0;
   let allowBilling = false, redirectPortal = false;
+  let licenseCancelled = true;
   const portalCalls = [];
   const runtime = new Miniflare(convertV4MiniflareOptions({
     modules: true, script: bundle.outputFiles[0].text,
@@ -29,7 +30,8 @@ test('workerd verifies Google signatures, recovers from key outages and enforces
       if (allowBilling && request.url.startsWith('https://api.freemius.com/v1/products/33850/')) {
         assert.equal(request.headers.get('Authorization'), 'Bearer runtime-test-api-token');
         portalCalls.push(request.url);
-        if (request.url.includes('/licenses/101.json')) return Response.json({ id: 101, plugin_id: 33850, user_id: 202, environment: 1 });
+        if (request.url.includes('/licenses/101.json')) return Response.json({ id: 101, plugin_id: 33850, user_id: 202,
+          environment: 1, plan_id: 55641, is_cancelled: licenseCancelled, expiration: null });
         if (request.url.includes('/users/202.json')) return Response.json({ id: 202, email: 'runtime@gmail.com' });
         assert.equal(request.url, 'https://api.freemius.com/v1/products/33850/portal/login.json');
         assert.equal(request.method, 'POST'); assert.deepEqual(await request.json(), { id: '202' });
@@ -69,6 +71,9 @@ test('workerd verifies Google signatures, recovers from key outages and enforces
   assert.equal(reviewDecision.summary.assessment.status, 'limited');
   assert.equal(reviewDecision.summary.ai, undefined);
   assert.equal(reviewDecision.summary.findings, undefined, 'Worker does not expose private findings to a guest');
+  const secondGuestRun = { runId: 'workerd-guest-second' };
+  assert.equal((await request('/api/tests/start', { body: secondGuestRun, cookie: visitor, owner: 'anonymous' })).status, 200);
+  assert.equal((await request('/api/tests/complete', { body: { ...secondGuestRun, evidence: measured }, cookie: visitor })).status, 200);
   assert.equal((await request('/api/tests/start', { body: { runId: 'workerd-guest-blocked' }, cookie: visitor, owner: 'anonymous' })).status, 429);
   assert.equal((await request('/api/tests/start', { body: { runId: 'workerd-new-cookie-blocked' }, owner: 'anonymous' })).status, 429);
   const challenge = await request('/api/account/config');
@@ -120,7 +125,7 @@ test('workerd verifies Google signatures, recovers from key outages and enforces
   assert.equal((await googleReturned.json()).user.id, user.id);
   assert.ok(googleReturned.headers.getSetCookie().every(value => !value.startsWith('micprobe_session=')));
   const quotaCookie = `${session}; ${visitor}`;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     const run = { runId: `workerd-account-test-${i}` };
     assert.equal((await request('/api/tests/start', { body: run, cookie: quotaCookie, owner: user.id })).status, 200);
     assert.equal((await request('/api/tests/complete', { body: { ...run, evidence: measured }, cookie: quotaCookie, owner: user.id })).status, 200);
@@ -183,7 +188,37 @@ test('workerd verifies Google signatures, recovers from key outages and enforces
   const redirected = await request('/api/account/portal', { cookie: session, owner: user.id, body: {} });
   assert.equal(redirected.status, 503);
   assert.equal((await redirected.json()).error, 'billing_temporarily_unavailable');
-  assert.equal((await request('/api/account/logout', { body: {}, cookie: session, owner: user.id })).status, 200);
+  assert.equal((await request('/api/account/purchase/recheck', { cookie: session, owner: user.id, body: {} })).status, 200);
+  assert.equal((await (await request('/api/account/session', { cookie: session })).json()).premium.inactiveReason, 'license_inactive');
+  licenseCancelled = false;
+  await db.prepare('UPDATE account_licenses SET verified_at = ? WHERE license_id = ?').bind(Date.now() - 1000, '101').run();
+  assert.equal((await request('/api/account/purchase/recheck', { cookie: session, owner: user.id, body: {} })).status, 200);
+  const recovered = (await (await request('/api/account/session', { cookie: session })).json()).premium;
+  assert.equal(recovered.unlocked, true); assert.equal(recovered.inactiveReason, '');
+  let switchSession = session, switchOwner = user.id;
+  for (const sub of ['runtime-owner', 'runtime-other']) {
+    const challenge = await request('/api/account/config');
+    const nonce = (await challenge.json()).nonce;
+    const nonceCookie = challenge.headers.getSetCookie()[0].split(';')[0];
+    const payload = `${encode({ alg: 'RS256', kid: jwk.kid })}.${encode({ sub, aud: clientId,
+      iss: 'https://accounts.google.com', nonce, email: `${sub}@gmail.com`, email_verified: true,
+      iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 })}`;
+    const signature = Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', keypair.privateKey,
+      new TextEncoder().encode(payload))).toString('base64url');
+    const switched = await request('/api/account/google/switch', { cookie: `${switchSession}; ${nonceCookie}`, owner: switchOwner,
+      body: { credential: `${payload}.${signature}`, rememberMe: true } });
+    assert.equal(switched.status, 200, await switched.clone().text());
+    const result = await switched.json();
+    const cookie = switched.headers.getSetCookie().find(value => value.startsWith('micprobe_session='));
+    if (sub === 'runtime-owner') {
+      assert.equal(cookie, undefined); assert.equal(result.user.id, user.id);
+    } else {
+      assert.notEqual(result.user.id, user.id);
+      assert.equal(result.premium.unlocked, false);
+      switchSession = cookie.split(';')[0]; switchOwner = result.user.id;
+    }
+  }
+  assert.equal((await request('/api/account/logout', { body: {}, cookie: switchSession, owner: switchOwner })).status, 200);
   assert.equal((await (await request('/api/account/session', { cookie: session })).json()).user, null);
   assert.ok(keyRequests >= 3, 'JWKS fetch must actually execute inside workerd');
 });

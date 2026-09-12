@@ -6,7 +6,7 @@
 
 import eventBus from '../modules/EventBus.js';
 import { PROFILES, SETTINGS } from '../modules/Config.js';
-import { setVisible, usesWasmOpus, log } from '../modules/utils.js';
+import { usesWasmOpus, log } from '../modules/utils.js';
 import { getSettingLockPolicy } from '../modules/utils/settings.js';
 import { PIPELINE_TYPES, EVENTS, MARKUP_CLASSES } from '../modules/constants.js';
 
@@ -21,26 +21,17 @@ class ProfileController {
     // UI element referanslari
     this.elements = {
       loopbackToggle: null,
-      customSettingsGrid: null,
-      pipelineSection: null,
-      webrtcSection: null,
-      developerSection: null
+      customSettingsGrid: null
     };
-
-    // Setting container cache
-    this.settingContainers = {};
 
     // Callbacks
     this.callbacks = {
       stopRecording: async () => {},
       startRecording: async () => {},
       updateButtonStates: () => {},
-      updateBufferInfo: () => {},
-      updateTimesliceInfo: () => {},
       updateCategoryUI: () => {},
       getRadioValue: () => 'standard',
       setSettingDisabled: () => {},
-      setOptionDisabled: () => {},
       getSettingElements: () => []
     };
 
@@ -55,13 +46,6 @@ class ProfileController {
    */
   init(elements) {
     Object.assign(this.elements, elements);
-  }
-
-  /**
-   * Setting container cache'i set et
-   */
-  setSettingContainers(containers) {
-    this.settingContainers = containers;
   }
 
   /**
@@ -148,10 +132,6 @@ class ProfileController {
 
     // Profil bazli bireysel ayar gorunurlugunu guncelle
     this.updateSettingVisibility(profile);
-
-    // Buffer ve Timeslice bilgisini guncelle
-    this.callbacks.updateBufferInfo(values.buffer);
-    this.callbacks.updateTimesliceInfo(values.timeslice);
 
     // Locked ayarlari logla
     if (lockedSettings.length > 0) {
@@ -282,29 +262,6 @@ class ProfileController {
         container.classList.remove('setting-locked');
       }
     });
-
-    this.updateSectionVisibility();
-  }
-
-  /**
-   * Section'lari iceriklerine gore goster/gizle
-   */
-  updateSectionVisibility() {
-    const isVisible = (key) => {
-      const el = this.settingContainers[key];
-      return el && !el.classList.contains('hidden');
-    };
-
-    const { pipelineSection, webrtcSection, developerSection } = this.elements;
-
-    // Pipeline section: webaudio, pipeline, encoder, buffer
-    setVisible(pipelineSection, isVisible('webaudio') || isVisible('pipeline') || isVisible('encoder') || isVisible('buffer'));
-
-    // WebRTC section: loopback, bitrate, mediaBitrate
-    setVisible(webrtcSection, isVisible('loopback') || isVisible('bitrate') || isVisible('mediaBitrate'));
-
-    // Developer section: timeslice
-    setVisible(developerSection, isVisible('timeslice'));
   }
 
   /**

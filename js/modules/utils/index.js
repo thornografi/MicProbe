@@ -35,7 +35,7 @@ export {
 } from './audio.js';
 
 // WAV helpers
-export { float32ToInt16, createWavHeader, createWavBlob } from './wav.js';
+export { createWavBlob } from './wav.js';
 
 // State helpers
 export { beginPreparing, endPreparing, resetState } from './state.js';

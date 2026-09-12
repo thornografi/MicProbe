@@ -5,9 +5,8 @@
  */
 
 import { PROFILES } from './Config.js';
-import { ENCODER_TYPES, PIPELINE_TYPES, UI_CLASSES, EVENTS, APP_STATE } from './constants.js';
+import { ENCODER_TYPES, PIPELINE_TYPES, EVENTS, APP_STATE } from './constants.js';
 import eventBus from './EventBus.js';
-import { formatTime } from './utils.js';
 import { getSettingLockPolicy } from './utils/settings.js';
 
 /**
@@ -19,22 +18,17 @@ class UIStateManager {
     this.elements = {
       recordToggleBtn: null,
       testBtn: null,
-      testCountdownEl: null,
       loopbackToggle: null,
       ecCheckbox: null,
       nsCheckbox: null,
       agcCheckbox: null,
-      pipelineContainer: null,
-      encoderContainer: null,
-      timesliceContainer: null,
-      recordingPlayerCard: null,
       playBtn: null,
       progressBar: null,
       downloadBtn: null,
+      downloadMenuBtn: null,
       downloadMp3Btn: null,
       micSelector: null,
       refreshMicsBtn: null,
-      timerEl: null,
       headerBrandLink: null,
       customSettingsToggle: null,
       accountMenuBtn: null,
@@ -51,9 +45,6 @@ class UIStateManager {
       bufferSize: []
     };
 
-    // Nav items (profil secim disabling icin)
-    this.navItems = [];
-
     // State getters (dısarıdan set edilir)
     this.getState = {
       currentMode: () => null,
@@ -65,9 +56,6 @@ class UIStateManager {
     // ProfileController referansi (locked settings icin)
     this.profileController = null;
 
-    // Timer state
-    this.timerInterval = null;
-    this.timerStartTime = null;
   }
 
   /**
@@ -95,14 +83,6 @@ class UIStateManager {
   }
 
   /**
-   * Nav items'i set et (profil secimi icin)
-   * @param {Object} collections - { navItems }
-   */
-  setProfileCollections(collections) {
-    if (collections.navItems) this.navItems = collections.navItems;
-  }
-
-  /**
    * ProfileController referansini set et
    * @param {Object} controller - ProfileController instance
    */
@@ -125,7 +105,8 @@ class UIStateManager {
       isTestAnalysing: currentMode === 'test-analysing',
       isPreparing
     };
-    flags.isFinalizing = flags.isRecording && !!this.getState.isRecordingFinalizing?.();
+    flags.isFinalizing = (flags.isRecording && !!this.getState.isRecordingFinalizing?.())
+      || (flags.isTestRecording && !!this.getState.isTestFinalizing?.());
     flags.isTesting = flags.isTestRecording || flags.isTestAnalysing;
 
     // Tek makine-fazi kaynagi: body[data-app-state] (APP_STATE). CSS buton gorunumlerini ve
@@ -166,20 +147,20 @@ class UIStateManager {
     }
 
     if (testBtn) {
-      testBtn.disabled = !hasProfile || isRecording || (isPreparing && !isTesting);
+      testBtn.disabled = !hasProfile || isRecording || isFinalizing || flags.isTestAnalysing || (isPreparing && !isTesting);
       testBtn.setAttribute('aria-pressed', isTesting ? 'true' : 'false');
     }
   }
 
   /**
-   * Control kilitleme durumlarini guncelle (ayarlar, profiller, linkler)
+   * Control kilitleme durumlarini guncelle (ayarlar, linkler)
    * @private
    */
   _updateControlLocks(flags) {
-    const { isIdle, isRecording, isTesting, isPreparing } = flags;
+    const { isIdle, isRecording, isTesting } = flags;
     const {
       loopbackToggle, ecCheckbox, nsCheckbox, agcCheckbox,
-      playBtn, progressBar, downloadBtn, downloadMp3Btn,
+      playBtn, progressBar, downloadBtn, downloadMp3Btn, downloadMenuBtn,
       micSelector, refreshMicsBtn
     } = this.elements;
 
@@ -189,6 +170,7 @@ class UIStateManager {
     if (playBtn) playBtn.disabled = disableRecordingUi;
     if (progressBar) progressBar.inert = disableRecordingUi;
     for (const link of [downloadBtn, downloadMp3Btn]) this._setLinkDisabled(link, disableRecordingUi);
+    if (downloadMenuBtn) downloadMenuBtn.disabled = disableRecordingUi;
 
     // Profil kilitleri
     const profile = this.profileController?.getCurrentProfile();
@@ -204,10 +186,6 @@ class UIStateManager {
     // Mikrofon secici
     if (micSelector) micSelector.disabled = !isIdle;
     if (refreshMicsBtn) refreshMicsBtn.disabled = !isIdle;
-
-    // Profil butonlari (native disabled; klavye + fare birlikte)
-    const disableProfiles = !isIdle || isPreparing;
-    this.navItems.forEach(item => { item.disabled = disableProfiles; });
 
     // Header linki, ayar akordeonu, hesap butonu ve footer bolgesi
     const { headerBrandLink, customSettingsToggle, accountMenuBtn, sharedFooter } = this.elements;
@@ -266,11 +244,14 @@ class UIStateManager {
       const testBtnText = testBtn.querySelector('.btn-text');
       let testLabel = 'Start microphone test';
       if (testBtnText) {
-        if (isPreparing && isTesting) {
+        if (isFinalizing && isTesting) {
+          testBtnText.textContent = 'Finishing...';
+          testLabel = 'Finishing recording';
+        } else if (isPreparing && isTesting) {
           testBtnText.textContent = 'Cancel';
           testLabel = 'Cancel test preparation';
         } else if (isTestRecording) {
-          testBtnText.textContent = 'Finish';
+          testBtnText.textContent = 'Stop early';
           testLabel = 'Finish test recording and analyse';
         } else if (isTestAnalysing) {
           testBtnText.textContent = 'Analysing...';
@@ -295,48 +276,11 @@ class UIStateManager {
         recordBtnText.textContent = 'Cancel';
         recordLabel = 'Cancel recording preparation';
       } else {
-        recordBtnText.textContent = isRecording ? 'Finish' : 'Start test';
+        recordBtnText.textContent = isRecording ? 'Stop early' : 'Start test';
         if (isRecording) recordLabel = 'Finish test recording and analyse';
       }
       recordToggleBtn?.setAttribute('aria-label', recordLabel);
       if (recordToggleBtn) recordToggleBtn.title = recordLabel;
-    }
-  }
-
-  /**
-   * Kayit timer'ini baslat
-   */
-  startTimer() {
-    const { timerEl } = this.elements;
-    if (!timerEl) return;
-
-    // Mevcut interval varsa temizle - double-start leak onleme
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-
-    this.timerStartTime = Date.now();
-    timerEl.textContent = '0:00';
-    timerEl.classList.add(UI_CLASSES.VISIBLE);
-
-    this.timerInterval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - this.timerStartTime) / 1000);
-      timerEl.textContent = formatTime(elapsed);
-    }, 1000);
-  }
-
-  /**
-   * Kayit timer'ini durdur
-   */
-  stopTimer() {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-    const { timerEl } = this.elements;
-    if (timerEl) {
-      timerEl.classList.remove(UI_CLASSES.VISIBLE);
     }
   }
 

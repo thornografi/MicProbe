@@ -96,7 +96,7 @@ test('account checkout never creates an intent if canonical product or provider 
 test('stale account headers cannot purchase, restore, access billing, or request premium details with another account cookie', async t => {
   const f = await fixture(t);
   for (const expected of ['alice', '', 'anonymous']) {
-    for (const path of ['/api/account/checkout', '/api/account/purchase', '/api/account/restore', '/api/account/portal', '/api/report/detailed']) {
+    for (const path of ['/api/account/checkout', '/api/account/purchase', '/api/account/restore', '/api/account/portal', '/api/account/purchase/recheck', '/api/report/detailed']) {
       const result = await f.call(path, { report: { run: { id: 'alice-private' }, audioMetrics: {} } }, 'bob', { 'X-MicProbe-Account': expected });
       assert.equal(result.status, 409);
       assert.equal(result.body.error, 'account_changed');
@@ -388,6 +388,91 @@ test('known lifetime access survives provider outage, but confirmed cancellation
   assert.equal((await f.billing.refreshLicense(await f.accounts.getLicense('alice'))).active, false);
   f.setLicense({ user_id: 'new-owner' });
   assert.equal((await f.billing.refreshLicense(await f.accounts.getLicense('alice'), true)).active, false);
+});
+
+test('explicit access recheck bypasses a recent inactive result without creating a purchase', async t => {
+  const f = await fixture(t);
+  const now = Date.now();
+  await f.accounts.saveLicense('alice', { licenseId: '101', freemiusUserId: '202', active: false,
+    verifiedAt: now - 1000 });
+  assert.equal((await f.billing.refreshUserLicense('alice')).active, false);
+  assert.equal(f.calls.length, 0, 'routine refresh retains its cache');
+  assert.equal((await f.call('/api/account/purchase/recheck')).status, 200);
+  assert.equal((await f.accounts.getLicense('alice')).active, true);
+  assert.equal((await f.db.prepare('SELECT count(*) AS n FROM account_checkouts').first()).n, 0);
+  assert.ok(f.calls.every(call => call.options.method === 'GET'));
+});
+
+for (const force of [false, true]) {
+  test(`a second inactive license can restore access during ${force ? 'explicit' : 'routine'} verification`, async t => {
+    const f = await fixture(t);
+    for (const id of ['101', '102']) await f.accounts.saveLicense('alice', { licenseId: id,
+      freemiusUserId: '202', active: false, verifiedAt: '2020-01-01T00:00:00Z' });
+    // 102 sorts first and is invalid; the formerly skipped 101 grants access.
+    const result = await f.billing.refreshUserLicense('alice', force);
+    assert.equal(result.licenseId, '101'); assert.equal(result.active, true);
+    assert.equal(f.calls.length, 2);
+  });
+}
+
+for (const [change, reason] of [
+  [{ is_cancelled: true }, 'license_inactive'],
+  [{ expiration: '2099-01-01 00:00:00' }, 'lifetime_license_required'],
+  [{ user_id: '303' }, 'license_owner_changed'],
+  [{ plan_id: 'another-plan' }, 'license_plan_mismatch'],
+  [{ environment: 1 }, 'license_mode_mismatch']
+]) {
+  test(`definitive ${reason} is preserved through provider outage and cleared on recovery`, async t => {
+    const f = await fixture(t);
+    let now = Date.now(); t.mock.method(Date, 'now', () => now);
+    await f.accounts.saveLicense('alice', { licenseId: '101', freemiusUserId: '202', active: false, verifiedAt: 0 });
+    f.setLicense(change);
+    assert.equal((await f.call('/api/account/purchase/recheck')).status, 200);
+    let record = await f.accounts.getLicense('alice');
+    assert.equal(record.active, false); assert.equal(record.inactiveReason, reason);
+    const session = new Request(origin + '/api/account/session', { headers: f.request('/').headers });
+    assert.equal((await (await f.accounts.handle(session)).json()).premium.inactiveReason, reason);
+    f.outage(true); now++;
+    assert.equal((await f.call('/api/account/purchase/recheck')).status, 503);
+    assert.deepEqual(await f.accounts.getLicense('alice'), record);
+    f.outage(false); f.setLicense({}); now++;
+    assert.equal((await f.call('/api/account/purchase/recheck')).status, 200);
+    record = await f.accounts.getLicense('alice');
+    assert.equal(record.active, true); assert.equal(record.inactiveReason, '');
+  });
+}
+
+test('access recheck rejects missing identity and cross-origin requests before provider calls', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.call('/api/account/purchase/recheck', {}, 'nobody')).status, 401);
+  assert.equal((await f.call('/api/account/purchase/recheck', {}, 'alice', { Origin: 'https://other.example' })).status, 403);
+  assert.equal(f.calls.length, 0);
+});
+
+test('a cancellation arriving while another candidate is checked cannot expose stale active access', async t => {
+  const f = await fixture(t);
+  await f.accounts.saveLicense('alice', { licenseId: '102', freemiusUserId: '202', active: true, verifiedAt: '2020-01-01T00:00:00Z' });
+  await f.accounts.saveLicense('alice', { licenseId: '101', freemiusUserId: '202', active: true, verifiedAt: '2019-01-01T00:00:00Z' });
+  f.beforeResponse(async () => {
+    await f.accounts.updateLicense('101', { active: false, verifiedAt: Date.now(), inactiveReason: 'license_inactive' });
+  });
+  assert.equal((await f.billing.refreshUserLicense('alice')).active, false);
+  assert.equal(f.calls.length, 1, 'the freshly revoked second candidate is read from storage');
+});
+
+test('incomplete cancellation or expiration data never revokes known lifetime access', async t => {
+  const f = await fixture(t);
+  await f.call('/api/account/restore', { licenseKey: canonical.secret_key });
+  for (const change of [{ is_cancelled: undefined }, { is_cancelled: null }, { expiration: undefined }]) {
+    await f.accounts.updateLicense('101', { active: true, verifiedAt: '2020-01-01T00:00:00Z' });
+    f.setLicense(change);
+    assert.equal((await f.billing.refreshUserLicense('alice')).active, true);
+    assert.equal((await f.call('/api/account/purchase/recheck')).status, 503);
+    assert.equal((await f.accounts.getLicense('alice')).active, true);
+  }
+  f.setLicense({ is_cancelled: true, expiration: undefined });
+  assert.equal((await f.call('/api/account/purchase/recheck')).status, 200);
+  assert.equal((await f.accounts.getLicense('alice')).active, false, 'explicit cancellation still revokes access');
 });
 
 test('portal verifies the current buyer and creates an on-demand login using only the server-bound ID', async t => {

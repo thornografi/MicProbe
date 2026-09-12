@@ -298,7 +298,7 @@ export const PROFILES = {
       allowedValues: { mediaBitrate: [0, 16000, 24000, 32000] },  // 0 = VBR (varsayılan)
       detection: { method: 'AudioWorklet + WASM Opus', source: 'local encoder', details: 'MicProbe local Opus encoder; Worklet and its VBR default do not identify a Telegram client implementation' } }),
 
-  'raw': createProfile('raw', 'Microphone check', 'Worklet + PCM/WAV - uncompressed 16-bit WAV recording',
+  'raw': createProfile('raw', 'Voice recording', 'A local voice recording without choosing a calling or messaging app',
     'mic', 'record', { ec: false, ns: false, agc: false, pipeline: 'worklet', encoder: 'pcm-wav', loopback: false },
     { locked: ['pipeline', 'encoder'], editable: ['ec', 'ns', 'agc', 'sampleRate', 'channelCount'],
       detection: { method: 'AudioWorklet', source: 'pcm-wav', details: 'AudioWorkletNode + PCM/WAV (16-bit uncompressed)' } })

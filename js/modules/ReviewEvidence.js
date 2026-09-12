@@ -1,4 +1,5 @@
 import { normalizeEnvironment } from './EnvironmentContext.js';
+import { projectCaptureTiming } from './CaptureOutcome.js';
 import { projectCaptureContext, getConstraintMismatches, getAppliedConstraints } from './CaptureContext.js';
 
 // Public transport shape only. Finding thresholds and review decisions stay on
@@ -9,7 +10,8 @@ const fields = {
   lufs: ['status', 'integratedStatus', 'integrated', 'integratedMonoEquivalent'],
   noiseFloor: ['status', 'method', 'estimatedDb', 'reason'],
   snr: ['status', 'method', 'estimatedDb', 'reason'],
-  guidedNoise: ['status', 'method', 'contrastDb', 'reason'],
+  guidedNoise: ['status', 'method', 'version', 'quietStatus', 'contrastDb', 'reason', 'quietTotalDb', 'quietSpreadDb', 'quietVariable', 'excludedQuietMs'],
+  speechActivity: ['status', 'method', 'reason', 'detectedSpeechMs', 'speakingDurationMs', 'detection', 'quietSpeechMs'],
   truePeak: ['status', 'db'],
   ceiling: ['status', 'ceilingDb', 'nearCeilingRate', 'flatTopRate'],
   coverage: ['truncated', 'durationSec', 'analyzedDurationSec', 'sampleRate', 'numberOfChannels'],
@@ -20,20 +22,6 @@ const scalar = value => value === null || typeof value === 'boolean' || Number.i
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value && Object.hasOwn(value, key) && scalar(value[key]))
   .map(key => [key, value[key]]));
 const settings = ['sampleRate', 'channelCount', 'echoCancellation', 'noiseSuppression', 'autoGainControl'];
-
-// Keep small nonzero changes visible; two decimal places on a raw sample
-// fraction would otherwise turn real saturation into a displayed zero.
-export function formatReviewDifference(item) {
-  const percent = item.unit === 'ratio';
-  const format = value => (value * (percent ? 100 : 1)).toLocaleString('en-US', { maximumSignificantDigits: 4 });
-  return `${item.label || item.key}: ${format(item.before)} to ${format(item.after)} ${percent ? '%' : item.unit}`;
-}
-
-export function formatPlatformComparison(item) {
-  const scale = item.unit === 'ratio' ? 100 : 1;
-  const format = value => (value * scale).toLocaleString('en-US', { maximumSignificantDigits: 4 });
-  return `${item.label}: ${format(item.value)} ${scale === 100 ? '%' : item.unit}; validated range ${format(item.min)} to ${format(item.max)} (${item.status}).`;
-}
 
 export function projectReviewReport(report) {
   const metrics = report?.audioMetrics;
@@ -50,7 +38,8 @@ export function projectReviewReport(report) {
       constraintMismatches: getConstraintMismatches(report?.profile)
     },
     communicationContext: pick(report?.communicationContext, ['usage']),
-    recording: pick(report?.recording, ['mimeType', 'encoderReportedBitrate', 'requestedBitrate', 'bitrateMode']),
+    recording: { ...pick(report?.recording, ['mimeType', 'encoderReportedBitrate', 'requestedBitrate', 'bitrateMode']),
+      ...projectCaptureTiming(report?.recording) },
     loopback: {
       ...pick(report?.loopback, ['requestedBitrate']),
       senderCodec: pick(report?.loopback?.senderCodec, ['mimeType']),

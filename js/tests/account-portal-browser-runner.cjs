@@ -18,7 +18,7 @@ async function fixture(browser, options = {}) {
       return store.call(this, key, value);
     };
   });
-  await page.route('https://customers.freemius.com/**', route => {
+  await env.context.route('https://customers.freemius.com/**', route => {
     visits++;
     return route.fulfill({ contentType: 'text/html', body: '<h1>Purchase management fixture</h1>' });
   });
@@ -60,6 +60,16 @@ async function fixture(browser, options = {}) {
     settle: () => page.waitForFunction(() => window.__portalFinished === true) };
 }
 
+async function portalOpened(f) {
+  await f.page.locator('#accountStatus').getByText('Purchase management opened in a new tab.', { exact: false }).waitFor();
+  const portal = f.context.pages().find(page => page !== f.page && !page.isClosed());
+  assert.ok(portal, 'Purchase management has its own tab');
+  await portal.waitForURL(PORTAL);
+  await portal.getByRole('heading', { name: 'Purchase management fixture' }).waitFor();
+  assert.match(f.page.url(), /^http:\/\/localhost:8080\/app/);
+  assert.equal(await portal.evaluate(() => window.opener === null), true);
+}
+
 async function success(browser) {
   const f = await fixture(browser), { page } = f;
   try {
@@ -70,7 +80,9 @@ async function success(browser) {
     assert.equal(await page.getByRole('button', { name: 'Manage purchase', exact: true }).isDisabled(), true);
     await page.getByRole('button', { name: 'Manage purchase', exact: true }).evaluate(node => node.dispatchEvent(new MouseEvent('click')));
     assert.equal(f.requests.length, 1, 'Concurrent clicks share the pending operation');
-    f.release(); await page.waitForURL(PORTAL);
+    await page.evaluate(() => { window.__unsavedResult = { run: 'current-test' }; });
+    f.release(); await portalOpened(f);
+    assert.deepEqual(await page.evaluate(() => window.__unsavedResult), { run: 'current-test' });
     assert.equal(f.visits(), 1); assert.equal(f.confirmations.length, 0);
     assert.deepEqual(f.pageErrors, []);
   } finally { await f.context.close(); }
@@ -97,7 +109,7 @@ async function confirmation(browser, wrongAccount = false) {
       await page.getByRole('button', { name: 'Confirm with Google', exact: true }).click();
       await google.click();
     }
-    await page.waitForURL(PORTAL);
+    await portalOpened(f);
     assert.equal(f.requests.length, 2); assert.equal(f.confirmations.length, wrongAccount ? 2 : 1);
     assert.deepEqual(f.signInChoices, [], 'Confirmation must not create a new browser session');
     assert.deepEqual(f.pageErrors, []);
@@ -122,7 +134,7 @@ async function supersededConfirmation(browser) {
     assert.equal(f.visits(), 0);
     assert.equal(await page.locator('#accountDialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
     await page.getByRole('button', { name: 'Confirm with Google', exact: true }).click();
-    await google.click(); await page.waitForURL(PORTAL);
+    await google.click(); await portalOpened(f);
     assert.equal(f.requests.length, 3); assert.equal(f.confirmations.length, 1);
     assert.deepEqual(f.pageErrors, []);
   } finally { await f.context.close(); }
@@ -137,13 +149,13 @@ async function failure(browser, error) {
     const help = page.locator('.account-portal-help');
     await help.getByRole('alert').waitFor();
     assert.equal(await help.getByRole('link', { name: 'Sign in to Freemius (opens in a new tab)', exact: true }).getAttribute('href'), 'https://customers.freemius.com/login/');
-    assert.equal(await help.getByRole('link', { name: 'Contact support', exact: true }).getAttribute('href'), 'mailto:support@micprobe.com');
+    assert.equal(await help.getByRole('link', { name: 'Contact support (opens in a new tab)', exact: true }).getAttribute('href'), '/contact.html#purchase');
     assert.equal(f.visits(), 0); assert.match(page.url(), /^http:\/\/localhost:8080/);
     assert.equal(await page.getByRole('button', { name: 'Manage purchase', exact: true }).isEnabled(), true);
     assert.equal(await page.evaluate(async () => (await import('/js/modules/AccountAccess.js')).default.getState().premium.unlocked), true);
     f.setError(null); f.setRedirect(PORTAL);
     await page.getByRole('button', { name: 'Manage purchase', exact: true }).click();
-    await page.waitForURL(PORTAL);
+    await portalOpened(f);
     assert.deepEqual(f.pageErrors, []);
   } finally { await f.context.close(); }
 }
@@ -158,6 +170,27 @@ async function cancelled(browser, action) {
     else await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     f.release(); await f.settle();
     assert.equal(f.visits(), 0); assert.match(page.url(), /^http:\/\/localhost:8080/);
+    assert.equal(f.context.pages().length, 1, 'A cancelled operation closes its reserved blank tab');
+    assert.deepEqual(f.pageErrors, []);
+  } finally { await f.context.close(); }
+}
+
+async function popupBlocked(browser) {
+  const f = await fixture(browser), { page } = f;
+  try {
+    await page.evaluate(() => { window.open = () => null; });
+    await page.getByRole('button', { name: 'Manage purchase', exact: true }).click();
+    const link = page.getByRole('link', { name: 'Open purchase management (opens in a new tab)', exact: true });
+    await link.waitFor();
+    assert.equal(await link.getAttribute('target'), '_blank');
+    assert.equal(await link.getAttribute('rel'), 'noopener');
+    assert.equal(f.visits(), 0);
+    const opened = f.context.waitForEvent('page');
+    await link.click();
+    const portal = await opened;
+    await portal.waitForURL(PORTAL);
+    await portal.getByRole('heading', { name: 'Purchase management fixture' }).waitFor();
+    assert.match(page.url(), /^http:\/\/localhost:8080\/app/);
     assert.deepEqual(f.pageErrors, []);
   } finally { await f.context.close(); }
 }
@@ -187,7 +220,7 @@ async function purchaseStatus(browser, variant) {
       assert.equal(await page.locator('.account-portal-help').getByRole('link', { name: 'Sign in to Freemius (opens in a new tab)', exact: true }).count(), 1);
       assert.equal(await page.evaluate(async () => (await import('/js/modules/AccountAccess.js')).default.getState().premium.unlocked), false);
       f.setError(null);
-      await manage.click(); await page.waitForURL(PORTAL);
+      await manage.click(); await portalOpened(f);
       assert.equal(f.requests.length, 2);
     }
     assert.deepEqual(f.pageErrors, []);
@@ -197,6 +230,7 @@ async function purchaseStatus(browser, variant) {
 async function runPortalFlows(browser) {
   await success(browser); await confirmation(browser); await confirmation(browser, true);
   await supersededConfirmation(browser);
+  await popupBlocked(browser);
   for (const error of ['portal_owner_mismatch', 'portal_identity_unverified', 'billing_temporarily_unavailable', 'invalid_redirect']) await failure(browser, error);
   for (const action of ['tab', 'close', 'logout']) await cancelled(browser, action);
   for (const variant of ['inactive', 'pending', 'connection-error', 'never-purchased']) await purchaseStatus(browser, variant);
@@ -208,7 +242,7 @@ async function main() {
     const browser = await ({ chrome: chromium, firefox, webkit })[name].launch({ headless: true, ...(name === 'chrome' ? { channel: 'chrome' } : {}) });
     try {
       await runPortalFlows(browser);
-      console.log(JSON.stringify({ browser: name, status: 'passed', cases: 15, realPortalLogin: false }));
+      console.log(JSON.stringify({ browser: name, status: 'passed', cases: 16, realPortalLogin: false }));
     } finally { await browser.close(); }
   }
 }

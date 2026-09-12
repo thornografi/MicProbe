@@ -29,7 +29,7 @@ export class ReviewAccess {
     this.pending.set(key, operation);
     return operation;
   }
-  assess(report, localAudioAvailable = false) { return this.send('assess', { report: projectReviewReport(report), localAudioAvailable }); }
+  assess(report) { return this.send('assess', { report: projectReviewReport(report) }); }
   archive(report) {
     return this.send('archive', { report: projectArchiveReport(report), adoptGuest: true });
   }

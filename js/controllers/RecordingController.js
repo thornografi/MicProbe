@@ -31,13 +31,11 @@ class RecordingController {
     this._startAttempt = null;
     eventBus.on(EVENTS.RECORDER_STOPPED, () => {
       if (this.deps.getCurrentMode() === 'recording') {
-        this.deps.uiStateManager?.stopTimer();
         resetState(this.deps);
       }
     });
     eventBus.on(EVENTS.RECORDING_CAPTURE_STOPPED, () => {
       if (this.deps.getCurrentMode() === 'recording') {
-        this.deps.uiStateManager?.stopTimer();
         beginPreparing(this.deps, 'recording');
       }
     });
@@ -105,7 +103,6 @@ class RecordingController {
 
       // UI guncelle - mode zaten set edildi, sadece preparing'i kapat
       endPreparing(this.deps);
-      this.deps.uiStateManager?.startTimer();
 
     } catch (err) {
       void this.deps.testAccess?.release(attempt.snapshot?.runId);
@@ -119,7 +116,6 @@ class RecordingController {
 
       // Temizlik
       resetState(this.deps);
-      this.deps.uiStateManager?.stopTimer();
     } finally {
       if (this._startAttempt === attempt) this._startAttempt = null;
     }
@@ -139,7 +135,6 @@ class RecordingController {
     log.recorder('Recording stopping', {});
 
     try {
-      this.deps.uiStateManager?.stopTimer();
       await this.deps.recorder?.stop();
     } catch (err) {
       log.error('Recording stop error', { error: err.message, stack: err.stack });

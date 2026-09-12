@@ -75,6 +75,15 @@
     <symbol id="icon-mic" viewBox="0 0 24 24">
       <use href="#mic-shape" fill="currentColor"/>
     </symbol>
+    <symbol id="icon-call-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2c0 8.8 7.2 16 16 16a2 2 0 0 0 2-2v-3l-5-2-2 2a13 13 0 0 1-6-6l2-2-2-5Z"/>
+    </symbol>
+    <symbol id="icon-message-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2Z"/><path d="M8 9h8M8 13h5"/>
+    </symbol>
+    <symbol id="icon-recording-outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3M8 22h8"/>
+    </symbol>
     <symbol id="icon-discord" viewBox="0 0 24 24">
       <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
     </symbol>
@@ -160,6 +169,7 @@
     </symbol>
   </svg>
 
+  <a class="skip-link" id="skipToContent" href="#landing-main">Skip to main content</a>
   <!-- ==================== LANDING VIEW ==================== -->
   <div id="landing-view">
     <!-- Navbar -->
@@ -172,7 +182,10 @@
         <div class="navbar-links">
           <a href="#features" class="navbar-link">Features</a>
           <a href="#how-it-works" class="navbar-link">How it works</a>
+          <a href="#pricing" class="navbar-link">Pricing</a>
+          <a href="#faq" class="navbar-link">FAQ</a>
         </div>
+        <button class="account-menu-button" id="landingAccountBtn" type="button" data-account-header data-open-app data-account-intent="signin" aria-haspopup="dialog" aria-controls="accountDialog">Sign in</button>
         <a href="/app" class="btn btn--primary navbar-cta" id="navbarCta">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-mic"/></svg>
             Open MicProbe
@@ -183,6 +196,7 @@
       </button>
     </nav>
 
+    <main id="landing-main" tabindex="-1">
     <section id="appLoadStatus" class="app-load-status" aria-label="Open MicProbe" hidden>
       <p id="appLoadMessage" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
       <div class="app-load-actions">
@@ -196,7 +210,7 @@
       <div class="hero-content">
         <h1 class="hero-title" id="hero-title" tabindex="-1">
           <span class="hero-title-line">Hear your microphone.</span>
-          <span class="hero-title-line">Find what to improve.</span>
+          <span class="hero-title-line">Know what to check.</span>
         </h1>
 
         <p class="hero-subtitle">
@@ -208,17 +222,8 @@
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-mic"/></svg>
             <span class="btn-text">Open MicProbe</span>
           </a>
-          <a href="#features" class="btn btn--secondary btn--centered-label">
-            <span class="btn-text">Explore the tests</span>
-            <svg class="btn-icon-end" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
-            </svg>
-          </a>
         </div>
-        <p class="hero-included">Free recording, playback and a brief result. No account needed.</p>
-        <p class="hero-scope-note">
-          Local approximations of audio processing. Actual apps and your internet connection are not tested.
-        </p>
+        <p class="hero-privacy">Your audio stays on your device. <a href="#faq-privacy">How your data is handled</a></p>
         <!-- Decorative waveform around an app launcher; not a measured recording. -->
         <div class="hero-audio-signature">
           <svg class="hero-soundwave" viewBox="0 0 800 180" preserveAspectRatio="none" aria-hidden="true" focusable="false">
@@ -245,21 +250,39 @@
         <img class="hero-photo" src="/assets/landing/microphone-check-v2.webp"
           width="1536" height="1024" fetchpriority="high"
           alt="A woman listening to her microphone recording at her desk before a call.">
-        <section class="hero-report" aria-labelledby="hero-report-title">
-          <div class="hero-report-header">Example test result</div>
-          <h2 class="hero-report-title" id="hero-report-title">Review recording</h2>
-          <p class="hero-report-finding">Even the loudest part of this recording has a low level.</p>
-          <p class="hero-report-scope">Saved audio only; speech clarity and recipient audio are unmeasured.</p>
-          <p class="hero-report-action">Premium connects measured findings with relevant guidance for this recording.</p>
-        </section>
+        <ul class="hero-benefits" aria-label="Getting started with MicProbe" role="list">
+          <li>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>
+            </svg>
+            <div>
+              <strong>No installation</strong>
+              <p>Run your test in the browser.</p>
+            </div>
+          </li>
+          <li>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <rect x="4" y="3" width="16" height="18" rx="2"/>
+              <path d="m8 10 2 2 5-5M8 16h8"/>
+            </svg>
+            <div>
+              <strong>Guided from start to result</strong>
+              <p>Follow the recording prompts, then listen and review.</p>
+            </div>
+          </li>
+        </ul>
       </div>
+      <p class="hero-scope-note">
+        Local approximations of audio processing. Actual apps, your internet connection, speech clarity and what others hear are not assessed.
+      </p>
     </section>
 
     <!-- Features Section -->
     <section class="features" id="features" aria-labelledby="features-title">
       <div class="section-header">
         <h2 class="section-title" id="features-title" tabindex="-1">Test the way you use your mic</h2>
-        <p class="section-subtitle">Choose a call or voice-message scenario, then listen to the recorded result.</p>
+        <p class="section-subtitle">Choose a scenario for your next call, voice message or voice recording, then listen to your sample.</p>
       </div>
 
       <div class="features-grid">
@@ -272,7 +295,7 @@
           </div>
           <h3 class="feature-title">Voice calls</h3>
           <p class="feature-description">
-            Hear a locally processed call sample with Discord, meeting, high-fidelity, or WhatsApp/Telegram settings.
+            Prepare for a call with a local scenario for Teams, Zoom, Discord or another calling app.
           </p>
         </div>
 
@@ -283,12 +306,12 @@
           </div>
           <h3 class="feature-title">Voice messages</h3>
           <p class="feature-description">
-            Record with WhatsApp-style or Telegram-style settings, or use a raw recording for comparison.
+            Listen to a short recording using WhatsApp-style or Telegram-style voice-message settings.
           </p>
         </div>
 
         <!-- Feature 3: Actionable Reports -->
-        <div class="landing-card feature-card feature-card--support">
+        <div class="landing-card feature-card">
           <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
@@ -296,18 +319,18 @@
           </div>
           <h3 class="feature-title">Results and guidance</h3>
           <p class="feature-description">
-            See a free brief result after each test. Optional Premium adds detailed findings and instructions tailored to the measured audio.
+            Get a brief result and a basic next step for free. Premium adds explanations of the findings, relevant device checks and detailed measurements.
           </p>
         </div>
 
         <!-- Feature 4: Behavior-Based Profiles -->
-        <div class="landing-card feature-card feature-card--support">
+        <div class="landing-card feature-card">
           <div class="feature-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor"><use href="#icon-settings"/></svg>
           </div>
-          <h3 class="feature-title">Adjustable settings</h3>
+          <h3 class="feature-title">Ready to test</h3>
           <p class="feature-description">
-            Start with a preset. Adjust its available settings and record again to hear what changed.
+            Choose your scenario and start. Settings are ready to use, with optional advanced controls for exploring a specific change.
           </p>
         </div>
       </div>
@@ -317,36 +340,113 @@
     <section class="how-it-works" id="how-it-works" aria-labelledby="how-it-works-title">
       <div class="section-header">
         <h2 class="section-title" id="how-it-works-title" tabindex="-1">How it works</h2>
-        <p class="section-subtitle">Hear the result. Make one change. Check it again.</p>
+        <p class="section-subtitle">Record a sample. Listen back. Know your next step.</p>
       </div>
 
       <ol class="steps-container">
-        <li class="step-card">
+        <li class="landing-card step-card">
           <div class="step-number" aria-hidden="true">1</div>
           <h3 class="step-title">Test your microphone</h3>
           <p class="step-description">
-            Choose a local scenario, record a short sample, then listen back and read your free result.
+            Choose where you will use your microphone. Start the test and follow the quiet and speaking prompts; it stops automatically.
           </p>
         </li>
 
-        <li class="step-card">
+        <li class="landing-card step-card">
           <div class="step-number" aria-hidden="true">2</div>
-          <h3 class="step-title">Make one adjustment</h3>
+          <h3 class="step-title">Listen and understand</h3>
           <p class="step-description">
-            Use what you heard and your brief result to choose one change, such as speaking distance or microphone settings.
+            Play your recording and read the result. We explain what the checks found and a relevant next step.
           </p>
         </li>
 
-        <li class="step-card">
+        <li class="landing-card step-card">
           <div class="step-number" aria-hidden="true">3</div>
-          <h3 class="step-title">Test the change</h3>
+          <h3 class="step-title">Change something only if needed</h3>
           <p class="step-description">
-            Record again with the same scenario. Listen for a difference before your next call or voice message.
+            If the checks find no warnings and the sample sounds as expected, no adjustment is needed. Test again when you have a specific change to check.
           </p>
         </li>
       </ol>
     </section>
 
+    <section class="landing-section" id="pricing" aria-labelledby="pricing-title">
+      <div class="landing-section-inner pricing-layout">
+        <div class="section-header">
+          <h2 class="section-title" id="pricing-title" tabindex="-1">Detailed guidance based on your recording</h2>
+          <p class="section-subtitle">Understand your findings with explanations and relevant checks for your setup.</p>
+        </div>
+        <div class="pricing-options">
+          <div class="pricing-free-summary">
+            <h3>Included for free</h3>
+            <p>Record, listen back, download your audio and get a brief result with a basic next step. <a href="#faq-test-limits">Free access and daily limits</a>.</p>
+          </div>
+          <article class="pricing-option pricing-option--premium" aria-labelledby="premium-plan-title">
+            <h3 id="premium-plan-title">Lifetime Premium</h3>
+            <div class="plan-price-row" id="publicPrice" role="status" aria-live="polite" aria-atomic="true">
+              <p class="plan-price" id="premiumPrice">Price at checkout</p>
+              <span id="premiumPriceCurrency" class="price-currency"></span>
+            </div>
+            <p class="plan-payment">One payment. No subscription or renewal.</p>
+            <ul class="plan-features">
+              <li><strong>Findings explained, with relevant device checks</strong></li>
+              <li>Detailed measurements and PDF downloads</li>
+              <li>Saved reports and notes in your account</li>
+              <li>Recheck your setup across call and recording scenarios, without daily limits</li>
+            </ul>
+            <a href="/app#premium" class="btn btn--primary" id="pricingPremiumCta" data-open-app data-account-intent="checkout">Get Lifetime Premium</a>
+            <p class="plan-note" id="premiumPriceNote">The final price, currency and any applicable tax are confirmed at checkout.</p>
+            <p class="plan-note"><a href="/terms.html#refunds" target="_blank" rel="noopener" aria-label="7-day refund conditions (opens in a new tab)">7-day refund conditions</a></p>
+            <button type="button" class="landing-text-link price-retry" id="pricingRetry" hidden>Retry price</button>
+          </article>
+          <p class="pricing-footnote">Reports contain measurements and notes; download your audio separately. <a href="#faq-saved-reports">About saved reports and archive limits</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section" id="faq" aria-labelledby="faq-title">
+      <div class="landing-section-inner faq-layout">
+        <div>
+          <h2 class="section-title" id="faq-title" tabindex="-1">Before you test</h2>
+          <p class="faq-intro">A few things to know about your recording, account and results.</p>
+          <a href="/contact.html" target="_blank" rel="noopener" aria-label="Contact support (opens in a new tab)" class="landing-text-link">Contact support</a>
+        </div>
+        <div class="faq-list">
+          <details id="faq-privacy">
+            <summary>Is my microphone recording uploaded?</summary>
+            <p>No. Audio is recorded and processed in your browser. Report measurements are sent to MicProbe for assessment, and Premium can save reports and notes to your account. Saved reports do not include audio. Download the recording before leaving if you want to keep it. <a href="/privacy.html" target="_blank" rel="noopener" aria-label="Read the privacy policy (opens in a new tab)">Read the privacy policy</a>.</p>
+          </details>
+          <details id="faq-test-limits">
+            <summary>How many free tests can I run?</summary>
+            <p>You can record, listen back and get a brief result without an account. Guests get 2 tests per day; a free Google account gives you 5 tests per day, including guest tests already completed that day. Limits reset at midnight UTC. Premium has no daily test limit. Failed or insufficient recordings do not count. Listening or downloading an existing recording does not use a test.</p>
+            <p>The guest allowance is shared by people on the same internet connection. Signing in gives each account its own daily allowance.</p>
+          </details>
+          <details>
+            <summary>Does this test the actual Zoom, Discord or other app?</summary>
+            <p>No. Scenarios approximate audio processing locally in your browser. They do not connect to the actual calling app, test your internet connection or measure what the other person hears.</p>
+          </details>
+          <details>
+            <summary>What if the microphone is blocked or no sound is recorded?</summary>
+            <p>Allow microphone access in your browser’s site settings, then use Refresh beside the microphone selector. Check that the correct microphone is selected and that it is not muted on the device or in your operating system. If it is busy, close the other app using it and try again.</p>
+          </details>
+          <details>
+            <summary>Can I use a phone or a different browser?</summary>
+            <p>Use a current browser with microphone access enabled. Available devices, recording formats and sound processing depend on the browser and operating system; some phones expose only the default input. If a test cannot run, try an up-to-date desktop Chrome or Edge browser. Results can differ between browsers.</p>
+          </details>
+          <details>
+            <summary>What does Premium add, and how do I access it again?</summary>
+            <p>Your free result includes a brief summary and a basic next step. Premium explains the findings and shows relevant device checks and detailed measurements. It also includes PDF downloads, a report archive and no daily test limit. It is a single payment with no renewal. Sign in with the same Google account to return to your saved reports and purchase. Premium does not guarantee a diagnosis or add measurements the test could not make.</p>
+          </details>
+          <details id="faq-saved-reports">
+            <summary>What can I save to my account?</summary>
+            <p>Premium saves report measurements and notes to your account. Signing in does not automatically save earlier guest results; with Premium, you can choose to save the current report. Download audio separately before leaving the page; recordings are not stored in your account.</p>
+            <p>The archive holds up to 200 reports or 10 MiB of report data, whichever limit is reached first. If it fills up, your saved reports remain available and you can continue testing. Remove older reports when you want to make room for new ones. <a href="/terms.html" target="_blank" rel="noopener" aria-label="View terms (opens in a new tab)">View terms</a>.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    </main>
     <!-- Shared Footer (dinamik olarak taşınır) -->
     <footer class="site-footer" id="sharedFooter">
       <div class="site-footer-content">
@@ -363,12 +463,14 @@
             <p class="site-footer-heading">Explore</p>
             <a href="/#features">Features</a>
             <a href="/#how-it-works">How it works</a>
+            <a href="/#pricing">Pricing</a>
           </div>
           <div class="site-footer-group">
             <p class="site-footer-heading">Information</p>
-            <a href="/privacy.html">Privacy</a>
-            <a href="/terms.html">Terms</a>
-            <a href="mailto:support@micprobe.com" class="site-footer-contact">Support</a>
+            <a href="/privacy.html" target="_blank" rel="noopener" aria-label="Privacy (opens in a new tab)">Privacy</a>
+            <a href="/terms.html" target="_blank" rel="noopener" aria-label="Terms (opens in a new tab)">Terms</a>
+            <a href="/#faq">FAQ</a>
+            <a href="/contact.html" target="_blank" rel="noopener" aria-label="Contact (opens in a new tab)" class="site-footer-contact">Contact</a>
           </div>
         </nav>
       </div>
@@ -388,7 +490,7 @@
           <div class="workspace-bar">
             <span class="workspace-label"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-signal"/></svg>Microphone diagnostics</span>
             <div class="workspace-account-actions">
-            <button class="account-menu-button" id="accountMenuBtn" type="button" aria-haspopup="dialog" aria-controls="accountDialog">Sign in</button>
+            <button class="account-menu-button" id="accountMenuBtn" type="button" data-account-header aria-haspopup="dialog" aria-controls="accountDialog">Sign in</button>
             </div>
           </div>
         </div>
@@ -400,22 +502,23 @@
         <div class="content-container">
           <section class="scenario-picker" id="scenarioPicker" aria-labelledby="scenarioPickerTitle">
             <header class="scenario-picker-header">
-              <h2 class="scenario-sidebar-title">Scenarios</h2>
-              <h1 id="scenarioPickerTitle" tabindex="-1">What would you like to test?</h1>
-              <p>Choose a simple microphone check or the way you plan to use it.</p>
+              <h2 class="scenario-sidebar-title" id="scenarioSidebarTitle">Scenarios</h2>
+              <h1 id="scenarioPickerTitle" tabindex="-1">Where will you use your microphone?</h1>
+              <p>Choose a scenario for your call, voice message or voice recording. Record a sample, listen back and see your result.</p>
             </header>
             <div class="scenario-choices" id="scenarioChoices">
-          <div class="scenario-group" role="group" aria-labelledby="navSectionRecording">
-            <h2 class="nav-section-title" id="navSectionRecording">Not sure where to start?</h2>
-            <button class="nav-item scenario-choice" type="button" data-profile="raw" data-description="Start with a simple recording. Browser sound enhancements are turned off.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><use href="#icon-mic" width="24" height="24" x="-2" y="-2"/></svg></span>
-              <span>Microphone check</span>
-            </button>
-          </div>
           <div class="scenario-group scenario-group--calls" role="group" aria-labelledby="navSectionCalls">
-            <h2 class="nav-section-title" id="navSectionCalls">Check for a voice call</h2>
+            <h2 class="nav-section-title" id="navSectionCalls">
+              <span class="scenario-group-label">Voice calls</span>
+              <button class="scenario-group-toggle" type="button" aria-expanded="false" aria-controls="scenarioCallOptions">
+                <svg class="scenario-category-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-call-outline"/></svg>
+                <span>Voice calls</span>
+                <svg class="scenario-category-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+            </h2>
+            <div class="scenario-group-options" id="scenarioCallOptions">
             <div class="scenario-call-choices">
-            <button class="nav-item scenario-choice" type="button" data-profile="discord" data-description="Voice chat and gaming with a local call preset.">
+            <button class="nav-item scenario-choice" type="button" data-profile="discord" data-nav-label="Discord" data-description="Voice chat and gaming with a local call preset.">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-discord"/></svg></span>
               <span>Discord</span>
             </button>
@@ -435,29 +538,18 @@
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
               <span>Google Meet</span>
             </button>
-            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-call" data-description="Hear a compact sample before a WhatsApp call.">
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-call" data-nav-label="WhatsApp" data-description="Hear a compact sample before a WhatsApp call.">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
               <span>WhatsApp Call</span>
             </button>
-            <button class="nav-item scenario-choice" type="button" data-profile="telegram-call" data-description="Hear a compact sample before a Telegram call.">
+            <button class="nav-item scenario-choice" type="button" data-profile="telegram-call" data-nav-label="Telegram" data-description="Hear a compact sample before a Telegram call.">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
               <span>Telegram Call</span>
             </button>
             </div>
-          </div>
-          <div class="scenario-group" role="group" aria-labelledby="navSectionMessages">
-            <h2 class="nav-section-title" id="navSectionMessages">Check a voice message</h2>
-            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-voice" data-description="A compact voice-message recording.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
-              <span>WhatsApp Voice</span>
-            </button>
-            <button class="nav-item scenario-choice" type="button" data-profile="telegram-voice" data-description="Hear a sample using Telegram-style voice-message settings.">
-              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
-              <span>Telegram Voice</span>
-            </button>
-          </div>
-          <div class="scenario-group" role="group" aria-labelledby="navSectionOther">
-            <h2 class="nav-section-title" id="navSectionOther">Other call checks</h2>
+          <div class="scenario-general-presets" role="group" aria-labelledby="navSectionOther">
+            <h3 id="navSectionOther">General call presets</h3>
+            <div class="scenario-call-choices">
             <button class="nav-item scenario-choice" type="button" data-profile="meeting-call" data-description="A general-purpose browser meeting preset.">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
               <span>General meeting</span>
@@ -466,17 +558,49 @@
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-music"/></svg></span>
               <span>Music call</span>
             </button>
-            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-telegram-call" data-description="Explore a lower-bitrate voice call.">
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-telegram-call" data-description="Hear a voice-call sample with more compression.">
               <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-phone"/></svg></span>
               <span>Compact call</span>
             </button>
           </div>
             </div>
+            </div>
+          </div>
+          <div class="scenario-group" role="group" aria-labelledby="navSectionMessages">
+            <h2 class="nav-section-title" id="navSectionMessages">
+              <span class="scenario-group-label">Voice messages</span>
+              <button class="scenario-group-toggle" type="button" aria-expanded="false" aria-controls="scenarioMessageOptions">
+                <svg class="scenario-category-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-message-outline"/></svg>
+                <span>Voice messages</span>
+                <svg class="scenario-category-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+            </h2>
+            <div class="scenario-group-options" id="scenarioMessageOptions">
+            <button class="nav-item scenario-choice" type="button" data-profile="whatsapp-voice" data-nav-label="WhatsApp" data-description="A compact voice-message recording.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-whatsapp"/></svg></span>
+              <span>WhatsApp Voice</span>
+            </button>
+            <button class="nav-item scenario-choice" type="button" data-profile="telegram-voice" data-nav-label="Telegram" data-description="Hear a sample using Telegram-style voice-message settings.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-telegram"/></svg></span>
+              <span>Telegram Voice</span>
+            </button>
+            </div>
+          </div>
+          <div class="scenario-group scenario-group--recording" role="group" aria-labelledby="navSectionRecording">
+            <h2 class="nav-section-title" id="navSectionRecording">Recording</h2>
+            <button class="nav-item scenario-choice" type="button" data-profile="raw" data-description="Record and listen to your voice without choosing a calling or messaging app.">
+              <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#icon-recording-outline"/></svg></span>
+              <span>Voice recording</span>
+            </button>
+          </div>
+            </div>
             <p class="scenario-scope">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#icon-info"/></svg>
-              <span>Local presets use browser-test observations where available and estimated settings elsewhere. They do not test the actual apps or your internet connection.</span>
+              <span>Scenarios create a sample in your browser without connecting to the selected app. Your internet connection and what the other person actually hears are not measured.</span>
             </p>
           </section>
+          <!-- Shared feedback also remains visible before a scenario is selected. -->
+          <div id="userMessage" class="user-message" role="status" popover="manual" hidden></div>
           <div class="scenario-workspace" id="scenarioWorkspace" hidden>
           <!-- Header -->
           <header class="page-header">
@@ -490,8 +614,6 @@
               <p class="workspace-description">A short guided recording, followed by playback and your result.</p>
               <p id="scenarioBasis" class="console-description" hidden></p>
               <button id="changeScenarioBtn" class="scenario-change" type="button">Change scenario</button>
-              <!-- Top-layer toast (popover): modal/dialog ustunde kalir; canlilik role ile belirlenir (status/alert) -->
-              <div id="userMessage" class="user-message" role="status" popover="manual" hidden></div>
             </div>
           </header>
 
@@ -515,14 +637,14 @@
 
                 <div class="settings-strip" id="customSettingsPanel">
                   <button type="button" class="custom-settings-toggle" id="customSettingsToggle" aria-expanded="false" aria-controls="customSettingsContent">
-                    <span>Test settings</span>
+                    <span>Advanced test settings</span>
                     <span id="settingsModified" class="settings-modified" hidden>Modified</span>
                     <span class="settings-summary">Optional</span>
                     <svg class="toggle-chevron" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
                   </button>
                   <div class="custom-settings-content collapsed" id="customSettingsContent" inert>
                     <div class="settings-toolbar">
-                      <p>Adjust one setting at a time, then test again.</p>
+                      <p>Defaults are ready to use. These controls change this local test, not the settings in your calling app. Change one only when you have a specific effect to explore.</p>
                       <button id="resetSettingsBtn" class="result-button" type="button" disabled>Restore defaults</button>
                     </div>
                     <div class="custom-settings-grid" id="customSettingsGrid">
@@ -541,13 +663,13 @@
                         <svg class="icon-play" width="12.57" height="16" viewBox="6.5 5 11 14" fill="currentColor" aria-hidden="true"><use href="#glyph-play"/></svg>
                         <svg class="icon-stop" width="16" height="16" viewBox="6 6 12 12" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                         <span class="btn-text">Start test</span>
-                        <span class="test-countdown" id="testCountdown"></span>
                         <span class="test-progress-bar" id="testProgressBar"><span class="test-progress-fill" id="testProgressFill"></span></span>
                       </button>
-                      <div id="recordingTimer" class="recording-timer">0:00</div>
                     </div>
                   </div>
                   <p id="captureHint" class="capture-hint" role="status" aria-atomic="true">Stay quiet briefly, then read a sentence. The test stops automatically.</p>
+                  <div id="recordingTimer" class="recording-timer" role="timer" aria-live="off" hidden></div>
+                  <p class="capture-hint">Audio stays on your device. <a href="/privacy.html" target="_blank" rel="noopener" aria-label="About report data (opens in a new tab)">About report data</a></p>
                   <div class="capture-guide">
                     <p id="captureGuideStatus" class="capture-guide-status" role="status" aria-live="polite" hidden></p>
                     <details class="capture-sample">
@@ -586,31 +708,61 @@
                       <div id="playerFilename" class="player-filename">Your sample</div>
                       <div id="playerMeta" class="player-meta"></div>
                     </div>
+                    <div class="player-downloads">
+                      <button id="downloadMenuBtn" class="btn-download" type="button" popovertarget="downloadMenu" aria-expanded="false" aria-controls="downloadMenu">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        Download <span aria-hidden="true">▾</span>
+                      </button>
+                      <div id="downloadMenu" class="download-menu" popover="auto" role="group" aria-label="Download recording">
+                        <a id="downloadBtn" class="download-option" href="#" download>
+                          <span id="downloadOriginalLabel">Original recording</span>
+                          <span id="playerFileDetails" class="player-file-details"></span>
+                        </a>
+                        <a id="downloadMp3Btn" class="download-option" href="#" download>
+                          <span>MP3</span><span class="download-option-hint">Convert for download</span>
+                        </a>
+                      </div>
+                      <p id="downloadStatus" class="download-status" role="status" aria-live="polite"></p>
+                    </div>
                   </div>
                   <div class="player-progress-row">
                     <div class="progress-bar" id="progressBar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                      <div id="progressFill" class="progress-fill"></div>
+                      <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
                     </div>
                     <div id="playerTime" class="player-time">0:00 / 0:00</div>
-                    <div class="player-downloads">
-                      <span id="playerFileDetails" class="player-file-details"></span>
-                      <a id="downloadBtn" class="btn-download" href="#" download>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                        Download original
-                      </a>
-                      <a id="downloadMp3Btn" class="btn-download" href="#" download>MP3</a>
-                    </div>
                   </div>
                 </div>
                 <p id="noRecording" class="empty-state" hidden>Your sample will appear here, ready to play back and review.</p>
+                <div id="inlineResultGuidance" class="result-guidance" hidden>
+                  <p id="inlineResultNextStep" class="result-next-step" hidden></p>
+                  <p id="inlineResultScope" class="result-scope" hidden></p>
+                  <details id="inlineResultDetails" class="result-details">
+                    <summary>About these checks</summary>
+                    <p id="inlineResultScopeDetails"></p>
+                  </details>
+                </div>
                 <div class="result-actions">
                   <button id="showReportBtn" class="btn-show-report" type="button" hidden aria-haspopup="dialog" aria-controls="reportPanel">Open test report</button>
-                  <button id="retestBtn" class="result-button" type="button" hidden>Test again with these settings</button>
+                  <button id="retestBtn" class="result-button" type="button" hidden>Record another sample</button>
                 </div>
               </section>
 
               <!-- Info: cihaz durumu + kisa rehber -->
-              <aside class="console-card console-card--secondary" aria-label="Technical details">
+              <aside class="console-card console-card--secondary" aria-label="Test guide and audio details">
+                <section class="console-card-section">
+                  <details id="testGuide" class="test-guide" open>
+                  <summary>How to test</summary>
+                  <ol class="test-steps">
+                    <li><strong>Record a sample</strong><p>Follow the quiet and speaking prompts. The test finishes automatically.</p></li>
+                    <li><strong>Listen back</strong><p>Play your sample to hear what was captured.</p></li>
+                    <li><strong>Review your result</strong><p>Read what was found and your next step. Record again only when there is a change you want to check.</p></li>
+                  </ol>
+                  </details>
+                </section>
+                <section class="console-card-section scenario-context">
+                  <h2 class="console-card-heading">About this scenario</h2>
+                  <p id="scenarioEvidence" class="console-description"></p>
+                </section>
                 <div class="console-card-section">
                   <details id="audioDetails" class="audio-details">
                     <summary>Audio details</summary>
@@ -679,7 +831,6 @@
                   <details class="processing-details">
                     <summary>Processing details</summary>
                     <p id="pageSubtitle" class="scenario-spec"></p>
-                    <p id="scenarioEvidence" class="console-description"></p>
                   </details>
                     </div>
                   </details>
@@ -991,6 +1142,7 @@
             <details class="report-evidence">
               <summary>Detailed findings and measurements</summary>
               <div class="report-findings" id="reportFindings"></div>
+              <div id="reportObservations"></div>
               <div class="report-section-title" id="reportMetricsTitle">Detailed measurements</div>
               <div class="report-metrics-grid" id="reportMetricsGrid"></div>
               <div class="report-troubleshooting-context" id="reportTroubleshootingContext"></div>
@@ -1000,16 +1152,17 @@
             <div class="premium-lock-icon">
               <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
             </div>
-            <p class="premium-text">Detailed measurements and PDF export</p>
+            <p class="premium-text">Detailed guidance for this recording</p>
             <button class="btn btn--primary btn--m" id="premiumCta" type="button">Get Lifetime Premium</button>
-            <p class="premium-text">Premium includes detailed findings and optional PDF downloads. A recording does not guarantee a diagnosis.</p>
+            <button class="btn btn--secondary btn--m" id="reportManagePurchase" type="button" hidden>Manage purchase</button>
+            <p class="premium-text">Explore the findings and measurements, with relevant device checks to follow. Premium also includes saved reports and PDF downloads.</p>
             <p class="premium-status" id="premiumStatus" hidden></p>
           </div>
         </div>
         <!-- Actions scroll with the report so large text cannot squeeze out the result. -->
         <div class="report-workflow-actions">
-          <button id="reportSetupBtn" class="btn btn--secondary btn--m" type="button">Back to test</button>
-          <button id="reportRetestBtn" class="btn btn--primary btn--m" type="button" hidden>Test again with these settings</button>
+          <button id="reportSetupBtn" class="btn btn--primary btn--m" type="button">Back to test</button>
+          <button id="reportRetestBtn" class="btn btn--secondary btn--m" type="button" hidden>Record another sample</button>
         </div>
       </div>
   </dialog>

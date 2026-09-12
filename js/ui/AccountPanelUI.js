@@ -1,7 +1,11 @@
 import accountAccess from '../modules/AccountAccess.js';
+import { purchaseAccessNotice } from '../modules/PurchaseAccessNotice.js';
 import { GoogleSignIn } from '../modules/GoogleSignIn.js';
 import { FREEMIUS_PORTAL_LOGIN, freemiusPortalUrl } from '../modules/FreemiusPortal.js';
 import { createOverlayController } from './OverlayController.js';
+import { accountAvatar } from './AccountAvatar.js';
+import { accountIntent } from '../modules/AccountNavigation.js';
+import { checkoutNotice } from './CheckoutNotice.js';
 
 function element(tag, className = '', text) {
   const node = document.createElement(tag);
@@ -28,19 +32,21 @@ function dateLabel(value) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Date unavailable';
 }
+const contactLink = (text = 'Contact support', section = '') => link(text, `/contact.html${section}`, { newTab: true });
 const testDate = entry => dateLabel(entry.report.generatedAt || entry.createdAt);
 export default class AccountPanelUI {
-  constructor({ history, premiumAccess, onOpenReport, onAccountChanged, onCheckout, onBeforeOpen, getIsBusy, onRestoreLegacyPurchase, getSignInSnapshot, elements = {} } = {}) {
+  constructor({ history, premiumAccess, onOpenReport, onAccountChanged, onCheckout, onBeforeOpen, onContinue, getIsBusy, onRestoreLegacyPurchase, getSignInSnapshot, elements = {} } = {}) {
     this.history = history;
     this.premiumAccess = premiumAccess;
     this.onOpenReport = onOpenReport;
     this.onCheckout = onCheckout;
     this.onRestoreLegacyPurchase = onRestoreLegacyPurchase;
     this.onBeforeOpen = onBeforeOpen;
+    this.onContinue = onContinue;
     this.getSignInSnapshot = getSignInSnapshot;
     this.getIsBusy = getIsBusy;
     this.noteDrafts = new Map();
-    this.rememberMe = false;
+    this.rememberMe = true;
     this.signInRevision = 0;
     this.accountState = accountAccess.getState();
     this.historyState = history.getState();
@@ -83,7 +89,12 @@ export default class AccountPanelUI {
       adapter: 'dialog',
       closeEls: this.dialog ? [...this.dialog.querySelectorAll('[data-close-account]')] : [],
       triggerEl: this.menuButton,
-      onClose: () => { this.cancelSignIn(); this.rememberMe = false; }
+      onClose: () => {
+        const switching = !!this.switchAccountOwner;
+        this.cancelSignIn(); this.rememberMe = true;
+        if (switching) { this.renderIdentity(); this.syncView(); }
+        this.publishRoute(null);
+      }
     });
     this.menuButton?.addEventListener('click', () => this.open(null, this.menuButton));
     this.historyButton?.addEventListener('click', () => this.open('reports', this.historyButton));
@@ -91,14 +102,10 @@ export default class AccountPanelUI {
       const previousId = this.accountState.user?.id;
       const identityChanged = !this.identityRendered || JSON.stringify(this.accountState) !== JSON.stringify(state);
       this.accountState = state;
+      if (this.switchAccountOwner && this.switchAccountOwner !== state.user?.id) this.switchAccountOwner = null;
       if (previousId && previousId !== state.user?.id) {
         onAccountChanged?.();
       }
-      if (this.menuButton) {
-        this.menuButton.setAttribute('aria-label', state.user ? 'Account' : 'Sign in');
-        this.menuButton.textContent = state.user ? 'Account' : 'Sign in';
-      }
-      if (this.title) this.title.textContent = state.user ? 'Your account' : 'Sign in';
       if (this.historyButton) this.historyButton.hidden = !state.user;
       // A focus/session check must not replace the button and invalidate a consent already in progress.
       if (identityChanged) { this.renderIdentity(); this.identityRendered = true; }
@@ -126,6 +133,7 @@ export default class AccountPanelUI {
     if (this.getIsBusy?.()) this.cancelCheckout();
     if (this.portalConfirmation?.isCurrent()) return;
     if (this.portalConfirmation) this.cancelPortal();
+    if (this.switchAccountOwner === this.accountState.user?.id && this.switchAccountOwner && !this.getIsBusy?.()) return;
     if (this.accountState.user || this.getIsBusy?.()) this.google.suppress();
     else if (!document.body.classList.contains('app-mode') || document.visibilityState !== 'visible'
       || !this.accountState.ready || !this.accountState.configured || this.accountState.error) this.google.cancel();
@@ -133,18 +141,25 @@ export default class AccountPanelUI {
     else this.google.offer();
   }
   message(text = '') { if (this.status) this.status.textContent = text; }
-  setView(view) {
+  publishRoute(intent) {
+    if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('micprobe:account-route', { detail: { intent } }));
+  }
+  setView(view, { preserveIntent = false } = {}) {
     if (view !== this.view) { this.cancelPortal(); this.cancelCheckout(); }
+    if (!preserveIntent && this.accountState.user) this.intent = view;
     this.view = view;
     this.message();
     this.syncView();
     const body = this.dialog?.querySelector('.account-dialog-body');
     if (body) body.scrollTop = 0;
+    if (this.dialog?.open) this.publishRoute(this.switchAccountOwner ? 'switch' : this.accountState.user ? this.view : this.intent || 'signin');
   }
   syncView() {
-    const signedIn = !!this.accountState.user;
+    const signedIn = !!this.accountState.user && !this.switchAccountOwner;
     const canRead = signedIn && (this.accountState.premium?.unlocked || this.historyState.reports.length > 0);
     if (this.historyButton) this.historyButton.hidden = !canRead;
+    // Intent survives bootstrap, while actions follow the section actually displayed.
+    if (canRead && this.intent === 'reports') this.view = 'reports';
     if (!canRead && this.view === 'reports') this.view = 'account';
     const reports = canRead && this.view === 'reports';
     if (this.dialog) this.dialog.dataset.signedIn = String(signedIn);
@@ -163,7 +178,7 @@ export default class AccountPanelUI {
     }
     if (this.historySection) this.historySection.hidden = !reports;
     for (const tab of this.tabs || []) {
-      const active = tab.dataset.accountTab === this.view;
+      const active = tab.dataset.accountTab === (reports ? 'reports' : 'account');
       tab.setAttribute('aria-selected', String(active));
       tab.tabIndex = active ? 0 : -1;
     }
@@ -172,19 +187,62 @@ export default class AccountPanelUI {
     if (!this.dialog) return;
     this.signInRevision++;
     this.google.suppress();
-    this.intent = intent;
-    this.setView(['reports', 'history'].includes(intent) ? 'reports' : 'account');
+    this.intent = accountIntent(intent || (this.accountState.user ? 'account' : 'signin'));
+    this.switchAccountOwner = this.intent === 'switch' ? this.accountState.user?.id || null : null;
+    if (this.intent === 'switch' && !this.switchAccountOwner) this.intent = 'signin';
+    this.setView(['reports', 'history'].includes(intent) ? 'reports' : 'account', { preserveIntent: true });
     if (!this.dialog.open) { this.onBeforeOpen?.(); this.overlay?.open({ opener }); }
     this.renderIdentity();
     this.renderHistory();
-    if (!this.accountState.user && this.accountState.configured) this.renderGoogle();
+    if ((!this.accountState.user || this.switchAccountOwner) && this.accountState.configured) this.renderGoogle();
     if (this.accountState.user) this.history.reload();
+    this.publishRoute(this.intent);
+  }
+  async completeSignIn(intent = this.intent) {
+    if (!this.accountState.user || !this.dialog?.open || this.getIsBusy?.()) return;
+    intent = accountIntent(intent);
+    accountAccess.clearIntent();
+    this.intent = null;
+    if (intent === 'checkout') {
+      if (!this.accountState.purchaseLinked && !this.premiumAccess?.getState().pending && !this.accountState.premium?.unlocked) {
+        await this.startCheckout(); return;
+      }
+      if (!this.accountState.premium?.unlocked) {
+        this.publishRoute('account');
+        this.message('Signed in. Review your purchase status below to continue.'); return;
+      }
+      intent = 'report';
+    }
+    if (intent === 'reports') {
+      const revision = this.signInRevision, owner = this.accountState.user.id;
+      await this.history.reload();
+      if (revision !== this.signInRevision || !this.dialog?.open || owner !== this.accountState.user?.id) return;
+      this.setView('reports');
+      return;
+    }
+    if (['signin', 'switch', 'test-limit', 'report'].includes(intent)) {
+      this.close();
+      this.onContinue?.(intent);
+      return;
+    }
+    this.publishRoute('account');
+    this.message('');
+  }
+  switchAccount() {
+    if (this.switchAccountOwner || !this.accountState.user) return;
+    if (this.getIsBusy?.()) {
+      this.message('Wait for the current recording or test and its analysis to finish before switching accounts.');
+      return;
+    }
+    this.cancelSignIn();
+    this.open('switch');
   }
   cancelSignIn() {
     this.cancelPortal();
     this.cancelCheckout();
     this.signInRevision++;
     this.google.cancel();
+    this.switchAccountOwner = null;
     this.intent = null;
     accountAccess.clearIntent();
   }
@@ -219,6 +277,7 @@ export default class AccountPanelUI {
     }
   }
   cancelPortal() {
+    this.portalRequest?.window?.close();
     this.portalRequest = null;
     if (this.portalConfirmation) this.google.cancel();
     this.portalConfirmation = null;
@@ -232,7 +291,11 @@ export default class AccountPanelUI {
       return;
     }
     if (this.portalConfirmation) this.cancelPortal();
-    const attempt = { owner: this.accountState.user.id, revision: this.signInRevision };
+    // Reserve a tab during the user's click. Keep the recording page alive;
+    // a blocked popup gets an explicit link after the same ownership checks.
+    const portalWindow = window.open('about:blank', '_blank');
+    if (portalWindow) portalWindow.opener = null;
+    const attempt = { owner: this.accountState.user.id, revision: this.signInRevision, window: portalWindow };
     this.portalRequest = attempt;
     const isCurrent = () => this.portalRequest === attempt && this.dialog?.open
       && this.view === 'account' && this.signInRevision === attempt.revision
@@ -245,10 +308,19 @@ export default class AccountPanelUI {
       if (!isCurrent()) return;
       const url = freemiusPortalUrl(result.url);
       if (!url) throw new Error('portal_unavailable');
-      window.location.assign(url);
+      if (attempt.window && !attempt.window.closed) {
+        attempt.window.location.replace(url);
+        attempt.window = null;
+        this.message('Purchase management opened in a new tab. Your recording and result remain here.');
+      } else {
+        this.portalHelp.append(link('Open purchase management', url, { newTab: true }));
+        this.message('Open purchase management in a new tab. Your recording and result remain here.');
+      }
     } catch (error) {
+      attempt.window?.close(); attempt.window = null;
       if (isCurrent()) this.renderPortalHelp(error);
     } finally {
+      attempt.window?.close(); attempt.window = null;
       if (this.portalRequest === attempt) {
         this.portalRequest = null;
         this.portalButton.disabled = false;
@@ -267,7 +339,7 @@ export default class AccountPanelUI {
     const help = element('p', 'account-caption', 'Use the email address on your purchase receipt to sign in to Freemius. If you do not know its password, use the recovery option there. Your Google password is never needed in MicProbe or Freemius.');
     const links = element('div', 'account-links');
     links.append(link('Sign in to Freemius', FREEMIUS_PORTAL_LOGIN, { newTab: true }),
-      link('Contact support', 'mailto:support@micprobe.com'));
+      contactLink('Contact support', '#purchase'));
     this.portalHelp.append(help, links);
   }
   async confirmPortalAccount() {
@@ -362,38 +434,38 @@ export default class AccountPanelUI {
     this.cancelPortal();
     this.portalButton = null;
     this.checkoutButton = null;
+    this.switchCancelButton = null;
     this.accountBody.replaceChildren();
     const state = this.accountState;
+    const switching = !!this.switchAccountOwner && this.switchAccountOwner === state.user?.id;
+    if (this.title) this.title.textContent = switching ? 'Switch account' : state.user ? 'Your account' : 'Sign in';
     const pending = !!(state.premium?.pending || this.premiumAccess?.getState().pending);
-    if (state.user) {
-      this.rememberMe = false;
+    const notice = purchaseAccessNotice({ ...state.premium, pending, purchaseLinked: state.purchaseLinked,
+      connectionError: !!state.error });
+    if (state.user && !switching) {
+      this.rememberMe = true;
       const profile = element('div', 'account-profile');
-      const initials = (state.user.name || state.user.email || '?').trim().split(/\s+/u).slice(0, 2).map(part => Array.from(part)[0]).join('').toUpperCase();
-      const avatar = element('span', 'account-avatar', initials); avatar.setAttribute('aria-hidden', 'true');
+      const avatar = accountAvatar(state.user);
       const identity = element('div', 'account-profile-info');
       identity.append(element('h3', '', state.user.name || 'Your account'), element('p', 'account-email', state.user.email),
         element('p', 'account-caption', 'Signed in with Google'));
       profile.append(avatar, identity); this.accountBody.append(profile);
       const plan = element('section', 'account-section');
-      plan.append(element('h3', '', 'Plan'), element('p', 'account-entitlement', pending
-        ? 'Purchase verification pending' : state.error ? 'Connection unavailable' : state.premium?.unlocked ? 'Lifetime Premium'
-          : state.purchaseLinked ? 'Premium access inactive' : 'Free account'));
-      plan.append(element('p', 'account-muted', pending
-        ? 'We could not confirm your purchase access yet. Retry verification with the Google account used for checkout. You do not need to buy again.'
-        : state.error
-        ? 'Your account connection could not be checked. Reconnect to confirm your purchase and sync reports.'
-        : state.premium?.unlocked ? 'Unlimited microphone tests and detailed guidance. One payment, no renewal.'
-          : state.purchaseLinked ? 'A purchase is linked to this account, but Premium access is inactive. Review your purchase or contact support to check its status.'
-          : 'Daily microphone tests. Premium includes unlimited tests, detailed guidance and a report archive.'));
+      plan.append(element('h3', '', 'Plan'), element('p', 'account-entitlement', notice?.title
+        || (state.premium?.unlocked ? 'Lifetime Premium' : 'Free account')));
+      plan.append(element('p', 'account-muted', notice?.description
+        || (state.premium?.unlocked ? 'Detailed guidance, saved reports and PDF downloads. Recheck your setup without daily limits. One payment, no renewal.'
+          : '5 microphone tests per day, including guest tests. Premium adds explanations, relevant device checks and a report archive, with no daily test limit.')));
       const actions = element('div', 'account-actions');
-      if (pending) actions.append(button('Retry purchase verification', () => this.run(() => this.premiumAccess.retryPurchaseVerification())));
-      else if (state.error) actions.append(button('Retry account connection', () => this.run(() => accountAccess.refresh())));
+      if (notice) actions.append(button(notice.action, () => this.run(() => this.premiumAccess.retryPurchaseVerification())));
       else if (!state.premium?.unlocked && !state.purchaseLinked) {
         this.checkoutButton = button('Get Lifetime Premium', () => this.startCheckout(), 'account-button account-button--primary');
+        plan.append(checkoutNotice());
         actions.append(this.checkoutButton);
       }
       if (state.purchaseLinked) {
         this.portalButton = button('Manage purchase', () => this.openPurchasePortal());
+        this.portalButton.setAttribute('aria-description', 'Opens in a new tab. Your test stays here.');
         actions.append(this.portalButton);
       }
       plan.append(actions); this.accountBody.append(plan);
@@ -401,12 +473,12 @@ export default class AccountPanelUI {
       plan.append(this.portalHelp);
       if (!state.error && !pending && !state.premium?.unlocked) {
         this.renderPurchaseRestore({ container: plan });
-        if (state.purchaseLinked) {
+        if (state.purchaseLinked && state.premium?.inactiveReason === 'license_inactive') {
           const replacement = element('details', 'account-restore');
           replacement.append(element('summary', '', 'Need a new purchase?'), element('p', 'account-muted',
             'Check your existing purchase first. If you need a new license, this starts a separate payment.'));
           this.checkoutButton = button('Buy a new license', () => this.startCheckout());
-          replacement.append(this.checkoutButton);
+          replacement.append(checkoutNotice(), this.checkoutButton);
           plan.append(replacement);
         }
       }
@@ -415,20 +487,41 @@ export default class AccountPanelUI {
       privacy.append(element('h3', '', 'Privacy & support'), element('p', 'account-muted',
         'Saved reports contain measurements and notes. Your audio recordings stay on your device.'));
       const links = element('div', 'account-links');
-      links.append(link('Privacy policy', '/privacy.html#sign-in', { newTab: true }), link('Contact support', 'mailto:support@micprobe.com'));
+      links.append(link('Privacy policy', '/privacy.html#sign-in', { newTab: true }), contactLink());
       const requests = element('details', 'account-data-help');
       requests.append(element('summary', '', 'Account data and deletion'), element('p', 'account-muted',
         'To request a copy of your account data or delete your account, email us. We verify your account before making changes.'),
-      link('Email an account request', 'mailto:support@micprobe.com?subject=MicProbe%20account%20data%20request'));
+      contactLink('Account request instructions', '#account'));
       privacy.append(links, requests); this.accountBody.append(privacy);
       const session = element('div', 'account-section account-session');
-      session.append(button('Sign out', () => this.run(() => accountAccess.logout(), 'Signed out. Your saved reports and purchases stay in your account.')),
+      const sessionActions = element('div', 'account-actions');
+      sessionActions.append(button('Switch account', () => this.switchAccount()),
+        button('Sign out', () => {
+          this.cancelSignIn();
+          this.intent = 'signin';
+          return this.run(async () => {
+            await accountAccess.logout();
+            if (this.dialog?.open && !this.accountState.user) this.publishRoute('signin');
+          }, 'Signed out. Your saved reports and purchases stay in your account.');
+        }));
+      session.append(sessionActions,
         element('p', 'account-caption', 'Ends this browser session. Your saved reports and purchases stay in your account.'));
       this.accountBody.append(session);
     } else {
-      this.accountBody.append(element('h3', '', this.intent === 'test-limit' ? 'Sign in for free to run more tests'
-        : this.intent === 'checkout' ? 'Keep your lifetime purchase with you' : 'Keep your test reports together'));
-      this.accountBody.append(element('p', 'account-muted', 'Sign in for more microphone tests and access to your purchase. Saving new reports requires Premium.'));
+      this.accountBody.append(element('h3', '', switching ? 'Choose another Google account' : this.intent === 'test-limit' ? 'Sign in for free to run more tests'
+        : this.intent === 'checkout' ? 'Keep your lifetime purchase with you' : 'Sign in to MicProbe'));
+      if (!switching && state.configured) {
+        this.accountBody.append(element('p', 'account-muted', this.intent === 'test-limit'
+          ? 'A free account gives you 5 tests per day, including guest tests already used today. Listening and downloading an existing recording do not use a test.'
+          : this.intent === 'checkout'
+            ? 'Your Premium purchase will be linked to this account. Use the same Google account to return to your detailed guidance and saved reports.'
+            : 'A free account gives you more daily tests. Detailed guidance and saved reports are included with Premium.'));
+      }
+      if (this.intent === 'checkout') this.accountBody.append(checkoutNotice());
+      if (switching) {
+        this.accountBody.append(element('p', 'account-muted', 'Choose another Google account, or select “Use another account” in Google.'),
+          element('p', 'account-caption', `You stay signed in as ${state.user.email} until the new account is verified.`));
+      }
       if (state.error) this.accountBody.append(button('Retry account connection', () => this.run(() => accountAccess.refresh())));
       else if (!state.ready) this.accountBody.append(element('p', 'account-muted', 'Checking sign-in availability…'));
       else if (!state.configured) {
@@ -444,7 +537,7 @@ export default class AccountPanelUI {
           if (this.google.useRedirect) { this.google.cancel(); this.renderGoogle(); }
         });
         rememberLabel.append(remember, element('span', '', 'Keep me signed in on this device'));
-        const rememberHint = element('p', 'account-caption', 'Up to 30 days. Leave unchecked on a shared device.');
+        const rememberHint = element('p', 'account-caption', 'Avoid on shared devices.');
         rememberHint.id = 'accountRememberHint';
         this.accountBody.append(rememberLabel, rememberHint);
         this.googleContainer = element('div', 'account-google');
@@ -455,8 +548,19 @@ export default class AccountPanelUI {
         this.accountBody.append(this.googleHint, this.googleContainer, this.googleRetry);
         if (this.dialog?.open) this.renderGoogle();
       }
-      this.accountBody.append(element('p', 'account-caption account-signin-note', 'Premium saves tests started with your account. Signing in does not automatically add earlier guest results. Audio stays on your device.'),
+      if (switching) {
+        this.switchCancelButton = button('Cancel', () => this.open('account'));
+        this.accountBody.append(this.switchCancelButton);
+      }
+      this.accountBody.append(element('p', 'account-caption account-signin-note', switching
+        ? 'Reports and purchases stay with their original account.'
+        : 'Audio recordings stay on your device.'),
         link('Privacy policy', '/privacy.html#sign-in', { newTab: true }));
+      const help = element('details', 'account-data-help');
+      help.append(element('summary', '', 'Trouble signing in?'), element('p', 'account-caption',
+        'Allow cookies for MicProbe and retry Google sign-in. For an earlier purchase, choose the Google account you used to link it. You do not need to buy again.'),
+        contactLink('Contact support', '#account'));
+      this.accountBody.append(help);
     }
   }
   renderPurchaseRestore({ legacy = false, container = this.accountBody } = {}) {
@@ -465,7 +569,7 @@ export default class AccountPanelUI {
     details.append(element('p', 'account-muted', legacy
       ? 'Use the full license key from your purchase email to restore Premium on this browser.'
       : 'Already paid? Link the license key from your purchase email. If you previously linked it, sign in with that Google account. You do not need to buy again.'));
-    const form = element('form', 'account-actions');
+    const form = element('form', 'account-actions account-purchase-form');
     const label = element('label', 'account-field', 'License key from your purchase email');
     const input = element('input'); input.type = 'password'; input.required = true; input.autocomplete = 'off'; input.maxLength = 256;
     label.append(input);
@@ -484,16 +588,18 @@ export default class AccountPanelUI {
         : 'Your purchase is linked to this account.').finally(() => { submit.disabled = false; });
     });
     details.append(form, element('p', 'account-caption', 'Cannot find the email or access the original account? Contact support with your purchase email address or receipt. Never send your Google password.'),
-      link('Contact support', 'mailto:support@micprobe.com?subject=MicProbe%20purchase%20recovery'));
+      contactLink('Contact support', '#purchase'));
     container.append(details);
   }
   async renderGoogle() {
     const container = this.googleContainer;
     if (!container || !this.dialog?.open || this.googleLoading) return;
-    const hint = this.googleHint, retry = this.googleRetry;
+    const hint = this.googleHint, retry = this.googleRetry, cancel = this.switchCancelButton;
     const rememberMe = this.rememberMe;
+    const switchFrom = this.switchAccountOwner;
     const isCurrent = () => container === this.googleContainer && container.isConnected
-      && this.dialog?.open && !this.accountState.user && !this.getIsBusy?.()
+      && this.dialog?.open && (switchFrom ? this.switchAccountOwner === switchFrom && this.accountState.user?.id === switchFrom
+        : !this.accountState.user) && !this.getIsBusy?.()
       && (!this.google.useRedirect || rememberMe === this.rememberMe);
     const recover = error => {
       if (!isCurrent()) return;
@@ -510,27 +616,25 @@ export default class AccountPanelUI {
       await this.google.renderButton(container, {
         isCurrent,
         onError: recover,
-        redirect: { rememberMe, snapshot: this.getSignInSnapshot },
+        redirect: { rememberMe, snapshot: this.getSignInSnapshot, intent: this.intent },
         onCredential: async credential => {
           const intent = this.intent;
           const revision = this.signInRevision;
           container.replaceChildren();
           if (hint) hint.textContent = 'Signing in…';
+          // Once Google has confirmed, the session exchange can already commit.
+          if (cancel) cancel.disabled = true;
           try {
-            await accountAccess.signInWithGoogle(credential, { rememberMe: this.rememberMe });
+            await accountAccess.signInWithGoogle(credential, { rememberMe: this.rememberMe, switchFrom });
             // Closing/reopening the dialog cancels navigation, even if the
             // server has already committed the sign-in while its reply was pending.
             if (revision !== this.signInRevision || !this.dialog?.open) return;
-            accountAccess.clearIntent();
-            this.intent = null;
-            if (intent === 'checkout' && !this.accountState.purchaseLinked && !this.premiumAccess?.getState().pending
-                && !this.accountState.premium?.unlocked) { await this.startCheckout(); return; }
-            this.message('Signed in. Your account is ready.');
+            await this.completeSignIn(intent);
           } catch (error) {
             if (revision !== this.signInRevision || !this.dialog?.open) return;
             if (!isCurrent()) this.showError(error);
             else throw error;
-          }
+          } finally { if (cancel) cancel.disabled = false; }
         }
       });
       if (isCurrent() && hint) hint.textContent = this.google.useRedirect
@@ -540,7 +644,7 @@ export default class AccountPanelUI {
       this.googleLoading = false;
       // Replacing the signed-out view while Google loads must not leave its
       // new button empty. Same-container calls share this request and nonce.
-      if (this.dialog?.open && !this.accountState.user && (this.googleContainer !== container
+      if (this.dialog?.open && (!this.accountState.user || this.switchAccountOwner) && (this.googleContainer !== container
           || (this.google.useRedirect && this.rememberMe !== rememberMe))) this.renderGoogle();
     }
   }

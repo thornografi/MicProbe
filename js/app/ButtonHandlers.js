@@ -59,13 +59,12 @@ export function setupOverlays(elements) {
 }
 
 /**
- * Test countdown + analysing progress bar event handler'larini kaydet
- * @param {HTMLElement} testCountdownEl - Countdown badge elementi (kayit fazi)
+ * Test analysing progress. CaptureGuideUI owns the shared capture countdown.
  * @param {HTMLElement} testProgressFillEl - Analysing progress fill elementi (analiz fazi)
  * @param {Object} eventBus - EventBus referansi
  * @returns {Function} - Cleanup fonksiyonu (unsubscribe icin)
  */
-export function setupTestCountdownHandlers(testCountdownEl, testProgressFillEl, eventBus) {
+export function setupTestProgressHandlers(testProgressFillEl, eventBus) {
   const unsubscribers = [];
 
   // Analysing progress bar (deep analiz ilerlemesini yansitir — 0..1)
@@ -75,21 +74,12 @@ export function setupTestCountdownHandlers(testCountdownEl, testProgressFillEl, 
     testProgressFillEl.style.transform = `scaleX(${r})`;
   };
 
-  // Test countdown (kayit fazi)
-  const onCountdown = ({ remainingSec }) => {
-    if (testCountdownEl) {
-      testCountdownEl.textContent = remainingSec > 0 ? `${remainingSec}s` : '';
-    }
-  };
-  unsubscribers.push(eventBus.on(EVENTS.TEST_COUNTDOWN, onCountdown));
-
   // Analiz fazi: gercek progress bar
   unsubscribers.push(eventBus.on(EVENTS.TEST_ANALYSING_STARTED, () => setProgress(0)));
   unsubscribers.push(eventBus.on(EVENTS.TEST_ANALYSING_PROGRESS, ({ ratio }) => setProgress(ratio)));
 
   // Test tamamlandiginda/iptal edildiginde countdown + progress temizle
   const clearTestUi = () => {
-    if (testCountdownEl) testCountdownEl.textContent = '';
     setProgress(0);
   };
   [EVENTS.TEST_COMPLETED, EVENTS.TEST_CANCELLED, EVENTS.TEST_RECORDING_STOPPED]

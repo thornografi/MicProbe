@@ -205,11 +205,11 @@ test('Encoder failures are reported once and release resources despite repeated 
   failed.off(); completed.off();
 });
 
-test('Device ended finalizes a recording and resets controller state and timer', async () => {
-  reset(); const recorder = new Recorder(); let mode = null; let preparing = false; let timerStopped = 0;
+test('Device ended finalizes a recording and resets controller state', async () => {
+  reset(); const recorder = new Recorder(); let mode = null; let preparing = false;
   recordingController.setDependencies({ recorder, getCurrentMode: () => mode, setCurrentMode: value => { mode = value; },
     getIsPreparing: () => preparing, setIsPreparing: value => { preparing = value; },
-    uiStateManager: { updateButtonStates() {}, startTimer() {}, stopTimer() { timerStopped++; } },
+    uiStateManager: { updateButtonStates() {} },
     getPipeline: () => 'worklet', getEncoder: () => 'pcm-wav', isWebAudioEnabled: () => true });
   const completed = collect(EVENTS.RECORDING_COMPLETED);
   await recordingController.start(); await drain();
@@ -217,7 +217,7 @@ test('Device ended finalizes a recording and resets controller state and timer',
   stream.track.end(); await drain(); await recorder.stop();
   assert.equal(completed.values.length, 1);
   assert.equal(completed.values[0].stopReason, 'device-ended');
-  assert.equal(mode, null); assert.equal(preparing, false); assert.ok(timerStopped > 0);
+  assert.equal(mode, null); assert.equal(preparing, false);
   completed.off();
 });
 
@@ -303,17 +303,17 @@ test('WASM initialization failure terminates its worker', async () => {
 test('controller Cancel releases preparation before permission arrives and a late stream cannot affect the retry', async () => {
   reset();
   const recorder = new Recorder(); const oldStream = stream;
-  let grant, mode = null, preparing = false, timers = 0;
+  let grant, mode = null, preparing = false;
   navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { grant = resolve; });
   recordingController.setDependencies({ recorder, getCurrentMode: () => mode, setCurrentMode: value => { mode = value; },
     getIsPreparing: () => preparing, setIsPreparing: value => { preparing = value; },
-    uiStateManager: { updateButtonStates() {}, startTimer() { timers++; }, stopTimer() {} },
+    uiStateManager: { updateButtonStates() {} },
     getPipeline: () => 'worklet', getEncoder: () => 'pcm-wav', isWebAudioEnabled: () => true });
   const messages = collect(EVENTS.UI_MESSAGE);
   const first = recordingController.toggle();
   assert.equal(preparing, true);
   await recordingController.toggle(); await first;
-  assert.equal(mode, null); assert.equal(preparing, false); assert.equal(timers, 0);
+  assert.equal(mode, null); assert.equal(preparing, false); assert.equal(recorder.getIsRecording(), false);
   assert.equal(recorder.getIsStopping(), false);
   const replacement = makeStream();
   navigator.mediaDevices.getUserMedia = async () => replacement;
@@ -321,7 +321,7 @@ test('controller Cancel releases preparation before permission arrives and a lat
   grant(oldStream); await drain();
   assert.equal(oldStream.track.readyState, 'ended');
   assert.equal(recorder.stream, replacement); assert.equal(replacement.track.readyState, 'live');
-  assert.equal(mode, 'recording'); assert.equal(timers, 1);
+  assert.equal(mode, 'recording'); assert.equal(recorder.getIsRecording(), true);
   assert.deepEqual(messages.values, []);
   await recordingController.toggle(); messages.off();
 });

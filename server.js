@@ -42,7 +42,7 @@ const CSP_POLICY = [
   "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data:",
+  "img-src 'self' data: https://*.googleusercontent.com",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
   "connect-src 'self' https://accounts.google.com/gsi/",
@@ -262,7 +262,7 @@ function buildHeaders(contentType) {
 }
 
 const STATIC_ROOT = process.argv.includes('--built') ? path.join(__dirname, '.tmp/cloudflare-dev-assets') : __dirname;
-const PUBLIC_FILES = new Set(['index.html', 'app.html', 'micprobe.html', 'privacy.html', 'terms.html', '404.html']);
+const PUBLIC_FILES = new Set(['index.html', 'app.html', 'micprobe.html', 'privacy.html', 'terms.html', 'contact.html', '404.html']);
 const PUBLIC_ASSET_FILES = new Set(['robots.txt', 'sitemap.xml', 'favicon.ico', 'favicon.svg', 'favicon-96.png', 'apple-touch-icon.png', 'logo.png', 'social-card.png']);
 const PUBLIC_DIRECTORIES = new Set(['assets', 'css', 'js']);
 
@@ -587,6 +587,13 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     pathname = url.pathname;
+    if (pathname === '/api/pricing' && req.method === 'GET') {
+      const { publicPricingResponse } = await import('./server/public-pricing.mjs');
+      const response = await publicPricingResponse(FREEMIUS_ENV);
+      res.writeHead(response.status, { ...SECURITY_HEADERS, ...Object.fromEntries(response.headers) });
+      res.end(await response.text());
+      return;
+    }
     if (pathname === '/api/freemius/restore' && req.method === 'POST') {
       if (process.env.MICPROBE_GOOGLE_CLIENT_ID) { writeJson(res, 403, { ok: false, error: 'account_sign_in_required' }); return; }
       const { isAccountMutationAllowed } = await import('./server/account-service.mjs');

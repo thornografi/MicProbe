@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import VuMeter from '../modules/VuMeter.js';
 import { VU_METER } from '../modules/constants.js';
 
+const style = () => ({ setProperty(name, value) { this[name] = value; } });
+
 function channel() {
   const attributes = new Map();
   return {
-    bar: { style: {}, parentElement: { setAttribute: (name, value) => attributes.set(name, value) } },
+    bar: { style: style(), dataset: {}, parentElement: { setAttribute: (name, value) => attributes.set(name, value) } },
     peak: { hidden: true, style: {} },
     reading: { textContent: '—' },
     state: { smoothedRms: 0, lastRenderTime: 0 },
@@ -28,22 +30,91 @@ function render(meter, view, amplitude) {
 
 test('activity text distinguishes capture from idle and reports presence without grading sound quality', () => {
   const meter = Object.create(VuMeter.prototype);
-  meter.activityBarEl = { style: {} };
-  meter.activityStatusEl = { dataset: {}, textContent: '' };
+  meter.activityBarEl = { style: style() };
+  meter.activityStatusEl = { style: style(), dataset: {}, textContent: '' };
   meter._renderActivity(null);
   assert.equal(meter.activityStatusEl.textContent, 'Not measuring yet');
   meter._renderActivity(0);
-  assert.equal(meter.activityStatusEl.textContent, 'Waiting for sound');
-  for (const level of [VU_METER.DOT_ACTIVE_THRESHOLD + 1, 50, 100]) {
-    meter._renderActivity(level);
+  assert.equal(meter.activityStatusEl.textContent, 'No sound detected — speak normally');
+  for (const level of [50, 70, 90]) {
+    meter._renderActivity(level, 'detected');
     assert.equal(meter.activityStatusEl.textContent, 'Sound detected');
     assert.equal(meter.activityBarEl.style.width, `${level}%`);
   }
   meter._renderActivity(0);
-  assert.equal(meter.activityStatusEl.textContent, 'Waiting for sound');
+  assert.equal(meter.activityStatusEl.textContent, 'No sound detected — speak normally');
   meter._renderActivity(null);
   assert.equal(meter.activityStatusEl.textContent, 'Not measuring yet');
   assert.equal(meter.activityBarEl.style.width, '0%');
+});
+
+test('gain colors follow sampled peaks, hold brief overloads, and share the preparation presence threshold', t => {
+  let now = 100;
+  t.mock.method(performance, 'now', () => now);
+  const meter = Object.create(VuMeter.prototype), view = channel();
+  for (const [db, state] of [[-70, 'waiting'], [-20, 'detected'], [-3, 'high'], [0, 'clipping']]) {
+    now += 1500;
+    const result = render(meter, view, 10 ** (db / 20));
+    assert.equal(result.signalState, state);
+    assert.equal(view.bar.dataset.state, state);
+  }
+  now += 10;
+  assert.equal(render(meter, view, 0).signalState, 'clipping');
+  now += VU_METER.PEAK_HOLD_TIME_MS;
+  assert.equal(render(meter, view, 0).signalState, 'waiting');
+  meter.activityStatusEl = { style: style(), dataset: {}, textContent: '' };
+  meter.guideStage = 'quiet'; meter._renderActivity(0, 'waiting');
+  assert.match(meter.activityStatusEl.textContent, /stay quiet/);
+  meter.guideStage = 'speak'; meter._renderActivity(0, 'waiting');
+  assert.match(meter.activityStatusEl.textContent, /speak normally/);
+});
+
+test('color follows continuous levels inside a single warning state and all local indicators share it', t => {
+  let now = 100;
+  t.mock.method(performance, 'now', () => now);
+  const meter = Object.create(VuMeter.prototype), view = channel(), colors = new Set();
+  meter.activityBarEl = { style: style(), dataset: {} };
+  meter.activityStatusEl = { style: style(), dataset: {} };
+  meter.dotEl = { style: style() };
+  for (let db = -50; db < -7; db += 0.1) {
+    now += 100;
+    const result = render(meter, view, 10 ** (db / 20));
+    assert.equal(result.signalState, 'detected');
+    meter._renderActivity(result.activityLevel, result.signalState, result.color);
+    assert.equal(result.activityLevel, (view.state.colorDb - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100);
+    for (const element of [meter.activityBarEl, meter.activityStatusEl, meter.dotEl]) {
+      assert.equal(element.style['--signal-color'], view.bar.style['--signal-color']);
+    }
+    colors.add(result.color);
+  }
+  assert(colors.size > 400, 'a steady sweep produces intermediate colors, not three status colors');
+});
+
+test('peak color rises and falls smoothly without delaying overload detection and is frame-rate independent', t => {
+  let now = 100;
+  t.mock.method(performance, 'now', () => now);
+  const meter = Object.create(VuMeter.prototype), view = channel();
+  view.state.colorDb = -30; view.state.lastRenderTime = now;
+  now += 16;
+  const overload = render(meter, view, 1);
+  assert.equal(overload.rawDb, 0);
+  assert.equal(overload.isClipping, true, 'measurement and warning remain immediate');
+  assert(view.state.colorDb > -30 && view.state.colorDb < 0);
+  now += 800; render(meter, view, 0);
+  assert.equal(view.bar.dataset.state, 'clipping', 'warning text remains available');
+  assert(view.state.colorDb < -90, 'old clipping never pins the live color or fill at full scale');
+  now += 250; render(meter, view, 0);
+  assert(view.state.colorDb < -0.51 && view.state.colorDb > VU_METER.MIN_DB, 'release passes through intermediate hues');
+
+  const settle = step => {
+    now = 100;
+    const frame = channel(); frame.state.colorDb = -40; frame.state.lastRenderTime = now;
+    for (let elapsed = step; elapsed <= 300; elapsed += step) {
+      now += step; render(meter, frame, 0.1);
+    }
+    return frame.state.colorDb;
+  };
+  assert(Math.abs(settle(10) - settle(20)) < 1e-9, 'time, not frame count, controls the envelope');
 });
 
 test('readout uses the same smoothed dBFS as the fill while preserving raw RMS and held level', t => {

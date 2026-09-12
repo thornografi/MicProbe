@@ -1,0 +1,1 @@
+ALTER TABLE accounts ADD COLUMN picture_url TEXT NOT NULL DEFAULT '';

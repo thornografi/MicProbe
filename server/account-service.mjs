@@ -2,6 +2,7 @@ import { AccountStore, accountError } from './account-store.mjs';
 import { createTroubleshootingContext } from '../js/modules/TroubleshootingContext.js';
 import { projectArchiveReport } from '../js/modules/ArchiveReport.js';
 import { GOOGLE_REDIRECT_PATH, googleRedirectRelay } from './google-redirect.mjs';
+import { googleProfilePicture } from '../js/modules/GoogleProfile.js';
 
 const SESSION_COOKIE = 'micprobe_session';
 const NONCE_COOKIE = 'micprobe_login_nonce';
@@ -120,7 +121,7 @@ function validateGoogleClaims(claims, clientId, nonce) {
     // Email is display data. Only Google's stable subject owns the account.
     const authoritativeEmail = claims.email.toLowerCase().endsWith('@gmail.com') || (typeof claims.hd === 'string' && !!claims.hd.trim());
     return { sub: claims.sub, email: claims.email, authoritativeEmail,
-        name: typeof claims.name === 'string' ? claims.name.slice(0, 200) : '' };
+        name: typeof claims.name === 'string' ? claims.name.slice(0, 200) : '', picture: googleProfilePicture(claims.picture) };
 }
 
 export function validateReport(report) {
@@ -180,10 +181,11 @@ export function createAccountService({ db, googleClientId = '', mode = 'sandbox'
 
     async function snapshot(user) {
         const license = user ? await store.getLicense(user.id) : null;
-        return { ok: true, user: user ? { id: user.id, email: user.email, name: user.name } : null,
+        return { ok: true, user: user ? { id: user.id, email: user.email, name: user.name, picture: user.picture } : null,
             purchaseLinked: !!license,
             premium: { unlocked: license?.active === true,
-                pending: license?.active === false && Date.parse(license.verifiedAt) === 0, mode } };
+                pending: license?.active === false && Date.parse(license.verifiedAt) === 0,
+                inactiveReason: license?.inactiveReason || '', mode } };
     }
 
     async function verifyBrowserIdentity(request, credential) {
@@ -202,22 +204,26 @@ export function createAccountService({ db, googleClientId = '', mode = 'sandbox'
         }
     }
 
-    async function completeGoogle(request, { identity, nonce, confirming, rememberMe, expected, redirect }) {
-        if (confirming) {
+    async function completeGoogle(request, { identity, nonce, confirming, switching, rememberMe, expected, redirect }) {
+        if (confirming || switching) {
             const current = await getUser(request);
             if (!current || current.id !== expected?.id) throw accountError(409, 'account_changed', 'The signed-in account changed.');
-            if (identity.sub !== current.googleSub) throw accountError(403, 'portal_account_mismatch', 'Confirm with the Google account already signed in.');
+            if (confirming && identity.sub !== current.googleSub) throw accountError(403, 'portal_account_mismatch', 'Confirm with the Google account already signed in.');
             // Confirmation refreshes proof without rotating the session or
-            // changing the user's remember-me choice.
-            await store.upsertUser(identity);
-            return json(redirect ? { ...await snapshot(current), redirect } : { ok: true }, 200,
-                { 'Set-Cookie': cookie(request, `${NONCE_COOKIE}_${nonce}`, '', 0) });
+            // changing persistence. Choosing the same account is also a no-op.
+            if (confirming || identity.sub === current.googleSub) {
+                const user = await store.upsertUser(identity);
+                return json(confirming && !redirect ? { ok: true } : { ...await snapshot(user), ...(redirect ? { redirect } : {}) }, 200,
+                    { 'Set-Cookie': cookie(request, `${NONCE_COOKIE}_${nonce}`, '', 0) });
+            }
         }
         const user = await store.upsertUser(identity);
         const token = randomToken();
         const oldToken = readCookie(request, SESSION_COOKIE);
-        await store.addSession(await hashToken(token), user.id, Date.now() + SESSION_SECONDS * 1000, isToken(oldToken) ? await hashToken(oldToken) : null);
         const response = json({ ...await snapshot(user), ...(redirect ? { redirect } : {}) });
+        const replaced = await store.addSession(await hashToken(token), user.id, Date.now() + SESSION_SECONDS * 1000,
+            isToken(oldToken) ? await hashToken(oldToken) : null, switching ? expected.id : null);
+        if (!replaced) throw accountError(409, 'account_changed', 'The signed-in account changed.');
         response.headers.append('Set-Cookie', cookie(request, SESSION_COOKIE, token, rememberMe === true ? SESSION_SECONDS : undefined));
         response.headers.append('Set-Cookie', cookie(request, `${NONCE_COOKIE}_${nonce}`, '', 0));
         return response;
@@ -247,14 +253,14 @@ export function createAccountService({ db, googleClientId = '', mode = 'sandbox'
             const relay = await googleRedirectRelay(request);
             if (relay) return relay;
             if (url.pathname === `${GOOGLE_REDIRECT_PATH}/start` && request.method === 'POST') {
-                const { confirming, rememberMe } = await readJson(request, 1024);
+                const { confirming, switching, rememberMe } = await readJson(request, 1024);
                 const user = await getUser(request);
-                if (confirming === true) requireAccountUser(request, user);
+                if (confirming === true || switching === true) requireAccountUser(request, user);
                 else if (user) throw accountError(409, 'account_changed', 'Review the signed-in account before continuing.');
                 const nonce = randomToken();
                 const session = readCookie(request, SESSION_COOKIE);
                 await store.addChallenge(await hashToken(nonce), Date.now() + 600000, {
-                    mode: confirming === true ? 'confirm' : 'signin', owner: user?.id || null,
+                    mode: confirming === true ? 'confirm' : switching === true ? 'switch' : 'signin', owner: user?.id || null,
                     sessionHash: isToken(session) ? await hashToken(session) : null, rememberMe: rememberMe === true
                 });
                 return json({ ok: true, configured: true, googleClientId, nonce,
@@ -273,17 +279,18 @@ export function createAccountService({ db, googleClientId = '', mode = 'sandbox'
                 if (sessionHash !== context.sessionHash || (current?.id || null) !== context.owner) {
                     throw accountError(409, 'account_changed', 'The signed-in account changed during Google sign-in.');
                 }
-                return await completeGoogle(request, { ...proof, confirming: context.mode === 'confirm',
+                return await completeGoogle(request, { ...proof, confirming: context.mode === 'confirm', switching: context.mode === 'switch',
                     rememberMe: context.rememberMe, expected: current, redirect: { nonce: proof.nonce, mode: context.mode } });
             }
-            if (['/api/account/google', '/api/account/google/confirm'].includes(url.pathname) && request.method === 'POST') {
+            if (['/api/account/google', '/api/account/google/confirm', '/api/account/google/switch'].includes(url.pathname) && request.method === 'POST') {
                 const confirming = url.pathname.endsWith('/confirm');
-                const expected = confirming ? requireAccountUser(request, await getUser(request)) : null;
+                const switching = url.pathname.endsWith('/switch');
+                const expected = confirming || switching ? requireAccountUser(request, await getUser(request)) : null;
                 const { credential, rememberMe } = await readJson(request, 16384);
                 const proof = await verifyBrowserIdentity(request, credential);
                 const challenge = await store.consumeChallenge(await hashToken(proof.nonce));
                 if (!challenge || challenge.context_json) throw accountError(401, 'sign_in_expired', 'Sign-in expired. Please try again.');
-                return await completeGoogle(request, { ...proof, confirming, rememberMe, expected });
+                return await completeGoogle(request, { ...proof, confirming, switching, rememberMe, expected });
             }
             if (url.pathname === '/api/account/logout' && request.method === 'POST') {
                 const user = await getUser(request);
@@ -363,12 +370,14 @@ export function createAccountService({ db, googleClientId = '', mode = 'sandbox'
             return entry ? (await store.freezeLegacyEvaluation(userId, entry)).evaluation : null;
         },
         getLicense: async userId => store ? store.getLicense(userId) : null,
+        getLicenses: async userId => store ? store.getLicenses(userId) : [],
         getLicenseById: async licenseId => store ? store.getLicenseById(String(licenseId)) : null,
         saveLicense: async (userId, license) => { requireConfigured(); return store.saveLicense(userId, normalizeLicense(license, mode)); },
         updateLicense: async (licenseId, data) => {
             requireConfigured();
             if (typeof data.active !== 'boolean') throw accountError(400, 'invalid_license', 'A verified purchase status is required.');
             return store.updateLicense(String(licenseId), { active: data.active, verifiedAt: timestamp(data.verifiedAt),
+                inactiveReason: typeof data.inactiveReason === 'string' ? data.inactiveReason : '',
                 checkedAt: data.checkedAt === undefined ? null : timestamp(data.checkedAt) });
         },
         createCheckout: async userId => {

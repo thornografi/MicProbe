@@ -58,7 +58,7 @@ export default class BasePipeline {
 
   /**
    * Frekans analizi icin yuksek cozunurluklu AnalyserNode olustur ve bagla
-   * @param {AudioNode} sourceNode - Analyser'a baglanacak node (VU ile ayni kaynak)
+   * @param {AudioNode} sourceNode - Frekans analizi icin izlenecek node
    * @returns {AnalyserNode}
    */
   createAnalysisAnalyser(sourceNode) {

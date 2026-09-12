@@ -13,12 +13,14 @@
  */
 
 import { analyzePcm } from '../modules/utils/pcmAnalysis.js';
+import { loadSpeechDetector } from '../modules/utils/speechActivity.js';
 
-if (typeof self !== 'undefined') self.onmessage = function (e) {
+if (typeof self !== 'undefined') self.onmessage = async function (e) {
   const msg = e.data;
   if (!msg || msg.type !== 'analyze') return;
   try {
-    const result = analyze(msg, ratio => self.postMessage({ type: 'progress', runId: msg.runId, ratio }));
+    const detector = msg.guidedSegments ? await loadSpeechDetector() : null;
+    const result = analyze(msg, ratio => self.postMessage({ type: 'progress', runId: msg.runId, ratio }), detector);
     self.postMessage({ type: 'done', runId: msg.runId, result });
   } catch (err) {
     self.postMessage({ type: 'error', runId: msg.runId, reason: err && err.message ? err.message : String(err) });
@@ -68,9 +70,11 @@ function fft(re, im) {
   }
 }
 
-export function analyze(msg, onProgress = () => {}) {
+export function analyze(msg, onProgress = () => {}, detector = null) {
   const channels = msg.channels.map(buffer => new Float32Array(buffer));
-  const audioMetrics = analyzePcm(channels, msg.sampleRate, { guidedSegments: msg.guidedSegments });
+  let speechActivity = null;
+  try { speechActivity = detector?.(channels, msg.sampleRate); } catch { /* Keep independent PCM checks. */ }
+  const audioMetrics = analyzePcm(channels, msg.sampleRate, { guidedSegments: msg.guidedSegments, speechActivity });
   const sampleRate = msg.sampleRate;
   const fftSize = msg.fftSize;
   const hopSize = msg.hopSize;

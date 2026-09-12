@@ -25,6 +25,7 @@ class StatusManager {
       denied: 'Microphone blocked',
       unavailable: 'Check microphone',
       preparing: 'Preparing microphone',
+      finishing: 'Finishing recording',
       ready: 'Ready to test',
       result: 'Result ready',
       recording: 'Recording Sample',
@@ -92,6 +93,7 @@ class StatusManager {
 
   _contextStatus() {
     const context = this.getContext();
+    if (context.finalizing) return 'finishing';
     if (context.pending || context.mode === 'test-analysing') return 'analysing';
     if (context.preparing) return 'preparing';
     if (context.mode === 'test-recording') return 'testing';
@@ -113,9 +115,11 @@ class StatusManager {
       ready: 'Choose the microphone you use for calls or recordings.'
     };
     const micHint = micHints[context.access] || micHints.checking;
-    const captureHint = state === 'analysing'
+    const captureHint = state === 'finishing' ? 'Recording has stopped. Preparing the captured sample…'
+      : state === 'analysing'
       ? 'Analyzing your sample. Your result will appear below.'
       : state === 'preparing' ? 'Allow microphone access if your browser asks. Capture starts when ready.'
+      : state === 'recording' || state === 'testing' ? 'Follow the prompts below. The countdown shows when recording will stop.'
       : context.hasResult ? 'Listen to your sample, then review your result.'
       : 'Stay quiet briefly, then read a sentence. The test stops automatically.';
     // These are live regions: only change their DOM text when the guidance changes.

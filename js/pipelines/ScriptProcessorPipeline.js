@@ -8,6 +8,7 @@
  *
  * Graph:
  *   Source -> ScriptProcessor -> MuteGain -> AudioContext.destination
+ *   Source -> AnalyserNode (live VU, including preparation)
  *   (PCM data onaudioprocess ile worker'a gonderilir)
  */
 import BasePipeline from './BasePipeline.js';
@@ -72,14 +73,15 @@ export default class ScriptProcessorPipeline extends BasePipeline {
 
     this.sourceNode.connect(this.nodes.processor);
 
-    // Fan-out: Processor cikisindan VU Meter'a
-    this.nodes.processor.connect(this.analyserNode);
+    // Meter the input independently of the legacy encoding buffer. Processor
+    // output is silent during preparation and otherwise arrives a block late.
+    this.sourceNode.connect(this.analyserNode);
 
     // DRY: Ortak MuteGain pattern
     this._createMuteGain(this.nodes.processor);
 
     this.log('ScriptProcessor + WASM Opus graph connected (fan-out)', {
-      graph: 'Source -> Processor -> [AnalyserNode (VU) + AnalyserNode (Analysis) + MuteGain -> Destination]',
+      graph: 'Source -> [AnalyserNode (VU) + Processor -> (AnalyserNode (Analysis) + MuteGain -> Destination)]',
       bufferSize,
       bitrate: opusBitrate,
       encoderType: this.opusWorker.encoderType

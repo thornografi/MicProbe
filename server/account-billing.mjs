@@ -83,11 +83,13 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
     if (!force && Date.now() - Date.parse(record.verifiedAt) < RECHECK_MS) return record;
     const checkedAt = Date.now();
     let active;
+    let inactiveReason = '';
     try {
       active = (await retrieve(record.licenseId, record.freemiusUserId)).active;
     } catch (error) {
       if (error.status === 403 || error.status === 404) {
         active = false;
+        inactiveReason = error.code || '';
       } else {
         // Keep the stored lifetime entitlement during a provider outage. Read it
         // again: another request may have revoked access while this one waited.
@@ -96,7 +98,7 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
       }
     }
     return accounts.updateLicense(record.licenseId, {
-      active, verifiedAt: new Date(checkedAt).toISOString(), checkedAt
+      active, inactiveReason, verifiedAt: new Date(checkedAt).toISOString(), checkedAt
     });
   }
 
@@ -113,17 +115,26 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
     return requireAccountUser(request, await accounts.getUser(request));
   }
 
-  async function refreshUserLicense(userId) {
-    let record = await accounts.getLicense(userId);
-    const checked = new Set();
-    while (record && !checked.has(record.licenseId)) {
-      checked.add(record.licenseId);
-      const updated = await refreshLicense(record);
-      if (updated?.active) return updated;
-      record = await accounts.getLicense(userId);
-      if (!record?.active && !isPendingLicense(record)) return record;
+  async function refreshUserLicense(userId, force = false) {
+    // Read the candidates once: refreshing an inactive row makes it newest and
+    // must not cause that same row to hide another purchase that can grant access.
+    const records = await accounts.getLicenses(userId);
+    let unavailable;
+    for (const record of records) {
+      try {
+        // An earlier provider request yielded; a webhook may since have changed
+        // another candidate. Never authorize from the list's cached snapshot.
+        const current = await accounts.getLicenseById(record.licenseId);
+        if (current?.userId !== userId) continue;
+        const updated = await refreshLicense(current, force);
+        if (updated?.active) return updated;
+      } catch (error) {
+        if (error.status !== 503) throw error;
+        unavailable = error;
+      }
     }
-    return record;
+    if (unavailable) throw unavailable;
+    return accounts.getLicense(userId);
   }
 
   async function startCheckout(request, user) {
@@ -325,9 +336,13 @@ export function createAccountBilling({ accounts, config, checkoutUrl, enabled,
         await refreshUserLicense(user.id);
         return null;
       }
-      if (!['/api/account/checkout', '/api/account/purchase', '/api/account/restore', '/api/account/portal'].includes(path)) return null;
+      if (!['/api/account/checkout', '/api/account/purchase', '/api/account/restore', '/api/account/portal', '/api/account/purchase/recheck'].includes(path)) return null;
       if (request.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
       const user = await requireUser(request);
+      if (path.endsWith('/recheck')) {
+        await refreshUserLicense(user.id, true);
+        return json({ ok: true });
+      }
       if (path.endsWith('/checkout')) return await startCheckout(request, user);
       if (path.endsWith('/purchase')) return await completePurchase(request, user);
       if (path.endsWith('/restore')) return await restorePurchase(request, user);

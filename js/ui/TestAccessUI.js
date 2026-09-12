@@ -25,8 +25,9 @@ export class TestAccessUI {
       : code === 'account_changed' ? 'Your account changed. Start the test again.'
       : code === 'test_access_busy' ? 'Testing is temporarily busy. Please try again later.'
       : 'We could not check test access. Please reconnect and try again.';
-    this.detail.textContent = guest || free ? 'You can also return tomorrow. Your current recording and result remain available.'
-      : 'Your current recording and result remain available.';
+    this.detail.textContent = guest ? 'Today’s guest test limit has been reached on this browser or internet connection. Any recording and result already on this page remain available.'
+      : free ? 'Your account has reached today’s limit of 5 free tests, including tests in progress. Premium lets you recheck your setup without daily limits. You can also return after midnight UTC. Any recording and result already on this page remain available.'
+      : 'Any recording and result already on this page remain available.';
     this.action.textContent = guest ? 'Sign in for free' : 'Get Lifetime Premium';
     this.action.hidden = !guest && !free;
     this.overlay.open();

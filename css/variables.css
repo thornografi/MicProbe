@@ -81,9 +81,11 @@
   --accent-success: #1db954;
   --accent-info: #2196f3;
 
-  /* Live level meters: distinguish the two signals without implying quality. */
-  --vu-local: #b1a6d1;
-  --vu-remote: #969fc1;
+  /* Gain indicators: signal, high level, overload risk. Not quality grades. */
+  --vu-local: #42cf80;
+  --vu-remote: var(--vu-local);
+  --vu-warning: #ffc04d;
+  --vu-danger: #ff6262;
   --vu-track: #2c3039;
 
   /* Playback and test progress tracks; live level meters use their own scale. */
@@ -207,7 +209,6 @@
   --sidebar-width-compact: 216px;
   --navbar-height: 80px;
   --header-height: var(--navbar-height); /* .header-base, .app-shell grid satiri ve mobil sidebar top */
-  --player-time-width: 105px;
 
   /* Fluid Layout - ekran boyutuna göre ölçeklenir */
   --max-width: 1600px;

@@ -33,11 +33,11 @@ function queryAll(selector) {
 // ============================================
 export const recordToggleBtn = getEl('recordToggle');
 export const testBtn = getEl('testBtn');
-export const testCountdownEl = getEl('testCountdown');
 export const testProgressFillEl = getEl('testProgressFill');
 export const playBtnEl = getEl('playBtn');
 export const downloadBtnEl = getEl('downloadBtn');
 export const downloadMp3BtnEl = getEl('downloadMp3Btn');
+export const downloadMenuBtnEl = getEl('downloadMenuBtn');
 export const closeConsoleBtn = getEl('closeConsole');
 export const devConsoleToggle = getEl('devConsoleToggle');
 export const refreshMicsBtn = getEl('refreshMics');
@@ -54,16 +54,6 @@ export const agcCheckbox = getEl('agc');
 // SELECTOR & INPUT ELEMENTLERI
 // ============================================
 export const micSelector = getEl('micSelector');
-
-// ============================================
-// CONTAINER ELEMENTLERI
-// ============================================
-export const opusBitrateContainer = getEl('opusBitrateContainer');
-export const pipelineContainer = getEl('pipelineContainer');
-export const encoderContainer = getEl('encoderContainer');
-export const bufferSizeContainer = getEl('bufferSizeContainer');
-export const bufferInfoText = getEl('bufferInfoText');
-export const timesliceInfoEl = getEl('timesliceInfo');
 
 // ============================================
 // VU METER ELEMENTLERI
@@ -93,7 +83,6 @@ export const showReportBtnEl = getEl('showReportBtn');
 // ============================================
 export const recordingPlayerEl = getEl('recordingPlayer');
 export const recordingPlayerRowEl = recordingPlayerEl ? recordingPlayerEl.closest('.unified-row-player') : null;
-export const recordingPlayerCardEl = recordingPlayerRowEl;
 export const recordingPlayerPanelEl = recordingPlayerRowEl;
 export const progressBarEl = getEl('progressBar');
 
@@ -101,13 +90,6 @@ export const progressBarEl = getEl('progressBar');
 // DRAWER ELEMENTLERI
 // ============================================
 export const devConsoleDrawer = getEl('devConsole');
-
-// ============================================
-// SECTION ELEMENTLERI
-// ============================================
-export const pipelineSection = getEl('pipelineSection');
-export const webrtcSection = getEl('webrtcSection');
-export const developerSection = getEl('developerSection');
 
 // ============================================
 // CUSTOM SETTINGS PANEL
@@ -162,23 +144,6 @@ export const headerBrandLink = getEl('appHeaderBrand');
 // ============================================
 // TIMER ELEMENTLERI
 // ============================================
-export const timerEl = getEl('recordingTimer');
-
-// ============================================
-// DATA-SETTING CONTAINER CACHE
-// ============================================
-export const settingContainers = {
-  webaudio: document.querySelector('[data-setting="webaudio"]'),
-  pipeline: document.querySelector(`[data-setting="${SETTING_NAMES.PIPELINE}"]`),
-  encoder: document.querySelector(`[data-setting="${SETTING_NAMES.ENCODER}"]`),
-  buffer: document.querySelector('[data-setting="buffer"]'),
-  loopback: document.querySelector('[data-setting="loopback"]'),
-  bitrate: document.querySelector(`[data-setting="${SETTING_NAMES.BITRATE}"]`),
-  mediaBitrate: document.querySelector(`[data-setting="${SETTING_NAMES.MEDIA_BITRATE}"]`),
-  timeslice: document.querySelector(`[data-setting="${SETTING_NAMES.TIMESLICE}"]`)
-};
-
-export const timesliceContainerEl = settingContainers.timeslice;
 
 // ============================================
 // RADIO BUTON KOLEKSIYONLARI

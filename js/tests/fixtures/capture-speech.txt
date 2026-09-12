@@ -1,0 +1,4 @@
+Generated locally on 2026-09-12 with Windows System.Speech, Microsoft Zira Desktop.
+16 kHz, mono, signed 16-bit PCM WAV. No human recording or personal data.
+Text: I am checking my microphone for my next conversation. My voice should sound clear and natural.
+This fixture tests voice-activity integration, not human speech accuracy or intelligibility.

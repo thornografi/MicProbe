@@ -4,13 +4,14 @@ export function accountError(status, code, message) {
     return Object.assign(new Error(message), { status, code });
 }
 
-const userView = row => row ? { id: row.id, email: row.email, name: row.name,
+const userView = row => row ? { id: row.id, email: row.email, name: row.name, picture: row.picture_url || '',
     googleSub: row.google_sub, authoritativeEmail: row.email_authoritative === 1,
     googleVerifiedAt: row.google_verified_at ? new Date(row.google_verified_at).toISOString() : null
 } : null;
 const licenseView = row => row ? {
     licenseId: row.license_id, freemiusUserId: row.freemius_user_id,
-    mode: row.mode, active: row.active === 1, verifiedAt: new Date(row.verified_at).toISOString()
+    mode: row.mode, active: row.active === 1, verifiedAt: new Date(row.verified_at).toISOString(),
+    inactiveReason: row.active === 1 ? '' : row.inactive_reason || ''
 } : null;
 const reportView = row => ({
     id: row.id, report: JSON.parse(row.report_json), note: row.note,
@@ -146,20 +147,29 @@ export class AccountStore {
 
     async upsertUser(identity) {
         const now = Date.now();
-        return userView(await this.statement(`INSERT INTO accounts (id, google_sub, email, name, created_at, updated_at, email_authoritative, google_verified_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(google_sub) DO UPDATE SET
+        return userView(await this.statement(`INSERT INTO accounts (id, google_sub, email, name, created_at, updated_at, email_authoritative, google_verified_at, picture_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(google_sub) DO UPDATE SET
             email = excluded.email, name = excluded.name, updated_at = excluded.updated_at,
-            email_authoritative = excluded.email_authoritative, google_verified_at = excluded.google_verified_at RETURNING *`,
-        crypto.randomUUID(), identity.sub, identity.email, identity.name || '', now, now, identity.authoritativeEmail ? 1 : 0, now).first());
+            email_authoritative = excluded.email_authoritative, google_verified_at = excluded.google_verified_at,
+            picture_url = excluded.picture_url RETURNING *`,
+        crypto.randomUUID(), identity.sub, identity.email, identity.name || '', now, now, identity.authoritativeEmail ? 1 : 0, now, identity.picture || '').first());
     }
 
-    async addSession(hash, userId, expiresAt, oldHash) {
+    async addSession(hash, userId, expiresAt, oldHash, expectedOwner = null) {
+        const now = Date.now();
         const statements = [
-            this.statement('DELETE FROM account_sessions WHERE expires_at <= ?', Date.now()),
-            this.statement('INSERT INTO account_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', hash, userId, Date.now(), expiresAt)
+            this.statement('DELETE FROM account_sessions WHERE expires_at <= ?', now),
+            expectedOwner
+                ? this.statement(`INSERT INTO account_sessions (token_hash, user_id, created_at, expires_at)
+                    SELECT ?, ?, ?, ? FROM account_sessions WHERE token_hash = ? AND user_id = ? AND expires_at > ?`,
+                hash, userId, now, expiresAt, oldHash, expectedOwner, now)
+                : this.statement('INSERT INTO account_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', hash, userId, now, expiresAt)
         ];
-        if (oldHash) statements.push(this.statement('DELETE FROM account_sessions WHERE token_hash = ?', oldHash));
-        await this.db.batch(statements);
+        // Only the attempt that still owns the old session can replace it.
+        if (oldHash) statements.push(this.statement(`DELETE FROM account_sessions WHERE token_hash = ?
+            AND EXISTS (SELECT 1 FROM account_sessions WHERE token_hash = ?)`, oldHash, hash));
+        const results = await this.db.batch(statements);
+        return results[1].meta.changes === 1;
     }
 
     async getUser(sessionHash) {
@@ -181,6 +191,12 @@ export class AccountStore {
         return row ? { ...licenseView(row), userId: row.user_id } : null;
     }
 
+    async getLicenses(userId) {
+        const { results } = await this.statement(`SELECT * FROM account_licenses WHERE user_id = ? AND mode = ?
+            ORDER BY active DESC, (verified_at = 0) DESC, verified_at DESC, license_id DESC`, userId, this.mode).all();
+        return results.map(licenseView);
+    }
+
     async saveLicense(userId, license) {
         try {
             await this.statement(`INSERT INTO account_licenses (user_id, mode, license_id, freemius_user_id, active, verified_at)
@@ -195,12 +211,12 @@ export class AccountStore {
         }
     }
 
-    async updateLicense(licenseId, { active, verifiedAt, checkedAt = null }) {
+    async updateLicense(licenseId, { active, verifiedAt, inactiveReason = '', checkedAt = null }) {
         // A delayed provider response must not overwrite a check started later.
         // If two checks start in the same millisecond, revocation wins the tie.
-        await this.statement(`UPDATE account_licenses SET active = ?, verified_at = ? WHERE mode = ? AND license_id = ?
+        await this.statement(`UPDATE account_licenses SET active = ?, verified_at = ?, inactive_reason = ? WHERE mode = ? AND license_id = ?
             AND (? IS NULL OR verified_at < ? OR (verified_at = ? AND active >= ?))`,
-        active ? 1 : 0, verifiedAt, this.mode, licenseId, checkedAt, checkedAt, checkedAt, active ? 1 : 0).run();
+        active ? 1 : 0, verifiedAt, active ? '' : inactiveReason, this.mode, licenseId, checkedAt, checkedAt, checkedAt, active ? 1 : 0).run();
         return licenseView(await this.statement('SELECT * FROM account_licenses WHERE mode = ? AND license_id = ?', this.mode, licenseId).first());
     }
 

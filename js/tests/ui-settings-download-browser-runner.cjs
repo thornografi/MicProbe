@@ -86,7 +86,7 @@ const BASE = 'http://localhost:8080';
     await page.locator('#recordToggle').click();
     await page.waitForFunction(() => document.body.dataset.appState === 'recording');
     await page.waitForTimeout(1200);
-    await page.waitForFunction(() => document.querySelector('#micActivityStatus').textContent === 'Sound detected');
+    await page.waitForFunction(() => ['detected', 'high', 'clipping'].includes(document.querySelector('#micActivityStatus').dataset.state));
     assert.equal(await page.locator('#vuMeterReading').isVisible(), false, 'Technical readings stay optional during capture');
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
@@ -107,7 +107,8 @@ const BASE = 'http://localhost:8080';
     await assertMetersStopped();
     assert.equal(await page.locator('#reportPanel').evaluate(node => node.open), false, 'Fresh results must not interrupt playback with a modal');
     assert.equal(await page.locator('#inlineResult').isVisible(), true);
-    assert.equal(await page.locator('#playerFilename').innerText(), 'Microphone check');
+    assert.equal(await page.locator('#testGuide').evaluate(node => node.open), false);
+    assert.equal(await page.locator('#playerFilename').innerText(), 'Voice recording');
     assert.doesNotMatch(await page.locator('#playerMeta').innerText(), /audio\/|KB/);
     assert.match(await page.locator('#captureHint').innerText(), /Listen to your sample/);
     await page.getByRole('button', { name: 'Open test report', exact: true }).click();
@@ -136,13 +137,17 @@ const BASE = 'http://localhost:8080';
     assert.equal(await page.locator('#recordingPlayer').isVisible(), true, 'Restoring settings must preserve the recorded sample for comparison');
     assert.equal(await page.locator('#settingsModified').isVisible(), false);
     await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.close());
+    await page.locator('#downloadMenuBtn').click();
+    await page.locator('#downloadMenu.is-positioned').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#downloadOriginalLabel').innerText(), 'Original · WAV');
     const originalPromise = page.waitForEvent('download');
-    await page.getByRole('link', { name: 'Download original' }).click();
+    await page.locator('#downloadBtn').click();
     const original = await originalPromise;
     assert.equal(original.suggestedFilename(), recorded.name);
     assert.deepEqual(await fs.readFile(await original.path()), Buffer.from(recorded.bytes), 'Original download must preserve the exact measured file');
     const mp3Promise = page.waitForEvent('download');
-    await page.getByRole('link', { name: 'MP3', exact: true }).click();
+    await page.locator('#downloadMenuBtn').click();
+    await page.locator('#downloadMp3Btn').click();
     const mp3 = await mp3Promise;
     assert.match(mp3.suggestedFilename(), /\.mp3$/);
     const mp3Bytes = await fs.readFile(await mp3.path());
@@ -165,14 +170,17 @@ const BASE = 'http://localhost:8080';
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.locator('.player-downloads').scrollIntoViewIfNeeded();
-    const layout = await page.locator('.player-downloads').evaluate(node => ({
+    await page.locator('#downloadMenuBtn').click();
+    await page.locator('#downloadMenu.is-positioned').waitFor({ state: 'visible' });
+    const layout = await page.locator('#downloadMenu').evaluate(node => ({
       left: node.getBoundingClientRect().left, right: node.getBoundingClientRect().right, width: innerWidth,
-      buttons: [...node.querySelectorAll('a')].map(child => { const r = child.getBoundingClientRect(); return { left: r.left, right: r.right, scroll: child.scrollWidth, client: child.clientWidth }; })
+      buttons: [...node.querySelectorAll('a')].map(child => { const r = child.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, scroll: child.scrollWidth, client: child.clientWidth }; })
     }));
     assert(layout.left >= 0 && layout.right <= layout.width);
-    assert(layout.buttons[0].right <= layout.buttons[1].left, 'Download controls must not overlap');
+    assert(layout.buttons[0].bottom <= layout.buttons[1].top, 'Download options must not overlap');
     assert(layout.buttons.every(button => button.scroll <= button.client + 1), 'Download labels must fit');
-    await page.locator('#recordingPlayer').screenshot({ path: '.tmp/ui-download-mobile.png' });
+    await page.screenshot({ path: '.tmp/ui-download-mobile.png' });
+    await page.keyboard.press('Escape');
     for (const width of [320, 390, 768, 1100, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       const boxes = await page.evaluate(() => {

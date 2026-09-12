@@ -64,7 +64,7 @@
 .page-header {
   width: 100%;
   max-width: var(--app-content-max);
-  padding: 0 0 var(--space-xl);
+  padding: 0 0 var(--space-lg);
 }
 
 .header-left {
@@ -91,7 +91,7 @@
 /* Baslik notr/beyaz - profil accent'i ikon ve ince detaylarda yasar */
 .header-left h1 {
   margin: 0;
-  font-size: var(--fs-h1);
+  font-size: var(--fs-2xl);
   font-weight: 600;
   line-height: 1.18;
   color: var(--text-primary);
@@ -105,6 +105,31 @@
   font-size: var(--fs-md);
   line-height: 1.6;
   color: var(--text-secondary);
+}
+
+#scenarioBasis {
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+@media (min-width: 1024px) {
+  .app-shell:has(.scenario-workspace:not([hidden])) .app-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+  }
+  .app-shell:has(.scenario-workspace:not([hidden])) .app-header-content {
+    max-width: none;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+  .app-shell:has(.scenario-workspace:not([hidden])) .app-header .brand-lockup {
+    padding-inline: var(--space-lg);
+  }
+  .app-shell:has(.scenario-workspace:not([hidden])) .workspace-bar {
+    max-width: none;
+    justify-content: flex-end;
+  }
+  .app-shell:has(.scenario-workspace:not([hidden])) .workspace-label { display: none; }
 }
 
 .user-message {

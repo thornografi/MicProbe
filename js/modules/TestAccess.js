@@ -1,3 +1,5 @@
+import { projectCaptureTiming } from './CaptureOutcome.js';
+
 const STORAGE_KEY = 'micprobe:test-settlements:v1';
 const finite = value => Number.isFinite(value) ? value : null;
 function sessionStorageOrNull() { try { return globalThis.sessionStorage; } catch { return null; } }
@@ -89,7 +91,8 @@ export class TestAccess {
       sampleCount: finite(m?.sampleCount), durationMs: finite(m?.durationMs),
       signal: { rmsDb: finite(m?.signal?.rmsDb), peakDb: finite(m?.signal?.peakDb) },
       clipping: { status: m?.clipping?.status === 'measured' ? 'measured' : 'unavailable',
-        method: m?.clipping?.method === 'sample-saturation' ? 'sample-saturation' : null, rate: finite(m?.clipping?.rate) } };
+        method: m?.clipping?.method === 'sample-saturation' ? 'sample-saturation' : null, rate: finite(m?.clipping?.rate) },
+      recording: projectCaptureTiming(report.recording) };
     entry.operation = 'complete';
     entry.active = false;
     this.persist();

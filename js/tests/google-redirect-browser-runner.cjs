@@ -12,6 +12,7 @@ async function run(browser, rememberMe) {
   const env = await createPage(browser, { configured: true });
   const { context, page } = env;
   const starts = [], callbacks = [], finishes = [];
+  let providerAccount = 'browser-owner', cancelAtGoogle = false;
   try {
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'platform', { value: 'MacIntel' });
@@ -44,8 +45,9 @@ async function run(browser, rememberMe) {
         }
       } } };` }));
     await page.route('https://accounts.google.com/gsi/redirect-fixture?*', route => {
-      const credential = JSON.stringify({ sub: 'browser-owner', nonce: new URL(route.request().url()).searchParams.get('nonce'),
-        aud: 'fixture-client', iss: 'https://accounts.google.com', email: 'browser@gmail.com', email_verified: true,
+      if (cancelAtGoogle) return route.fulfill({ contentType: 'text/html', body: '<p>Google verification fixture</p>' });
+      const credential = JSON.stringify({ sub: providerAccount, nonce: new URL(route.request().url()).searchParams.get('nonce'),
+        aud: 'fixture-client', iss: 'https://accounts.google.com', email: `${providerAccount}@gmail.com`, email_verified: true,
         iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 });
       return route.fulfill({ contentType: 'text/html', body: `<form method="post" action="${BASE}/api/account/google/redirect">
         <input name="g_csrf_token" value="fixture-csrf"><textarea name="credential">${credential}</textarea></form>
@@ -61,8 +63,10 @@ async function run(browser, rememberMe) {
     });
     await page.locator('#accountMenuBtn').click();
     await page.getByRole('button', { name: 'Google redirect fixture' }).waitFor();
-    if (rememberMe) {
-      await page.getByRole('checkbox', { name: 'Keep me signed in on this device' }).check();
+    const remember = page.getByRole('checkbox', { name: 'Keep me signed in on this device' });
+    assert.equal(await remember.isChecked(), true, 'Google redirect sign-in starts with the checked default');
+    if (!rememberMe) {
+      await remember.uncheck();
       await page.waitForFunction(() => document.querySelector('.account-google button'));
     }
     assert.equal(starts.at(-1).rememberMe, rememberMe);
@@ -80,8 +84,11 @@ async function run(browser, rememberMe) {
       assert.deepEqual(env.pageErrors, []);
       return;
     }
-    await page.getByText('Signed in. New reports will be saved. Premium requires a verified purchase.', { exact: true }).waitFor({ timeout: 20000 });
-    assert.equal(await page.getByText('Free account', { exact: true }).count(), 1);
+    await page.waitForFunction(() => document.body.classList.contains('app-mode')
+      && document.getElementById('accountMenuBtn').getAttribute('aria-label') === 'Account'
+      && !document.getElementById('accountDialog').open, null, { timeout: 20000 });
+    assert.equal(new URL(page.url()).hash, '');
+    assert.equal(await page.locator('#userMessage').isVisible(), false, 'Google redirect returns without a sign-in toast');
     assert.equal(callbacks.length, 1); assert.equal(finishes.length, 1);
     assert.ok(!callbacks[0].includes('micprobe_login_nonce_'), 'Cross-site POST does not carry Lax browser proof');
     assert.ok(finishes[0].includes('micprobe_login_nonce_'), 'Same-origin exchange carries the proof');
@@ -91,6 +98,42 @@ async function run(browser, rememberMe) {
     assert.equal(await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.currentReport?.run.id), 'redirect-guest-report');
     assert.deepEqual(env.pageErrors, []);
     assert.equal((await db.prepare('SELECT count(*) AS n FROM account_reports').first()).n, 0);
+    const identity = () => page.evaluate(async () => ({ user: (await import('/js/modules/AccountAccess.js')).default.getState().user,
+      report: (await import('/js/ui/ReportPanelUI.js')).default.currentReport }));
+    const original = await identity();
+    const openSwitch = async () => {
+      if (!await page.locator('#accountDialog').isVisible()) await page.locator('#accountMenuBtn').click();
+      await page.getByRole('button', { name: 'Switch account', exact: true }).click();
+      await page.getByRole('button', { name: 'Google redirect fixture' }).waitFor();
+      assert.equal(starts.at(-1).switching, true);
+    };
+    await openSwitch();
+    assert.equal((await identity()).user.id, original.user.id);
+    cancelAtGoogle = true;
+    await page.getByRole('button', { name: 'Google redirect fixture' }).click();
+    await page.getByText('Google verification fixture').waitFor();
+    await page.goBack(); await ready(page);
+    await page.waitForFunction(() => document.getElementById('accountDialog').open);
+    assert.equal((await identity()).user.id, original.user.id);
+    assert.equal((await identity()).report?.run.id, 'redirect-guest-report');
+    const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+    if (await cancel.isVisible()) await cancel.click();
+    cancelAtGoogle = false;
+    for (const selected of ['browser-owner', 'another-browser-owner']) {
+      providerAccount = selected;
+      await openSwitch();
+      await page.getByRole('button', { name: 'Google redirect fixture' }).click();
+      await page.waitForFunction(() => document.body.classList.contains('app-mode')
+        && document.getElementById('accountMenuBtn').getAttribute('aria-label') === 'Account'
+        && !document.getElementById('accountDialog').open);
+      const result = await identity();
+      assert.equal(result.user.id === original.user.id, selected === 'browser-owner');
+      assert.equal(result.report?.run.id || null, selected === 'browser-owner' ? 'redirect-guest-report' : null);
+      if (selected === 'browser-owner') {
+        assert.deepEqual((await context.cookies(BASE)).find(cookie => cookie.name === 'micprobe_session'), session);
+      }
+    }
+    assert.deepEqual(env.pageErrors, []);
   } catch (error) {
     console.error({ url: page.url(), text: (await page.locator('body').innerText()).slice(-2000),
       errors: env.pageErrors, consoleErrors: env.consoleErrors,
@@ -105,7 +148,7 @@ async function run(browser, rememberMe) {
     const browser = await engine.launch({ headless: true, ...options });
     try { for (const remember of name === 'WebKit' ? [false] : [false, true]) {
       await run(browser, remember);
-      console.log(name === 'WebKit' ? 'PASS WebKit: missing Secure cookie refusal and return to Account (localhost HTTP)' : `PASS ${name}: redirect and rememberMe=${remember}`);
+      console.log(name === 'WebKit' ? 'PASS WebKit: missing Secure cookie refusal and return to Account (localhost HTTP)' : `PASS ${name}: redirect, rememberMe=${remember}, switch cancellation, same account and new account`);
     } }
     finally { await browser.close(); }
   }

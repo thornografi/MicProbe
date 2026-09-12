@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const { jsPDF } = require('../lib/jspdf/jspdf.umd.min.js');
 const { normalizeEnvironment, OS_NAMES, BROWSER_NAMES } = require('../modules/EnvironmentContext.js');
 
-function createPdfCapture({ formatReviewDifference, formatPlatformComparison } = {}) {
+function createPdfCapture() {
   const draws = [];
   let doc, output;
   function RecordedPDF(options) {
@@ -23,7 +23,7 @@ function createPdfCapture({ formatReviewDifference, formatPlatformComparison } =
     .replace('export async function ', 'async function ');
   const exporter = vm.runInNewContext(source + '\ndownloadReportPdf', {
     ...require('../modules/MeasurementValue.js'),
-    structuredClone, jspdf: { jsPDF: RecordedPDF }, formatReviewDifference, formatPlatformComparison,
+    structuredClone, jspdf: { jsPDF: RecordedPDF },
     normalizeEnvironment, OS_NAMES, BROWSER_NAMES,
     describeTroubleshootingContext: () => [['Operating system', 'Windows'], ['Problem', 'Speech is quiet']],
     downloadBlob: (blob, filename) => { output = { blob, filename }; }
@@ -42,14 +42,17 @@ async function verifyOutput(output) {
 
 test('PDF uses accepted summary and small nonzero metrics, without old review questions or comparisons', async () => {
   const capture = createPdfCapture(), params = summaryFixture('accepted-pdf');
-  params.detailed = { summary: { ...params.free, summary: 'Accepted independent result.' },
+  params.detailed = { summary: { ...params.free, summary: 'Accepted independent result.', nextStep: 'Accepted next step for this recording.' },
     findings: [{ severity: 'warning', message: 'A measured peak finding.' }],
     metrics: [{ label: 'Full-scale samples', value: 0.00003, unit: '%' }], recommendations: [],
     review: { runId: 'accepted-pdf', state: { comparison: { runId: 'other' } }, decision: { title: 'Old interactive result' } } };
   params.free.summary = 'A stale recalculated summary';
+  params.free.nextStep = 'A stale recalculated next step';
   await capture.exporter(params);
   const text = capture.draws.map(draw => draw.value).join('\n');
   assert.match(text, /Accepted independent result/);
+  assert.match(text, /Accepted next step for this recording/);
+  assert.doesNotMatch(text, /stale recalculated next step/);
   assert.match(text, /0\.00003 %/);
   assert.doesNotMatch(text, /Old interactive result|A stale recalculated summary|Saved version|user-reported/);
   await verifyOutput(capture.output);
@@ -59,11 +62,13 @@ test('PDF displays independent-1 scope characters as text without changing the a
   const capture = createPdfCapture(), params = summaryFixture('legacy-scope-pdf');
   const sentence = 'Details for this earlier recording were prepared when it was reopened.';
   params.detailed.summary = { ...params.free, scope: [...params.free.scope, sentence] };
+  params.free.nextStep = 'Do not add current advice to a legacy result';
   const accepted = structuredClone(params.detailed);
   await capture.exporter(params);
   const text = capture.draws.map(draw => draw.value).join(' ').replace(/\s+/g, ' ');
   assert.ok(text.includes(`${params.free.scope} ${sentence}`));
   assert.deepEqual(params.detailed, accepted);
+  assert.doesNotMatch(text, /Do not add current advice/);
   await verifyOutput(capture.output);
 });
 
@@ -121,7 +126,7 @@ test('Premium PDF retains findings, device context, metrics and instructions as 
   const text = capture.draws.map(draw => draw.value).join(' ').replace(/\s+/g, ' ');
   for (const visible of ['Summary', 'Findings', fixture.free.findings[0].message, fixture.free.scope,
     'Device & Profile', fixture.report.device.micName, 'Your Troubleshooting Context', 'Operating system: Windows',
-    'Detailed Metrics', 'Loudest Short-window Level', 'What to do', fixture.detailed.recommendations[0].reason,
+    'Detailed Metrics', 'Loudest Short-window Level', 'Guidance and measurement notes', fixture.detailed.recommendations[0].reason,
     fixture.detailed.recommendations[0].steps[0]]) {
     assert(text.includes(visible), `Premium PDF lost detail: ${visible}`);
   }

@@ -34,8 +34,8 @@ test('iOS uses a server-bound redirect for buttons and suppresses optional popup
   await f.signin.offer(); assert.equal(f.count('prompt'), 0);
   await f.signin.renderButton(target(), { isCurrent: () => true, redirect: { confirming: true, rememberMe: true }, onCredential() {} });
   assert.equal(f.calls.findLast(call => call.kind === 'init').options.ux_mode, 'redirect');
-  assert.deepEqual(starts[0].body, { confirming: true, rememberMe: true });
-  assert.deepEqual(saved[0], { nonce: 'nonce', mode: 'confirm', owner: 'owner', snapshot: undefined });
+  assert.deepEqual(starts[0].body, { confirming: true, switching: false, rememberMe: true });
+  assert.deepEqual(saved[0], { nonce: 'nonce', mode: 'confirm', owner: 'owner', snapshot: undefined, intent: undefined });
 });
 
 test('button follows its container width without replacing the sign-in challenge', async t => {

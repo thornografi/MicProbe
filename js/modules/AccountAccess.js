@@ -99,16 +99,19 @@ export class AccountAccess {
     return this.getState();
   }
   getSignInConfig() { return this.api('/config'); }
-  async signInWithGoogle(credential, { rememberMe = false } = {}) {
+  async signInWithGoogle(credential, { rememberMe = false, switchFrom = null } = {}) {
+    if (switchFrom && switchFrom !== this.state.user?.id) throw new Error('account_changed');
     let signedIn;
     try {
-      signedIn = await this.api('/google', { method: 'POST', body: { credential, rememberMe: rememberMe === true } });
+      signedIn = await this.api(switchFrom ? '/google/switch' : '/google', {
+        method: 'POST', body: { credential, rememberMe: rememberMe === true }
+      });
     } catch (error) {
       if (!error.status || error.status >= 500) {
         // A lost reply may follow a committed session. Never replay the token
         // or continue checkout on an identity we cannot correlate to this reply.
         const state = await this.refresh({ sessionOnly: true });
-        if (state.user && !state.error) throw new Error('sign_in_check_account');
+        if (state.user && !state.error && (!switchFrom || state.user.id !== switchFrom)) throw new Error('sign_in_check_account');
       }
       throw error;
     }

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact &amp; support — MicProbe</title>
+  <meta name="description" content="Get help with MicProbe microphone tests, purchases, refunds and account requests. Find our email address and the information to include.">
+  <link rel="canonical" href="https://micprobe.com/contact.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Contact &amp; support — MicProbe">
+  <meta property="og:description" content="Help with microphone tests, purchases and your MicProbe account.">
+  <meta property="og:url" content="https://micprobe.com/contact.html">
+  <meta property="og:image" content="https://micprobe.com/social-card.png">
+  <meta name="theme-color" content="#15171c">
+  <link rel="icon" href="/favicon.ico?v=3" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="/favicon-96.png?v=3" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" sizes="180x180">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/shared.css">
+  <script type="module" src="/js/footer.js"></script>
+  <script type="module" src="/js/contact.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#contact-main">Skip to main content</a>
+  <div class="legal-page">
+    <header class="legal-header header-base">
+      <a href="/" class="brand-lockup" title="Back to home">
+        <img class="brand-mark" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
+        <span class="brand-title brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
+      </a>
+      <a href="/app" class="back-link">Open MicProbe</a>
+    </header>
+    <main id="contact-main" class="legal-content contact-content" tabindex="-1">
+      <h1>Contact &amp; support</h1>
+      <p>Need a hand with your test, purchase or account? You can contact us without signing in.</p>
+      <div class="contact-email">
+        <a id="supportEmail" href="mailto:support@micprobe.com">support@micprobe.com</a>
+        <button type="button" class="btn btn--secondary btn--m" data-copy-target="supportEmail" data-copy-success="Email address copied." hidden>Copy email address</button>
+      </div>
+      <p>Email links open your email app. If none opens, copy the address into your usual email service. Support messages are read and answered by the MicProbe operator, Burak ÖZER.</p>
+      <p id="contactCopyStatus" class="contact-copy-status" role="status" aria-live="polite"></p>
+      <nav class="contact-topics" aria-label="Help topics">
+        <a href="#technical">Test problems</a>
+        <a href="#purchase">Purchases &amp; refunds</a>
+        <a href="#account">Account &amp; privacy</a>
+      </nav>
+
+      <section id="technical" aria-labelledby="technical-title">
+        <h2 id="technical-title">Help with a microphone test</h2>
+        <p>First, check the selected microphone, allow microphone access in your browser's site settings, then use Refresh beside the microphone selector. Check that your microphone is not muted. If another app is using it, close that app and retry.</p>
+        <p>If the problem continues, include what happened, the scenario you chose, your browser and operating system, and the exact error you saw. The <a href="/#faq">FAQ</a> explains test limits, supported browser features and what the tests measure.</p>
+        <details class="contact-template">
+          <summary>What to include in a support message</summary>
+          <label for="supportTemplate">Copy this outline into your email and fill in the relevant details.</label>
+          <textarea id="supportTemplate" rows="9" readonly spellcheck="false">What happened:
+What I expected:
+Steps to reproduce:
+Selected scenario:
+Microphone model (optional):
+Browser and version:
+Operating system:
+Exact error message:
+What I have already tried:</textarea>
+          <button type="button" class="btn btn--secondary btn--m" data-copy-target="supportTemplate" data-copy-success="Support outline copied. Paste it into your email and fill in the details." hidden>Copy support outline</button>
+        </details>
+        <p>Your recording is not attached automatically. Do not send passwords, full license keys or payment-card details. Include a screenshot only if it helps, and remove private information first.</p>
+        <a class="btn btn--secondary btn--m" href="mailto:support@micprobe.com?subject=MicProbe%20test%20help">Email test support</a>
+      </section>
+
+      <section id="purchase" aria-labelledby="purchase-title">
+        <h2 id="purchase-title">Purchases &amp; refunds</h2>
+        <p>Already paid? Sign in to MicProbe with the Google account you originally linked. Open Account → Manage purchase for receipts and purchase management. If your purchase is not linked yet, use Link an earlier purchase with the license key from your purchase email.</p>
+        <p>If you cannot access the original account or find your purchase, email us with the purchase email address and receipt or order number. You do not need to buy again to ask for help.</p>
+        <p>MicProbe's 7-day refund policy covers an issue that makes the product unusable and that we cannot resolve. A full refund is considered after reviewing the problem. <a href="/terms.html#refunds">Read the refund conditions</a> before requesting a refund.</p>
+        <a class="btn btn--secondary btn--m" href="mailto:support@micprobe.com?subject=MicProbe%20purchase%20or%20refund%20request">Email purchase support</a>
+      </section>
+
+      <section id="account" aria-labelledby="account-title">
+        <h2 id="account-title">Account &amp; privacy requests</h2>
+        <p>To request a copy, correction or deletion of your account information, email us from the address linked to your MicProbe account when possible. Tell us which action you need. We verify account ownership before making changes; sending an email does not automatically delete your account.</p>
+        <p>You can delete individual saved reports directly from Saved reports. Signing out ends this browser's session; it does not delete your account or cancel a lifetime purchase. See the <a href="/privacy.html">Privacy Policy</a> for details.</p>
+        <a class="btn btn--secondary btn--m" href="mailto:support@micprobe.com?subject=MicProbe%20account%20data%20request">Email an account request</a>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="site-footer-content">
+        <div class="site-footer-identity">
+          <a href="/" class="site-footer-brand brand-lockup">
+            <img class="brand-mark" src="/assets/micprobe-mark.svg" width="32" height="32" alt="">
+            <span class="brand-wordmark"><span class="brand-word brand-word--mic">Mic</span><span class="brand-word brand-word--probe">Probe</span></span>
+          </a>
+          <p class="site-footer-description">Microphone checks for calls and voice messages.</p>
+          <p class="site-footer-meta">&copy; <span data-copyright-year>2026</span> MicProbe</p>
+        </div>
+        <nav class="site-footer-links" aria-label="Footer">
+          <div class="site-footer-group">
+            <p class="site-footer-heading">Explore</p>
+            <a href="/#features">Features</a>
+            <a href="/#how-it-works">How it works</a>
+            <a href="/#pricing">Pricing</a>
+          </div>
+          <div class="site-footer-group">
+            <p class="site-footer-heading">Information</p>
+            <a href="/privacy.html">Privacy</a>
+            <a href="/terms.html">Terms</a>
+            <a href="/#faq">FAQ</a>
+            <a href="/contact.html" class="site-footer-contact" aria-current="page">Contact</a>
+          </div>
+        </nav>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

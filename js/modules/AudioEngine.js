@@ -91,13 +91,15 @@ class AudioEngine {
    * @param {MediaStream} stream - getUserMedia'dan gelen stream
    * @returns {AnalyserNode} - VuMeter icin kullanilacak analyser
    */
-  async connectStream(stream) {
+  async connectStream(stream, { signal } = {}) {
     if (!stream) {
       throw new Error('AudioEngine: Stream gerekli');
     }
 
     // Context hazir degilse hazirla
     await this.resume();
+    // A meter start cancelled during resume must not replace a newer source.
+    signal?.throwIfAborted();
 
     // Onceki source varsa disconnect
     if (this.sourceNode) {

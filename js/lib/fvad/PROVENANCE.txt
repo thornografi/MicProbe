@@ -1,0 +1,10 @@
+libfvad.wasm: unchanged binary from @ozymandiasthegreat/vad 2.0.7.
+Source: https://github.com/OzymandiasTheGreat/libfvad-wasm
+Archive: https://registry.npmjs.org/@ozymandiasthegreat/vad/-/vad-2.0.7.tgz
+Archive SHA-1: ef8eb4a8a2e0e4e45ded1fd5c69db7aca2adb99d
+Binary SHA-256: 3fadafc9c5c1c3117d0178ae631484c6dabc72e0f8742b95c370cd39f46cf171
+Retrieved 2026-09-12. 15,331 bytes. BSD-3-Clause; retain LICENSE, PATENTS, AUTHORS.
+To reproduce vendoring: npm pack @ozymandiasthegreat/vad@2.0.7 --ignore-scripts,
+extract package/dist/libfvad.wasm and the three notice files, verify the hashes.
+No upstream JavaScript wrapper is used. MicProbe owns the offline loader and
+frame adapter in js/modules/utils/speechActivity.js. Audio is never uploaded.

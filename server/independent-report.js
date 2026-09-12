@@ -4,7 +4,7 @@ const reportEvaluator = require('../js/modules/ReportEvaluator.js').default;
 const { usableReport } = require('../js/modules/MeasurementValidity.js');
 const { evaluatePremiumReport } = require('./premium-report-evaluator.js');
 
-const EVALUATION_VERSION = 'independent-2';
+const EVALUATION_VERSION = 'independent-6';
 function evaluateIndependentReport(report, catalogs, { legacy = false } = {}) {
   const checked = usableReport(report);
   const detailed = evaluatePremiumReport(report, catalogs);
@@ -13,7 +13,7 @@ function evaluateIndependentReport(report, catalogs, { legacy = false } = {}) {
     && item.id !== 'SILENCE' && ['warning', 'critical'].includes(item.severity));
   const publicResult = { overall: free.overall, summary: free.summary, scope: [free.scope,
     ...(legacy ? ['Details for this earlier recording were prepared when it was reopened. The original measurements are unchanged.'] : [])].join(' '),
-    scopeSummary: free.scopeSummary, assessment: free.assessment, platform: detailed.platform || null };
+    nextStep: free.nextStep, scopeSummary: free.scopeSummary, assessment: free.assessment, platform: detailed.platform || null };
   return {
     version: EVALUATION_VERSION, runId: report.run?.id, evaluatedAt: new Date().toISOString(),
     source: 'measurement-rules', legacy, public: publicResult,

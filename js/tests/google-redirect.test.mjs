@@ -74,6 +74,64 @@ test('redirect proof requires its browser cookie, cannot bypass the flow and rej
   assert.equal((await f.send('/google/redirect/start', { confirming: true })).status, 401);
 });
 
+for (const selected of ['alice', 'bob']) test(`mobile switch to ${selected} keeps the old session until verification`, async t => {
+  const f = fixture(t), login = await f.finish(await f.start()), original = (await login.json()).user;
+  const session = login.headers.getSetCookie().find(value => value.startsWith('micprobe_session=')).split(';')[0];
+  const before = await f.db.prepare('SELECT * FROM account_sessions').all();
+  const flow = await f.start({ switching: true, rememberMe: true }, session, original.id);
+  assert.deepEqual(await f.db.prepare('SELECT * FROM account_sessions').all(), before);
+  const response = await f.finish(flow, `${session}; ${flow.cookie}`, selected);
+  assert.equal(response.status, 200, await response.clone().text());
+  const result = await response.json();
+  assert.equal(result.redirect.mode, 'switch');
+  assert.equal(result.user.id === original.id, selected === 'alice');
+  assert.equal(response.headers.getSetCookie().some(value => value.startsWith('micprobe_session=')), selected !== 'alice');
+});
+
+test('a stale mobile switch cannot replace an account selected in another tab', async t => {
+  const f = fixture(t), login = await f.finish(await f.start()), original = (await login.json()).user;
+  const session = login.headers.getSetCookie()[0].split(';')[0];
+  const flow = await f.start({ switching: true }, session, original.id);
+  const other = await f.finish(await f.start(), undefined, 'carol');
+  const otherSession = other.headers.getSetCookie()[0].split(';')[0];
+  assert.equal((await f.finish(flow, `${otherSession}; ${flow.cookie}`, 'bob')).status, 409);
+  assert.equal((await (await f.send('/session', undefined, otherSession)).json()).user.email, 'carol@gmail.com');
+});
+
+test('mobile switch return accepts the new identity without transferring the old report', () => {
+  let saved;
+  const location = { hash: '', pathname: '/app', search: '' };
+  const returns = new GoogleRedirectState({ storage: () => ({ setItem: (_, value) => { saved = value; },
+    getItem: () => saved, removeItem: () => { saved = null; } }), location: () => location,
+    history: () => ({ replaceState() {} }), now: () => 1000 });
+  const snapshot = { report: { run: { id: 'alice-report' } } };
+  for (const owner of ['alice', 'bob']) {
+    returns.save({ nonce: 'nonce', mode: 'switch', owner: 'alice', snapshot, intent: 'switch' });
+    location.hash = `#google_return=nonce&owner=${owner}&mode=switch`;
+    assert.deepEqual(returns.take({ ready: true, user: { id: owner } }), {
+      mode: 'switch', intent: 'switch', snapshot: owner === 'alice' ? snapshot : null
+    });
+  }
+  returns.save({ nonce: 'nonce', mode: 'switch', owner: 'alice', snapshot, intent: 'switch' });
+  location.hash = '#google_error=sign_in_expired';
+  assert.deepEqual(returns.take({ ready: true, user: { id: 'alice' } }), { error: 'sign_in_expired', snapshot });
+});
+
+test('Back from Google restores only the same owner and never interrupts the original document', () => {
+  let saved;
+  const location = { hash: '#switch-account', pathname: '/app', search: '' };
+  const options = { storage: () => ({ setItem: (_, value) => { saved = value; }, getItem: () => saved,
+    removeItem: () => { saved = null; } }), location: () => location,
+    history: () => ({ replaceState() {} }), now: () => 1000 };
+  const original = new GoogleRedirectState(options), snapshot = { report: { run: { id: 'a-report' } } };
+  original.save({ nonce: 'nonce', mode: 'switch', owner: 'a', snapshot, intent: 'switch' });
+  const state = { ready: true, user: { id: 'a' } };
+  assert.equal(original.take(state), null, 'Focus/visibility refresh keeps the active Google chooser');
+  assert.deepEqual(new GoogleRedirectState(options).take(state), { mode: 'switch', snapshot, intent: 'account' });
+  original.save({ nonce: 'nonce', mode: 'switch', owner: 'a', snapshot, intent: 'switch' });
+  assert.deepEqual(new GoogleRedirectState(options).take({ ...state, user: { id: 'b' } }), { error: 'sign_in_check_account' });
+});
+
 test('cross-site callback requires double-submit CSRF, bounds the body and escapes the credential', async () => {
   const callback = (body, cookie = 'g_csrf_token=proof', contentType = 'application/x-www-form-urlencoded') => googleRedirectRelay(new Request(origin + path, {
     method: 'POST', headers: { Cookie: cookie, 'Content-Type': contentType }, body
@@ -107,11 +165,15 @@ test('return snapshot is tab-bound, one-use and cannot restore across identities
     getItem: key => values.get(key), removeItem: key => values.delete(key) }), location: () => location,
     history: () => ({ replaceState() { cleaned++; location.hash = ''; } }), now: () => 1000 });
   const state = { ready: true, user: { id: 'new-account' } }, snapshot = { report: { run: { id: 'guest' } } };
-  const save = owner => returns.save({ nonce: 'nonce', mode: 'signin', owner, snapshot });
+  const save = (owner, intent = 'account') => returns.save({ nonce: 'nonce', mode: 'signin', owner, snapshot, intent });
   const fragment = () => { location.hash = '#google_return=nonce&owner=new-account&mode=signin'; };
   save(null); fragment();
-  assert.deepEqual(returns.take(state), { mode: 'signin', snapshot });
+  assert.deepEqual(returns.take(state), { mode: 'signin', snapshot, intent: 'account' });
   assert.equal(returns.take(state), null); assert.equal(cleaned, 1);
+  for (const intent of ['signin', 'reports', 'checkout', 'test-limit', 'report']) {
+    save(null, intent); fragment();
+    assert.deepEqual(returns.take(state), { mode: 'signin', snapshot, intent });
+  }
   for (const owner of ['other-account', null]) {
     save(owner); fragment();
     if (!owner) location.hash = '#google_return=wrong&owner=new-account&mode=signin';

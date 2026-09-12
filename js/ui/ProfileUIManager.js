@@ -39,6 +39,9 @@ class ProfileUIManager {
    */
   init(elements) {
     Object.assign(this.elements, elements);
+    this._scenarioGroups = Array.from(this.elements.scenarioPicker?.querySelectorAll('.scenario-group-toggle') || [])
+      .map(toggle => ({ toggle, panel: document.getElementById(toggle.getAttribute('aria-controls')) }));
+    this._sidebarMedia = globalThis.matchMedia?.('(min-width: 1024px)');
     this._renderScenarioChoices();
     this._bindEvents();
   }
@@ -50,7 +53,7 @@ class ProfileUIManager {
       const copy = document.createElement('span');
       copy.className = 'scenario-choice-copy';
       const name = document.createElement('strong');
-      name.textContent = PROFILES[item.dataset.profile].label;
+      name.textContent = item.dataset.navLabel || PROFILES[item.dataset.profile].label;
       const description = document.createElement('span');
       description.textContent = item.dataset.description;
       copy.append(name, description);
@@ -63,11 +66,28 @@ class ProfileUIManager {
       || !!this.getState.isReportPending?.();
   }
 
+  _expandScenarioGroup(toggle) {
+    this._scenarioGroups.forEach(group => group.toggle.setAttribute('aria-expanded', String(group.toggle === toggle)));
+    this._syncScenarioGroups();
+  }
+
+  // Disclosure is desktop navigation only. The same controls stay visible in
+  // the full chooser, including after a viewport change, without duplicating it.
+  _syncScenarioGroups() {
+    const sidebar = this._sidebarMedia?.matches
+      && this.elements.scenarioPicker?.classList.contains('scenario-picker--collapsed');
+    this._scenarioGroups.forEach(({ toggle, panel }) => {
+      setVisible(panel, !sidebar || toggle.getAttribute('aria-expanded') === 'true');
+    });
+  }
+
   _showWorkspace(show, focus = false) {
     const { scenarioPicker, scenarioWorkspace } = this.elements;
     // Keep one catalogue: a persistent desktop sidebar, or a mobile chooser.
     scenarioPicker?.classList.toggle('scenario-picker--collapsed', show);
+    scenarioPicker?.setAttribute('aria-labelledby', show ? 'scenarioSidebarTitle' : 'scenarioPickerTitle');
     setVisible(scenarioWorkspace, show);
+    this._syncScenarioGroups();
     if (document.body.classList.contains('app-mode')) {
       const title = show ? this.elements.pageTitle : scenarioPicker?.querySelector('h1');
       document.title = appPageTitle(title);
@@ -103,6 +123,20 @@ class ProfileUIManager {
     // Handler referanslarini sakla (cleanup icin)
     this._navHandlers = [];
 
+    this._scenarioGroups.forEach(({ toggle }) => {
+      const handler = () => {
+        if (this._isBusy()) return;
+        this._expandScenarioGroup(toggle.getAttribute('aria-expanded') === 'true' ? null : toggle);
+      };
+      toggle.addEventListener('click', handler);
+      this._navHandlers.push({ el: toggle, handler });
+    });
+    if (this._sidebarMedia) {
+      const handler = () => this._syncScenarioGroups();
+      this._sidebarMedia.addEventListener('change', handler);
+      this._navHandlers.push({ el: this._sidebarMedia, handler, type: 'change' });
+    }
+
     navItems.forEach(item => {
       const handler = () => this.handleProfileSelect(item.dataset.profile, true);
       item.addEventListener('click', handler);
@@ -120,6 +154,7 @@ class ProfileUIManager {
     const syncLocks = () => {
       if (changeScenarioBtn) changeScenarioBtn.disabled = this._isBusy();
       navItems.forEach(item => { item.disabled = this._isBusy(); });
+      this._scenarioGroups.forEach(({ toggle }) => { toggle.disabled = this._isBusy(); });
     };
     this._unsubscribers = [EVENTS.UI_STATE_CHANGED, EVENTS.DIAGNOSTIC_REPORT_READY]
       .map(event => eventBus.on(event, syncLocks));
@@ -129,7 +164,7 @@ class ProfileUIManager {
    * Cleanup - Event listener'larini kaldir (memory leak onleme)
    */
   destroy() {
-    this._navHandlers?.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+    this._navHandlers?.forEach(({ el, handler, type = 'click' }) => el.removeEventListener(type, handler));
     this._navHandlers = [];
     this._unsubscribers?.forEach(unsubscribe => unsubscribe());
   }
@@ -190,6 +225,7 @@ class ProfileUIManager {
   updateNavItemSelection(profileId) {
     const { navItems, pageTitle, pageTitleIcon } = this.elements;
     const activeItem = this._updateSelectionState(navItems, profileId, 'active');
+    this._expandScenarioGroup(activeItem?.closest?.('.scenario-group')?.querySelector('.scenario-group-toggle'));
 
     // Page header'i guncelle
     const profile = PROFILES[profileId];

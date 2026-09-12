@@ -4,7 +4,7 @@
  */
 
 import { RadioGroupHandler } from './RadioGroupHandler.js';
-import { setVisible, needsBufferSetting } from '../modules/utils.js';
+import { setVisible } from '../modules/utils.js';
 import { EVENTS } from '../modules/constants.js';
 import { remoteVuContainerEl, bitrateRadios, mediaBitrateRadios } from './UIElements.js';
 
@@ -37,11 +37,7 @@ export function registerRadioGroups(radios, callbacks) {
 
   const {
     syncToCustomPanel,
-    updateAllStates,
-    updateBufferInfo,
-    updateTimesliceInfo,
-    profileController,
-    bufferSizeContainer
+    updateAllStates
   } = callbacks;
 
   RadioGroupHandler.attachGroups({
@@ -52,14 +48,6 @@ export function registerRadioGroups(radios, callbacks) {
       logCategory: 'log:webaudio',
       onChange: (pipeline) => {
         syncToCustomPanel('pipeline', pipeline);
-        // Buffer size gorunurlugu: profil ayarlarina veya pipeline'a bagli
-        const profile = profileController.getCurrentProfile();
-        const bufferInProfile = profile?.lockedSettings?.includes('buffer') ||
-                                profile?.editableSettings?.includes('buffer') ||
-                                profile?.allowedSettings === 'all';
-        if (!bufferInProfile) {
-          setVisible(bufferSizeContainer, needsBufferSetting(pipeline));
-        }
         updateAllStates();
       }
     },
@@ -80,10 +68,7 @@ export function registerRadioGroups(radios, callbacks) {
       radios: bufferSizeRadios,
       logCategory: 'log:webaudio',
       formatValue: (v) => `${v} samples`,
-      onChange: (bufferSize) => {
-        syncToCustomPanel('buffer', bufferSize);
-        updateBufferInfo(bufferSize);
-      }
+      onChange: (bufferSize) => syncToCustomPanel('buffer', bufferSize)
     },
 
     // Opus Bitrate
@@ -99,10 +84,7 @@ export function registerRadioGroups(radios, callbacks) {
       radios: timesliceRadios,
       logCategory: 'log:recorder',
       formatValue: (v) => v === 0 ? 'OFF' : `${v}ms`,
-      onChange: (timeslice) => {
-        syncToCustomPanel('timeslice', timeslice);
-        updateTimesliceInfo(timeslice);
-      }
+      onChange: (timeslice) => syncToCustomPanel('timeslice', timeslice)
     },
 
     // Media Bitrate
@@ -138,7 +120,6 @@ export function registerRadioGroups(radios, callbacks) {
  */
 export function registerLoopbackToggle(loopbackToggle, callbacks) {
   const {
-    opusBitrateContainer,
     updateAllStates,
     profileController,
     eventBus
@@ -149,8 +130,7 @@ export function registerLoopbackToggle(loopbackToggle, callbacks) {
     onLabel: 'AKTIF',
     offLabel: 'PASIF',
     onChange: (enabled) => {
-      // Bitrate seciciyi ve Remote VU container'i goster/gizle
-      setVisible(opusBitrateContainer, enabled);
+      // Remote VU container'i goster/gizle
       setVisible(remoteVuContainerEl, enabled);
       updateAllStates();
 

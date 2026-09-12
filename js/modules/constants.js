@@ -8,7 +8,7 @@ export const AUDIO = {
   DEFAULT_SAMPLE_RATE: 48000,     // Varsayilan sample rate (Hz)
   FFT_SIZE: 256,                   // AnalyserNode FFT boyutu (VU meter icin)
   ANALYSIS_FFT_SIZE: 2048,         // Ayri analyser; bin araligi = context sampleRate / FFT boyutu
-  SMOOTHING_TIME_CONSTANT: 0.3,    // AnalyserNode smoothing (fast responsive VU meter)
+  SMOOTHING_TIME_CONSTANT: 0.3,    // Frequency-domain smoothing; does not smooth time-domain samples
   CENTER_VALUE: 128                // 8-bit audio center point
 };
 
@@ -28,10 +28,15 @@ export const VU_METER = {
   RMS_THRESHOLD: 0.0001,          // dB hesaplama icin minimum RMS
   MIN_DB: -96,                    // Minimum dB seviyesi — 16-bit dinamik aralik (Float32 ile olculebilir)
   CLIPPING_THRESHOLD_DB: -0.5,    // Bu dB ustu = clipping riski
-  PEAK_HOLD_TIME_MS: 1000,        // Peak gostergesini tutma suresi (ANSI/IEC standart)
+  HIGH_LEVEL_DB: -6,             // Amber: little headroom remains
+  SIGNAL_PRESENT_DB: -55,        // Shared live presence threshold; not speech recognition
+  ACTIVITY_ATTACK_MS: 12,        // Main fill and hue share one peak envelope
+  ACTIVITY_RELEASE_MS: 160,
+  SAMPLE_INTERVAL_MS: 8,         // Worklet summaries, bounded by one outstanding packet
+  SAMPLE_FRESH_MS: 100,          // Old packets cannot replay a live signal after a stall
+  PEAK_HOLD_TIME_MS: 1000,        // Recent level marker and overload text hold
   PEAK_DECAY_DB_PER_SEC: 20,     // Peak dusme hizi (dB/s, frame-rate bagimsiz)
-  VU_INTEGRATION_MS: 300,        // VU standard integration suresi (EMA)
-  DOT_ACTIVE_THRESHOLD: 5,        // Sinyal noktasi aktif esigi (%)
+  VU_INTEGRATION_MS: 300,        // Readable RMS detail; not the main activity envelope
   DEFAULT_METER_WIDTH: 200,       // Varsayilan meter genisligi (px)
   PEAK_WIDTH: 2                   // Peak cizgisi genisligi (px) - clamp icin
 };
@@ -277,6 +282,12 @@ export const CAPTURE_GUIDE = {
   MAX_QUIET_SPREAD_DB: 6,
   NOISE_BLOCK_MS: 100,
   MIN_MEASURABLE_POWER: 1e-12,
+  MAX_QUIET_EXCLUSION_MS: 500,
+  MAX_QUIET_EXCLUSION_FRACTION: 0.25,
+  VAD_FRAME_MS: 20,
+  VAD_LOAD_TIMEOUT_MS: 1500,
+  MIN_VOICE_RUN_MS: 200,
+  MIN_DETECTED_VOICE_MS: 1000,
   SAMPLE_TEXT: 'I am checking my microphone for my next conversation. My voice should sound clear and natural.'
 };
 

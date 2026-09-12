@@ -6,7 +6,8 @@
  */
 import eventBus from './EventBus.js';
 import audioEngine from './AudioEngine.js';
-import { AUDIO, VU_METER, EVENTS } from './constants.js';
+import { VU_METER, EVENTS } from './constants.js';
+import MeterSource, { readMeterSamples } from './MeterSource.js';
 import { log, disconnectNodes, createAudioContext, createAnalyserNode, setVisible } from './utils.js';
 
 class VuMeter {
@@ -52,12 +53,17 @@ class VuMeter {
     this._onStreamStopped = () => this.stop();
     this._onLoopbackRemote = (stream) => this.startRemote(stream);
     this._onAnalyserReady = (analyserNode) => this.startWithAnalyser(analyserNode);
+    this._onGuideChanged = ({ stage }) => {
+      if (stage !== 'input-detected') this.guideStage = stage;
+      this._renderActivity(this.activityLevel ?? null, this.activitySignalState);
+    };
 
     // Event dinle
     eventBus.on(EVENTS.STREAM_STARTED, this._onStreamStarted);
     eventBus.on(EVENTS.STREAM_STOPPED, this._onStreamStopped);
     eventBus.on(EVENTS.LOOPBACK_REMOTE_STREAM, this._onLoopbackRemote);
     eventBus.on(EVENTS.PIPELINE_ANALYSER_READY, this._onAnalyserReady);
+    eventBus.on(EVENTS.CAPTURE_GUIDE_CHANGED, this._onGuideChanged);
 
     // Resize event'inde meter width'i guncelle
     // Memory leak fix: Named handler, stop()'ta removeEventListener icin
@@ -90,6 +96,8 @@ class VuMeter {
    */
   startWithAnalyser(analyserNode) {
     if (!analyserNode) return;
+    this._startController?.abort();
+    this._localSource?.close();
 
     // Onceki animasyonu durdur (tekrar baslatma durumunda)
     if (this.animationId) {
@@ -107,6 +115,9 @@ class VuMeter {
 
     // Pipeline'dan gelen analyser'i kullan
     this.analyser = analyserNode;
+    this._localSource = new MeterSource(analyserNode);
+    this._localMeterState = { smoothedRms: 0, lastRenderTime: 0 };
+    this.peakLevel = this.peakHoldTime = 0;
 
     // DataArray olustur (pipeline'in audioContext'inden)
     const bufferLength = this.analyser.fftSize;
@@ -124,38 +135,34 @@ class VuMeter {
 
     // Guard: Pipeline analyser zaten set edilmisse AudioEngine'e baglanma
     // pipeline:analyserReady event'i stream:started'dan ONCE gelirse bu guard calisir
-    if (this.analyser) return;
+    if (this.analyser || this._startController) return;
+    const controller = this._startController = new AbortController();
+    try {
+      this._ensureResizeHandler();
+      // Only Call uses AudioEngine here; Record supplies its pipeline analyser.
+      if (!audioEngine.isWarmedUp) await audioEngine.warmup();
+      controller.signal.throwIfAborted();
+      const analyser = await audioEngine.connectStream(stream, { signal: controller.signal });
+      controller.signal.throwIfAborted();
+      this.analyser = analyser;
+      this._localSource = new MeterSource(analyser);
+      this._pipelineDataArray = null;
+      this.update();
 
-    // Resize handler'i yeniden ekle (DRY)
-    this._ensureResizeHandler();
-
-    // Lazy warmup - AudioEngine henuz warmup yapilmamissa yap
-    // Bu yol sadece loopback testinde kullanilir (kayit modunda pipeline analyser kullanilir)
-    if (!audioEngine.isWarmedUp) {
-      await audioEngine.warmup();
+      const ac = audioEngine.getContext();
+      eventBus.emit(EVENTS.VUMETER_AUDIOCONTEXT, {
+        sampleRate: ac.sampleRate,
+        baseLatency: ac.baseLatency,
+        outputLatency: ac.outputLatency,
+        state: ac.state,
+        fftSize: this.analyser.fftSize
+      });
+      eventBus.emit(EVENTS.VUMETER_STARTED);
+    } catch (error) {
+      if (!controller.signal.aborted) log.error('VU Meter: Local stream connection error', { error: error.message });
+    } finally {
+      if (this._startController === controller) this._startController = null;
     }
-
-    // AudioEngine'den hazir analyser al
-    // Bu yol sadece Loopback modunda kullanilir (Local VU = HAM mikrofon)
-    this.analyser = await audioEngine.connectStream(stream);
-    this._pipelineDataArray = null; // AudioEngine kendi dataArray'ini kullanir
-    this.update();
-
-    // AudioContext bilgisini gonder (null kontrol ile)
-    const ac = audioEngine.getContext();
-    if (!ac) {
-      log.error('VuMeter: AudioEngine context not ready', { isWarmedUp: audioEngine.isWarmedUp });
-      return;
-    }
-    eventBus.emit(EVENTS.VUMETER_AUDIOCONTEXT, {
-      sampleRate: ac.sampleRate,
-      baseLatency: ac.baseLatency,
-      outputLatency: ac.outputLatency,
-      state: ac.state,
-      fftSize: this.analyser.fftSize
-    });
-
-    eventBus.emit(EVENTS.VUMETER_STARTED);
   }
 
   /**
@@ -164,29 +171,43 @@ class VuMeter {
    */
   async startRemote(stream) {
     if (!stream) return;
+    this.stopRemote();
+    const controller = this._remoteStartController = new AbortController();
 
     // Remote container'i goster
     setVisible(this.remoteContainerEl, true);
 
     // DOM render sonrasi width hesapla (container artik gorunur)
     requestAnimationFrame(() => {
+      if (controller.signal.aborted) return;
       this.remoteMeterWidth = this.remotePeakEl?.parentElement?.clientWidth || VU_METER.DEFAULT_METER_WIDTH;
     });
 
     try {
       // Remote stream icin ayri AudioContext (cakisma onleme) - DRY: utility kullan
-      this.remoteAudioCtx = await createAudioContext();
+      const context = await createAudioContext({ latencyHint: 'interactive' }, { signal: controller.signal });
+      if (controller.signal.aborted) { await context.close().catch(() => {}); return; }
+      this.remoteAudioCtx = context;
       this.remoteSourceNode = this.remoteAudioCtx.createMediaStreamSource(stream);
       this.remoteAnalyser = createAnalyserNode(this.remoteAudioCtx);
       this.remoteSourceNode.connect(this.remoteAnalyser);
+      this._remoteSource = new MeterSource(this.remoteAnalyser);
 
       log.stream('VU Meter: Remote stream connected', { streamId: stream.id });
     } catch (err) {
-      log.error('VU Meter: Remote stream connection error', { error: err.message });
+      if (!controller.signal.aborted) {
+        this.stopRemote();
+        log.error('VU Meter: Remote stream connection error', { error: err.message });
+      }
     }
   }
 
   stopRemote() {
+    this._remoteStartController?.abort();
+    this._remoteStartController = null;
+    this._remoteSource?.close();
+    this._remoteSource = null;
+    this.remoteDataArray = null;
     disconnectNodes([this.remoteAnalyser, this.remoteSourceNode]);
     this.remoteAnalyser = null;
     this.remoteSourceNode = null;
@@ -205,6 +226,8 @@ class VuMeter {
 
   _resetMeter(barEl, peakEl, readingEl) {
     if (barEl) {
+      if (barEl.dataset) delete barEl.dataset.state;
+      barEl.style.setProperty('--signal-color', 'var(--text-muted)');
       barEl.style.width = '0';
       barEl.parentElement?.setAttribute('aria-valuenow', String(VU_METER.MIN_DB));
       barEl.parentElement?.setAttribute('aria-valuetext', 'Not measuring');
@@ -216,48 +239,54 @@ class VuMeter {
     if (readingEl) readingEl.textContent = '—';
   }
 
-  _renderActivity(level) {
+  _renderActivity(level, signalState = 'waiting', color = this.activityColor) {
     if (this.activityBarEl) this.activityBarEl.style.width = `${level ?? 0}%`;
-    // Reuse the signal-presence threshold. This is not a voice or quality assessment.
-    const state = level === null ? 'idle'
-      : level > VU_METER.DOT_ACTIVE_THRESHOLD ? 'detected' : 'waiting';
-    if (this.activityState === state) return;
+    this.activityLevel = level;
+    this.activitySignalState = signalState;
+    const state = level === null ? 'idle' : signalState;
+    color = level === null ? 'var(--text-muted)' : color;
+    if (color !== this.activityColor) {
+      this.activityColor = color;
+      for (const element of [this.activityBarEl, this.activityStatusEl, this.dotEl]) {
+        element?.style.setProperty('--signal-color', color);
+      }
+    }
+    const text = state === 'idle' ? 'Not measuring yet'
+      : state === 'clipping' ? 'Input too high — lower the gain'
+      : state === 'high' ? 'Input level is high'
+      : this.guideStage === 'quiet' ? 'Checking background sound — stay quiet'
+      : state === 'detected' ? 'Sound detected'
+      : this.guideStage === 'prepare' ? 'Ready — recording starts shortly' : 'No sound detected — speak normally';
+    if (this.activityBarEl?.dataset && this.activityBarEl.dataset.state !== state) this.activityBarEl.dataset.state = state;
+    if (this.activityState === state && this.activityStatusEl?.textContent === text) return;
     this.activityState = state;
     if (this.activityStatusEl) {
       this.activityStatusEl.dataset.state = state;
-      this.activityStatusEl.textContent = state === 'idle' ? 'Not measuring yet'
-        : state === 'detected' ? 'Sound detected' : 'Waiting for sound';
+      this.activityStatusEl.textContent = text;
     }
   }
 
-  // DRY: RMS hesaplama — Float32 [-1,1] araliginda direkt hesap
-  calculateRMS(dataArray) {
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      sum += dataArray[i] * dataArray[i];
-    }
-    return Math.sqrt(sum / dataArray.length);
-  }
-
-  // DRY: Peak hesaplama — Float32 [-1,1] araliginda direkt abs
-  calculatePeak(dataArray) {
-    let maxSample = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      const val = Math.abs(dataArray[i]);
-      if (val > maxSample) maxSample = val;
-    }
-    return maxSample;
+  _signalColor(db) {
+    // Continuous hue interpolation between palette anchors, never status bins.
+    const [from, to, low, high] = db < VU_METER.SIGNAL_PRESENT_DB
+      ? ['--text-muted', '--vu-local', VU_METER.MIN_DB, VU_METER.SIGNAL_PRESENT_DB]
+      : db < VU_METER.HIGH_LEVEL_DB
+        ? ['--vu-local', '--vu-warning', VU_METER.SIGNAL_PRESENT_DB, VU_METER.HIGH_LEVEL_DB]
+        : ['--vu-warning', '--vu-danger', VU_METER.HIGH_LEVEL_DB, VU_METER.CLIPPING_THRESHOLD_DB];
+    const blend = Math.max(0, Math.min(100, (db - low) / (high - low) * 100));
+    return `color-mix(in oklch, var(${from}), var(${to}) ${blend.toFixed(2)}%)`;
   }
 
   /**
    * DRY: Ortak meter hesaplama ve render (local + remote icin)
    * VU integration: 300ms EMA ile yumusatilmis RMS
    * Peak decay: frame-rate bagimsiz (dB/s)
-   * @returns {{ level: number, dB: number, rawDb: number, peakLevel: number, peakHoldTime: number }}
+   * Main activity is the fast peak envelope; level/dB remain the RMS detail.
+   * @returns {{ level: number, activityLevel: number, dB: number, rawDb: number, peakLevel: number, peakHoldTime: number, isClipping: boolean, signalState: string, color: string }}
    */
-  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth, meterState, readingEl) {
-    analyser.getFloatTimeDomainData(dataArray);
-    const instantRms = this.calculateRMS(dataArray);
+  _renderMeter(analyser, dataArray, barEl, peakEl, peakLevel, peakHoldTime, meterWidth, meterState, readingEl, sample) {
+    sample ??= readMeterSamples(analyser, dataArray);
+    const instantRms = sample.rms;
 
     // Frame-rate bagimsiz zamanlama
     const now = performance.now();
@@ -266,6 +295,28 @@ class VuMeter {
 
     // Raw dB (smoothing oncesi — olcum icin)
     const rawDb = instantRms > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(instantRms) : VU_METER.MIN_DB;
+    const samplePeak = sample.peak;
+    const peakDb = samplePeak > 0 ? 20 * Math.log10(samplePeak) : VU_METER.MIN_DB;
+    const clipAge = sample.clipAgeMs ?? (peakDb >= VU_METER.CLIPPING_THRESHOLD_DB ? 0 : Infinity);
+    const highAge = sample.highAgeMs ?? (peakDb >= VU_METER.HIGH_LEVEL_DB ? 0 : Infinity);
+    const isClipping = clipAge < VU_METER.SAMPLE_FRESH_MS;
+    if (clipAge < VU_METER.PEAK_HOLD_TIME_MS) meterState.clipUntil = now + VU_METER.PEAK_HOLD_TIME_MS - clipAge;
+    if (highAge < VU_METER.PEAK_HOLD_TIME_MS) meterState.highUntil = now + VU_METER.PEAK_HOLD_TIME_MS - highAge;
+    // Peak warnings hold on the existing animation clock, independent of the
+    // smoothed RMS fill, so a short overload is visible without another timer.
+    const signalState = now < meterState.clipUntil ? 'clipping' : now < meterState.highUntil ? 'high'
+      : rawDb > VU_METER.SIGNAL_PRESENT_DB ? 'detected' : 'waiting';
+    if (barEl?.dataset && barEl.dataset.state !== signalState) barEl.dataset.state = signalState;
+    // Main fill and hue share one fast envelope. Warning text holds separately:
+    // a previous overload must never pin the live activity bar at full scale.
+    const colorTarget = Math.max(VU_METER.MIN_DB, Math.min(0, peakDb));
+    const previousColorDb = meterState.colorDb ?? VU_METER.MIN_DB;
+    const colorTime = colorTarget > previousColorDb ? VU_METER.ACTIVITY_ATTACK_MS : VU_METER.ACTIVITY_RELEASE_MS;
+    meterState.colorDb = previousColorDb + (colorTarget - previousColorDb) * (1 - Math.exp(-dtMs / colorTime));
+    const color = this._signalColor(meterState.colorDb);
+    if (barEl && meterState.color !== color) barEl.style.setProperty('--signal-color', color);
+    meterState.color = color;
+    const activityLevel = (meterState.colorDb - VU_METER.MIN_DB) / -VU_METER.MIN_DB * 100;
 
     // VU integration: 300ms EMA
     const alpha = 1 - Math.exp(-dtMs / VU_METER.VU_INTEGRATION_MS);
@@ -313,7 +364,7 @@ class VuMeter {
       peakEl.style.transform = `translateX(${translate}px)`;
     }
 
-    return { level, dB, rawDb, peakLevel, peakHoldTime };
+    return { level, activityLevel, dB, rawDb, peakLevel, peakHoldTime, isClipping, signalState, color };
   }
 
   update() {
@@ -322,21 +373,17 @@ class VuMeter {
     const dataArray = this._pipelineDataArray || audioEngine.getDataArray();
     const result = this._renderMeter(
       this.analyser, dataArray, this.barEl, this.peakEl,
-      this.peakLevel, this.peakHoldTime, this.meterWidth, this._localMeterState, this.readingEl
+      this.peakLevel, this.peakHoldTime, this.meterWidth, this._localMeterState, this.readingEl, this._localSource?.read()
     );
     this.peakLevel = result.peakLevel;
     this.peakHoldTime = result.peakHoldTime;
-    this._renderActivity(result.level);
-
-    // Clipping tespiti (peak dB kullan - anlik tepe degeri)
-    const maxSample = this.calculatePeak(dataArray);
-    const peakdB = maxSample > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(maxSample) : VU_METER.MIN_DB;
-    const isClipping = peakdB >= VU_METER.CLIPPING_THRESHOLD_DB;
+    this._renderActivity(result.activityLevel, result.signalState, result.color);
+    const { isClipping } = result;
 
     // Sinyal noktasi - sadece state degisince guncelle
-    const newDotState = isClipping ? 'clipping' : (result.level > VU_METER.DOT_ACTIVE_THRESHOLD ? 'active' : 'idle');
+    const newDotState = result.signalState;
     if (this.dotEl && this.dotState !== newDotState) {
-      this.dotEl.className = 'signal-dot' + (newDotState !== 'idle' ? ' ' + newDotState : '');
+      this.dotEl.className = 'signal-dot ' + newDotState;
       this.dotState = newDotState;
     }
 
@@ -356,14 +403,12 @@ class VuMeter {
 
     const result = this._renderMeter(
       this.remoteAnalyser, this.remoteDataArray, this.remoteBarEl, this.remotePeakEl,
-      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth, this._remoteMeterState, this.remoteReadingEl
+      this.remotePeakLevel, this.remotePeakHoldTime, this.remoteMeterWidth, this._remoteMeterState, this.remoteReadingEl, this._remoteSource?.read()
     );
     this.remotePeakLevel = result.peakLevel;
     this.remotePeakHoldTime = result.peakHoldTime;
 
-    const maxSample = this.calculatePeak(this.remoteDataArray);
-    const peakdB = maxSample > VU_METER.RMS_THRESHOLD ? 20 * Math.log10(maxSample) : VU_METER.MIN_DB;
-    const isClipping = peakdB >= VU_METER.CLIPPING_THRESHOLD_DB;
+    const { isClipping } = result;
 
     eventBus.emit(EVENTS.VUMETER_REMOTE_LEVEL, {
       level: result.level,
@@ -375,6 +420,10 @@ class VuMeter {
   }
 
   stop() {
+    this._startController?.abort();
+    this._startController = null;
+    this._localSource?.close();
+    this._localSource = null;
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
@@ -417,6 +466,7 @@ class VuMeter {
     eventBus.off(EVENTS.STREAM_STOPPED, this._onStreamStopped);
     eventBus.off(EVENTS.LOOPBACK_REMOTE_STREAM, this._onLoopbackRemote);
     eventBus.off(EVENTS.PIPELINE_ANALYSER_READY, this._onAnalyserReady);
+    eventBus.off(EVENTS.CAPTURE_GUIDE_CHANGED, this._onGuideChanged);
   }
 }
 

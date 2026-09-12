@@ -105,15 +105,19 @@ test('preparation ignores missing levels and resolves when the microphone ends',
 
 test('missing preparation input remains attached to the recording cues', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
+  let now = 0;
+  t.mock.method(performance, 'now', () => now);
   const guide = new CaptureGuide({ runId: 'silent-input', captureGuide: { enabled: true, noiseCheck: true } });
   const states = [], unsubscribe = eventBus.on(EVENTS.CAPTURE_GUIDE_CHANGED, state => states.push(state));
   t.after(() => { guide.cancel(); unsubscribe(); });
   const pending = guide.prepare({ getAudioTracks: () => [] });
+  now = GUIDE.PREPARE_MS;
   t.mock.timers.tick(GUIDE.PREPARE_MS);
   assert.equal(await pending, true, 'No observed level is a readiness hint, not a device failure');
   guide.start(performance.now(), () => {});
   assert.equal(states.at(-1).stage, 'quiet');
   assert.equal(states.at(-1).inputDetected, false);
+  now += GUIDE.QUIET_MS;
   t.mock.timers.tick(GUIDE.QUIET_MS);
   assert.equal(states.at(-1).stage, 'speak');
   assert.equal(states.at(-1).inputDetected, false);

@@ -90,6 +90,9 @@
   animation: reportSlideUp var(--transition-slow);
 }
 
+.report-next-step { margin-top: var(--space-md); line-height: 1.6; }
+.report-next-step p { margin: var(--space-xs) 0 0; }
+
 .report-workflow-actions {
   display: flex;
   flex-wrap: wrap;

@@ -98,7 +98,7 @@ export class GoogleSignIn {
     const redirecting = kind === 'button' && this.useRedirect;
     try { [config, gsi] = await Promise.all([
       redirecting ? this.account.api('/google/redirect/start', { method: 'POST',
-        body: { confirming: redirect.confirming === true, rememberMe: redirect.rememberMe === true } })
+        body: { confirming: redirect.confirming === true, switching: redirect.intent === 'switch', rememberMe: redirect.rememberMe === true } })
         : this.account.getSignInConfig(), this.load()
     ]); }
     catch (error) {
@@ -111,8 +111,8 @@ export class GoogleSignIn {
     if (this.now() >= expiresAt) throw new Error('sign_in_expired');
     if (redirecting) {
       if (config.loginUri !== `${globalThis.location.origin}/api/account/google/redirect`) throw new Error('account_unavailable');
-      this.redirectState.save({ nonce: config.nonce, mode: redirect.confirming ? 'confirm' : 'signin',
-        owner: this.account.getState().user?.id, snapshot: redirect.snapshot?.() });
+      this.redirectState.save({ nonce: config.nonce, mode: redirect.confirming ? 'confirm' : redirect.intent === 'switch' ? 'switch' : 'signin',
+        owner: this.account.getState().user?.id, snapshot: redirect.snapshot?.(), intent: redirect.intent });
     }
     this.gsi = gsi;
     const attempt = { isCurrent, onCredential, onError, expiresAt, consumed: false, cleanup };

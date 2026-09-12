@@ -1,4 +1,4 @@
-/* Test workspace: preparation, result and technical details share one column.
+/* Test workspace: controls and result, with a supporting guide on wide screens.
    Keep .unified-row-player: UIElements uses it to locate the playback card. */
 
 /* The console shares the page title's centered workspace bounds. */
@@ -10,15 +10,24 @@
   max-width: var(--app-content-max);
 }
 
-/* Preparation, result and technical details keep the same reading order at every width. */
+/* Narrow screens keep preparation, result and supporting information in order. */
 .console-row { display: flex; flex-direction: column; gap: var(--space-lg); }
 .console-row > * { width: 100%; min-width: 0; }
 .console-card--result { scroll-margin-top: 90px; }
 
 .capture-hint { margin: var(--space-ms) 0 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
-.inline-result { margin-bottom: var(--space-lg); padding-bottom: var(--space-lg); border-bottom: 1px solid var(--border-secondary); }
+.inline-result { margin-bottom: var(--space-lg); }
 .inline-result h3 { margin: 0 0 var(--space-sm); font-size: var(--fs-lg); font-weight: 600; }
 .inline-result p { margin: 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
+.inline-result p, .result-guidance { max-width: 70ch; }
+.result-guidance { margin-top: var(--space-md); font-size: var(--fs-base); line-height: 1.6; }
+.result-next-step { margin: 0; color: var(--text-primary); }
+.result-scope { margin: var(--space-ms) 0 0; color: var(--text-secondary); font-size: var(--fs-sm); }
+.result-details { margin-top: var(--space-ms); }
+.result-details > summary { padding-block: var(--space-xs); color: var(--text-secondary); cursor: pointer; }
+.result-details p { margin: var(--space-sm) 0 0; color: var(--text-secondary); }
+.test-guide > summary { font-size: var(--fs-xl); font-weight: 600; line-height: 1.4; cursor: pointer; }
+.test-guide[open] > summary { margin-bottom: var(--space-md); }
 .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-ms); margin-top: var(--space-lg); }
 .result-actions .btn-show-report { width: auto; margin: 0; }
 /* Ikincil sonuc butonlari: M40 basamagi, ghost yuzey */
@@ -50,13 +59,32 @@
   box-shadow: var(--surface-card-shadow);
 }
 
-/* Optional technical details follow the result without another card surface. */
+/* Supporting information is separate from the capture controls. */
 .console-card--secondary {
-  padding: var(--space-lg) 0 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
   box-shadow: none;
+}
+
+.test-steps { padding-left: var(--space-lg); }
+.test-steps li { padding-left: var(--space-xs); }
+.test-steps li + li { margin-top: var(--space-md); }
+.test-steps li::marker { color: var(--color-purple-light); font-weight: 600; }
+.test-steps strong { font-size: var(--fs-base); font-weight: 600; }
+.test-steps p { margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.6; }
+.scenario-context .console-description { margin: 0; max-width: 65ch; }
+
+@media (min-width: 1200px) {
+  .console-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+    grid-template-areas: 'controls info';
+    gap: var(--space-lg) var(--space-xl);
+    align-items: stretch;
+  }
+  /* Preparation and guidance share one row; the finished result follows both. */
+  .console-row:has(.console-card--result:not([hidden])) { grid-template-areas: 'controls info' 'result result'; }
+  .console-card--primary { grid-area: controls; }
+  .console-card--result { grid-area: result; }
+  .console-card--secondary { grid-area: info; }
 }
 
 /* Kart ici bolumler - adjacent sibling ayrac deseni */
@@ -166,29 +194,33 @@ body[data-app-state="idle"] .console-row:has(#resultCard:not([hidden])) .capture
 
 .status-tile {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-md);
+  gap: var(--space-xs) var(--space-md);
   min-width: 0;
+}
+
+.status-tile-label,
+.status-tile-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .status-tile-label {
   font-size: var(--fs-base);
   font-weight: 400;
   color: var(--text-secondary);
-  white-space: nowrap;
 }
 
 .status-tile-value {
-  min-width: 0;
-  margin: 0;
+  /* Long values move below their label and remain readable in full. */
+  margin: 0 0 0 auto;
   font-size: var(--fs-base);
   font-family: var(--font-sans);
   color: var(--text-primary);
   text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .status-tile-value--numeric {
@@ -201,11 +233,6 @@ body[data-app-state="idle"] .console-row:has(#resultCard:not([hidden])) .capture
   color: var(--text-muted);
   font-size: var(--fs-xs);
   line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-#infoMicName {
-  white-space: normal;
   overflow-wrap: anywhere;
 }
 
@@ -260,10 +287,6 @@ body[data-app-state="idle"] .console-row:has(#resultCard:not([hidden])) .capture
 
   .console-card {
     padding: var(--space-md);
-  }
-
-  .console-card--secondary {
-    padding: var(--space-md) 0 0;
   }
 
   .console-card-section {

@@ -1,6 +1,7 @@
 import { evaluatePremiumReport, isDetailedReportInput } from './premium-report-evaluator.js';
 import { createAccountService } from '../server/account-service.mjs';
 import { createTestAccess } from '../server/test-access.mjs';
+import { publicPricingResponse } from '../server/public-pricing.mjs';
 import { createReviewService } from '../server/review-service.mjs';
 import { createAccountBilling } from '../server/account-billing.mjs';
 import { createLegacyPremium } from '../server/legacy-premium.mjs';
@@ -13,7 +14,7 @@ const CSP_POLICY = [
   "script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data:",
+  "img-src 'self' data: https://*.googleusercontent.com",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
   "connect-src 'self' https://accounts.google.com/gsi/",
@@ -450,6 +451,12 @@ export default {
       }
     }
     const freemiusEnv = readFreemiusEnv(env, request.url);
+    if (url.pathname === '/api/pricing' && request.method === 'GET') {
+      const response = await publicPricingResponse(freemiusEnv, {
+        cache: globalThis.caches?.default, origin: url.origin
+      });
+      return withSecurityHeaders(response, request.url);
+    }
     // Once Google sign-in is enabled, a missing D1 binding must fail closed
     // instead of silently restoring the anonymous token billing path.
     const accountConfigured = Boolean(env.MICPROBE_GOOGLE_CLIENT_ID);

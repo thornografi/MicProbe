@@ -63,7 +63,6 @@ export class ReportHistory {
     const changedOwner = nextId !== this.userId;
     this.accessPending = !!state.premium?.pending;
     this.accessError = !!state.error;
-    const gainedPremium = nextId === this.userId && !this.premium && state.premium?.unlocked === true;
     const changedAccess = this.premium !== (state.premium?.unlocked === true);
     this.premium = state.premium?.unlocked === true;
     if (nextId) {
@@ -84,7 +83,6 @@ export class ReportHistory {
     if (nextId) this.reload();
     // Old account queues are never silently uploaded on sign-in or upgrade.
     // A user may explicitly retry them from the archive.
-    if (gainedPremium) this._notify();
   }
   capture(report) {
     if (this.suppressCapture || !report || !report.run?.id) return;

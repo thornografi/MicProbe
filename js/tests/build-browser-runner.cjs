@@ -91,7 +91,8 @@ assert.ok(BASE === 'http://localhost:8080' || BASE === 'https://micprobe.com', '
       await page.locator('#inlineResult').waitFor({ state: 'visible', timeout: 30000 });
       assert.equal(await page.locator('#recordingPlayer').isVisible(), true);
       const originalEvent = page.waitForEvent('download');
-      await page.getByRole('link', { name: 'Download original' }).click();
+      await page.locator('#downloadMenuBtn').click();
+      await page.locator('#downloadBtn').click();
       const original = await originalEvent;
       const bytes = await readFile(await original.path());
       assert.ok(bytes.length > 100);

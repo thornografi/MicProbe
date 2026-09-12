@@ -79,14 +79,18 @@ async function publish(page, level) {
     const { EVENTS } = await import('/js/modules/constants.js');
     const profile = { id: 'whatsapp-voice', label: 'WhatsApp voice message', category: 'record' };
     const snapshot = createRunSnapshot({ profile });
+    const signal = quality === 'quiet' ? { rmsDb: -60, peakDb: -50, maxBlockRmsDb: -53 }
+      : quality === 'near-silent' ? { rmsDb: -65, peakDb: -60, maxBlockRmsDb: -62 }
+        : { rmsDb: -23, peakDb: -10, maxBlockRmsDb: -18 };
     const report = {
       version: '2.0', generatedAt: new Date().toISOString(), sessionId: 'automatic-guide-fixture',
       run: { id: snapshot.runId, accountOwnerId: 'guide-fixture-account', type: 'record' },
-      profile, communicationContext: snapshot.communicationContext, troubleshooting: snapshot.troubleshooting,
+      environment: snapshot.environment, profile,
+      communicationContext: snapshot.communicationContext, troubleshooting: snapshot.troubleshooting,
       audioMetrics: { status: 'measured', source: 'decoded-file-pcm', sampleCount: 48000, durationMs: 1000,
-        signal: quality === 'quiet' ? { rmsDb: -65, peakDb: -60, maxBlockRmsDb: -62 } : { rmsDb: -23, peakDb: -10, maxBlockRmsDb: -18 },
+        signal,
         clipping: { status: 'measured', method: 'sample-saturation', rate: 0 },
-        headroom: { peakDb: quality === 'quiet' ? -60 : -10 }, coverage: { truncated: false },
+        headroom: { peakDb: signal.peakDb }, coverage: { truncated: false },
         snr: { status: 'unavailable' }, noiseFloor: { status: 'unavailable' } }
     };
     bus.emit(EVENTS.DIAGNOSTIC_REPORT_READY, report);
@@ -102,6 +106,7 @@ async function premiumFlow(browser) {
   try {
     const report = await publish(page, 'quiet');
     await page.waitForFunction(() => document.querySelector('#reportRecommendations')?.textContent.includes('Windows'));
+    await page.locator('.report-evidence > summary').filter({ hasText: 'Measurement guidance' }).click();
     assert.equal(report.troubleshooting.osSource, 'browser-hint');
     for (const key of ['app', 'client', 'symptom', 'scope', 'trigger']) assert.equal(report.troubleshooting[key], 'unknown');
     const recommendations = page.locator('#reportRecommendations');
@@ -116,14 +121,26 @@ async function premiumFlow(browser) {
     await page.screenshot({ path: '.tmp/automatic-guidance-mobile.png' });
 
     await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.close());
+    await publish(page, 'near-silent');
+    await page.waitForFunction(() => document.querySelector('#reportRecommendations')?.textContent.includes('Speech was not verified'));
+    await page.locator('.report-evidence > summary').filter({ hasText: 'Measurement guidance' }).click();
+    assert.equal(await recommendations.locator('.rec-category-troubleshooting').count(), 0, 'Near silence alone must not trigger OS or input-gain steps');
+    assert.equal(await recommendations.locator('.rec-steps li').count(), 0);
+    assert.match(await recommendations.innerText(), /does not establish a microphone fault or justify increasing gain/);
+    assert.doesNotMatch(await recommendations.innerText(), /Windows Settings|check the selected input|input-level control/i);
+
+    await page.evaluate(async () => (await import('/js/ui/ReportPanelUI.js')).default.close());
     await publish(page, 'normal');
-    await page.waitForFunction(() => document.querySelector('#reportRecommendations')?.textContent.includes('Quiet sections alone'));
+    await page.waitForFunction(() => document.querySelector('#reportObservations')?.textContent.includes('Quiet sections alone'));
+    await page.locator('.report-evidence > summary').filter({ hasText: 'Measurement guidance' }).click();
     assert.equal(await recommendations.locator('.rec-category-troubleshooting').count(), 0, 'OS alone must not trigger guidance');
     assert.doesNotMatch(await recommendations.innerText(), /LatencyMon|Windows Settings/);
-    assert.equal(requests.length, 2);
+    assert.doesNotMatch(await recommendations.innerText(), /Quiet sections alone|Confidence:/, 'Explanatory observations do not masquerade as actions');
+    assert.match(await page.locator('#reportObservations').textContent(), /Quiet sections alone/);
+    assert.equal(requests.length, 3, 'Quiet, near-silent and normal reports each request one evaluation');
     assert.equal(await page.evaluate(() => window.__guideMicRequests), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: no questionnaire, automatic OS snapshot, measured-only steps, normal-audio exclusion and mobile report');
+    console.log('PASS: no questionnaire, automatic OS snapshot, measured-only steps, near-silence and normal-audio exclusions, and mobile report');
   } finally { await context.close(); }
 }
 
@@ -134,7 +151,7 @@ async function lockedFlow(browser) {
     assert.equal(requests.length, 0);
     const summary = page.locator('#reportSummary');
     assert.match(await summary.innerText(), /Saved audio only; speech clarity and recipient audio are unmeasured/);
-    assert.match(await summary.innerText(), /Very little sound was captured/);
+    assert.match(await summary.innerText(), /The recording has a low sound level/);
     assert.doesNotMatch(await summary.innerText(), /Check the selected|Windows Settings|closer speaking|input.volume|dBFS/);
     assert.equal(await summary.locator('#reportFindings, #reportMetricsGrid, #reportRecommendations').count(), 0);
     assert.equal(await summary.locator('details[open]').count(), 0);
@@ -142,7 +159,7 @@ async function lockedFlow(browser) {
     assert.match(await summary.innerText(), /Speech intelligibility.*not measured/);
     await summary.locator('summary').click();
     assert.equal(await page.locator('#reportDetailed').isHidden(), true);
-    for (const selector of ['#reportFindings', '#reportMetricsGrid', '#reportRecommendations']) {
+    for (const selector of ['#reportFindings', '#reportMetricsGrid', '#reportRecommendations', '#reportObservations']) {
       assert.equal(await page.locator(selector).textContent(), '', 'Locked detail must be absent, not blurred');
     }
     assert.equal(downloads.length, 0, 'Showing a result must not download a file');

@@ -53,6 +53,8 @@ test('archive results are immutable, list responses are small, and history never
   const { store, user, premium } = await database(t); await premium(true);
   const report = reviewReport('one'); report.run.accountOwnerId = user.id;
   const first = await store.saveReport(user.id, report, 'Personal label');
+  assert.ok(first.evaluation.public.nextStep, 'The basic next step belongs to the accepted evaluation');
+  assert.equal(first.evaluation.public.nextStep, first.evaluation.detailed.summary.nextStep, 'Free, Premium and PDF share one next step');
   for (let i = 0; i < 4; i++) await store.saveReport(user.id, reviewReport(`unrelated${i}`, { signal: { rmsDb: -70, peakDb: -60 } }), '');
   const changed = structuredClone(report); changed.audioMetrics.signal.rmsDb = -20;
   const duplicate = await store.saveReport(user.id, changed, 'Different label');

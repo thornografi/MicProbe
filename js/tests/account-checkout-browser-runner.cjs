@@ -15,20 +15,67 @@ async function inactivePurchase(browser) {
   const f = await createPage(browser, { signedIn: true });
   try {
     f.setPremiumUnlocked(false); await open(f);
-    await f.page.locator('#accountIdentity').getByText('Premium access inactive', { exact: true }).waitFor();
+    await f.page.locator('#accountIdentity').getByText('Premium access needs checking', { exact: true }).waitFor();
     assert.equal(await f.page.getByRole('button', { name: 'Get Lifetime Premium', exact: true }).count(), 0);
     assert.equal(await f.page.getByRole('button', { name: 'Manage purchase', exact: true }).isVisible(), true);
     const replacement = f.page.getByRole('button', { name: 'Buy a new license', exact: true });
-    assert.equal(await replacement.isVisible(), false);
-    await f.page.getByText('Need a new purchase?', { exact: true }).click();
-    assert.equal(await replacement.isVisible(), true);
+    assert.equal(await replacement.count(), 0, 'unknown access must be checked before offering another purchase');
     await f.page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
     await f.page.getByRole('button', { name: 'Open report', exact: true }).click();
-    await f.page.locator('#premiumCta').getByText('Review purchase', { exact: true }).waitFor();
-    await f.page.locator('#premiumCta').click();
+    await f.page.locator('#premiumCta').getByText('Recheck Premium access', { exact: true }).waitFor();
+    assert.equal(await f.page.locator('#reportCheckoutNote').isVisible(), false);
+    await f.page.locator('#reportManagePurchase').click();
     await f.page.getByRole('button', { name: 'Manage purchase', exact: true }).waitFor();
     assert.equal(f.mutations.filter(p => p.endsWith('/checkout')).length, 0);
     assert.deepEqual(f.pageErrors, []);
+  } finally { await f.context.close(); }
+}
+
+async function recheckAccess(browser, surface, failsFirst) {
+  const f = await createPage(browser, { signedIn: true });
+  let calls = 0;
+  try {
+    f.setPremiumUnlocked(false);
+    await f.page.route('**/api/account/purchase/recheck', async route => {
+      calls++;
+      assert.equal(route.request().headers()['x-micprobe-account'], 'fixture-account-A');
+      if (failsFirst && calls === 1) return route.fulfill({ status: 503, json: { ok: false, error: 'billing_temporarily_unavailable' } });
+      f.verifyPurchase();
+      return route.fulfill({ json: { ok: true } });
+    });
+    await open(f);
+    if (surface === 'report') {
+      await f.page.getByRole('tab', { name: 'Saved reports', exact: true }).click();
+      await f.page.getByRole('button', { name: 'Open report', exact: true }).click();
+    }
+    const action = f.page.getByRole('button', { name: 'Recheck Premium access', exact: true });
+    await action.click();
+    if (failsFirst) {
+      await f.page.getByText(surface === 'report'
+        ? 'Access could not be checked. Please retry or use Manage purchase for help.'
+        : 'Purchase verification is temporarily unavailable. Please retry when connected.', { exact: true }).waitFor();
+      await action.click();
+    }
+    if (surface === 'report') await f.page.locator('#premiumOverlay').waitFor({ state: 'hidden' });
+    else await f.page.locator('#accountIdentity').getByText('Lifetime Premium', { exact: true }).waitFor();
+    assert.equal(calls, failsFirst ? 2 : 1);
+    assert.equal(f.mutations.filter(p => p.endsWith('/checkout')).length, 0);
+    assert.deepEqual(f.pageErrors, []);
+  } finally { await f.context.close(); }
+}
+
+async function replacementEligibility(browser, inactiveReason) {
+  const f = await createPage(browser, { signedIn: true, inactiveReason });
+  try {
+    f.setPremiumUnlocked(false); await open(f);
+    const replacement = f.page.getByRole('button', { name: 'Buy a new license', exact: true });
+    if (inactiveReason === 'license_inactive') {
+      assert.equal(await replacement.isVisible(), false);
+      await f.page.getByText('Need a new purchase?', { exact: true }).click();
+      assert.equal(await replacement.isVisible(), true);
+      assert.equal(await f.page.locator('.account-restore .checkout-notice').isVisible(), true);
+    } else assert.equal(await replacement.count(), 0, 'configuration mismatch is not a reason to pay again');
+    assert.equal(f.mutations.filter(p => p.endsWith('/checkout')).length, 0);
   } finally { await f.context.close(); }
 }
 async function checkoutLifecycle(browser, action, surface = 'account') {
@@ -54,6 +101,7 @@ async function checkoutLifecycle(browser, action, surface = 'account') {
     }
     const cta = surface === 'report' ? page.locator('#premiumCta')
       : page.locator('#accountDialog').getByRole('button', { name: 'Get Lifetime Premium', exact: true });
+    assert.equal(await page.locator(surface === 'report' ? '#reportCheckoutNote' : '#accountIdentity .checkout-notice').isVisible(), true);
     await cta.click(); await received;
     assert.equal(await cta.isDisabled(), true);
     // Even a queued click event must not send a second request.
@@ -91,7 +139,7 @@ async function alreadyPremium(browser) {
       await route.fulfill({ status: 409, json: { ok: false, error: 'already_premium' } });
     });
     await open(f); await f.page.getByRole('button', { name: 'Get Lifetime Premium', exact: true }).click();
-    await f.page.getByText('Lifetime Premium', { exact: true }).waitFor(); await settled(f.page);
+    await f.page.locator('#accountIdentity').getByText('Lifetime Premium', { exact: true }).waitFor(); await settled(f.page);
     assert.equal(requests, 1);
     assert.equal(await f.page.getByRole('button', { name: 'Get Lifetime Premium', exact: true }).count(), 0);
     assert.match(await f.page.locator('#accountStatus').innerText(), /No new purchase/);
@@ -148,6 +196,8 @@ async function linkedOffline(browser) {
 }
 async function runCheckoutFlows(browser) {
   await inactivePurchase(browser); await alreadyPremium(browser); await linkedOffline(browser);
+  for (const surface of ['account', 'report']) for (const failsFirst of [false, true]) await recheckAccess(browser, surface, failsFirst);
+  for (const reason of ['license_inactive', 'license_plan_mismatch']) await replacementEligibility(browser, reason);
   for (const surface of ['account', 'report']) await unresolvedReturn(browser, surface);
   for (const action of ['duplicate', 'close', 'reopen', 'tab', 'logout', 'busy']) await checkoutLifecycle(browser, action);
   for (const action of ['duplicate', 'close', 'reopen', 'busy']) await checkoutLifecycle(browser, action, 'report');
@@ -157,7 +207,7 @@ module.exports = { runCheckoutFlows };
 if (require.main === module) (async () => {
   for (const name of process.argv.includes('--all-browsers') ? ['chrome', 'firefox', 'webkit'] : ['chrome']) {
     const browser = await ({ chrome: chromium, firefox, webkit })[name].launch({ headless: true, ...(name === 'chrome' ? { channel: 'chrome' } : {}) });
-    try { await runCheckoutFlows(browser); console.log(JSON.stringify({ browser: name, cases: 15, status: 'passed' })); }
+    try { await runCheckoutFlows(browser); console.log(JSON.stringify({ browser: name, cases: 21, status: 'passed' })); }
     finally { await browser.close(); }
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

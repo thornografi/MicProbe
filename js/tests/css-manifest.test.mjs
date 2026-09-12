@@ -22,7 +22,7 @@ test('index.html head loads variables, shared and landing CSS in that order', ()
 });
 
 test('static pages load the shared foundation (variables + shared) and nothing app-specific', () => {
-  for (const page of ['privacy.html', 'terms.html', 'micprobe.html']) {
+  for (const page of ['privacy.html', 'terms.html', 'contact.html', 'micprobe.html']) {
     assert.deepEqual(headStylesheets(read(page)), ['variables.css', 'shared.css'], page);
   }
 });

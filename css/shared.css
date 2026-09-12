@@ -216,6 +216,22 @@ html.is-scroll-locked {
   color: var(--brand-accent-color);
 }
 
+/* Keyboard entry stays outside the landing/app views and their scroll regions. */
+.skip-link {
+  position: fixed;
+  top: var(--space-sm);
+  left: var(--space-md);
+  z-index: var(--z-report);
+  padding: var(--space-sm) var(--space-md);
+  max-width: calc(100% - var(--space-xl));
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  transform: translateY(calc(-100% - var(--space-lg)));
+}
+.skip-link:focus { transform: translateY(0); }
+
 /* ========== LEGAL PAGES (Privacy, Terms vb.) ========== */
 .legal-page {
   min-height: 100vh;
@@ -287,6 +303,34 @@ html.is-scroll-locked {
 }
 
 .not-found-actions { display: flex; flex-wrap: wrap; gap: var(--space-ms); margin-top: var(--space-lg); }
+.not-found-actions + p { margin-top: var(--space-lg); }
+
+.contact-content a:not(.btn) { color: var(--color-purple-light); text-decoration: underline; text-underline-offset: 3px; }
+.contact-email { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); margin-block: var(--space-xl) var(--space-md); }
+.contact-email > a { font-size: var(--fs-xl); overflow-wrap: anywhere; }
+.contact-copy-status { min-height: 1.6em; }
+.contact-topics { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); padding-block: var(--space-md); border-block: 1px solid var(--border-primary); }
+.contact-topics a { display: flex; align-items: center; min-height: var(--control-h-m); }
+.contact-content section { scroll-margin-top: var(--space-xl); }
+.contact-content .btn { white-space: normal; }
+.contact-template { margin-block: var(--space-lg); }
+.contact-template label { display: block; margin-block: var(--space-md); color: var(--text-secondary); line-height: 1.6; }
+.contact-template textarea {
+  display: block;
+  width: 100%;
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  resize: vertical;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--fs-lg);
+  line-height: 1.6;
+}
+.checkout-notice { color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.6; margin-block: var(--space-md); }
+.checkout-notice a { color: var(--color-purple-light); text-decoration: underline; text-underline-offset: 3px; }
 
 .legal-content a:not(.btn):hover {
   color: var(--text-primary);
@@ -359,14 +403,23 @@ html.is-scroll-locked {
 .site-footer-links {
   display: grid;
   grid-column: span 2;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: var(--space-xl);
+  /* Columns follow both available width and the user's text size. */
+  font-size: var(--fs-base);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));
+  gap: var(--space-lg) var(--space-xl);
 }
 
 .site-footer-group {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
+}
+
+.site-footer-heading,
+.site-footer-links a {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .site-footer-heading {
@@ -510,7 +563,6 @@ details[open] > summary::after { transform: rotate(225deg); }
 .btn--centered-label > .btn-text { grid-area: 1 / 2; }
 .btn--centered-label > svg { grid-area: 1 / 1; justify-self: center; }
 .btn--centered-label > .btn-icon-end,
-.btn--centered-label > .test-countdown { grid-area: 1 / 3; justify-self: center; }
 
 /* Secondary variant - ghost/outline */
 .btn--secondary {
@@ -555,6 +607,26 @@ details[open] > summary::after { transform: rotate(225deg); }
 @media (pointer: coarse) {
   .btn-overlay-close { width: var(--control-h-l); height: var(--control-h-l); }
 }
+
+/* Account identity is shared by the landing and app headers without app CSS. */
+.account-menu-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm);
+  min-height: var(--control-h-m); min-width: var(--control-h-m); max-width: 100%;
+  border: 1px solid var(--border-primary); border-radius: var(--radius-md);
+  padding: var(--space-xs) var(--space-ms); background: var(--bg-elevated); color: var(--text-primary);
+  font-size: var(--fs-sm); line-height: 1.2; cursor: pointer; white-space: nowrap;
+}
+.account-menu-button:hover { background: var(--gradient-accent-muted); border-color: var(--color-accent-text); }
+.account-header-label { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.account-avatar {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--control-h-l); height: var(--control-h-l); flex: 0 0 auto; overflow: hidden;
+  border-radius: var(--radius-lg); background: var(--bg-elevated); color: var(--color-purple-light);
+  font-size: var(--fs-md); font-weight: 600;
+}
+.account-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.account-menu-button .account-avatar { width: var(--control-h-s); height: var(--control-h-s); border-radius: var(--radius-md); font-size: var(--fs-xs); }
+@media (pointer: coarse) { .account-menu-button { min-height: var(--control-h-l); } }
 
 /* ========== ACCESSIBILITY: REDUCED MOTION ========== */
 @media (prefers-reduced-motion: reduce) {

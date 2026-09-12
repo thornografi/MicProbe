@@ -15,6 +15,9 @@ import { createOverlayController, closeAllOverlays } from './ui/OverlayControlle
 import { appPageTitle } from './modules/utils/ui.js';
 import APP_STYLESHEET_HREFS from './app-styles.js';
 import { initWaveAnimator } from './modules/WaveAnimator.js';
+import { createLandingPricing } from './landing-pricing.js';
+import { initAccountHeader } from './ui/AccountHeader.js';
+import { accountHash, accountIntentFromHash } from './modules/AccountNavigation.js';
 import { getCurrentMode, getIsPreparing } from './app/AppState.js';
 import { markStartupDiag, markStartupFrameSequence, startStartupDiagnostics } from './modules/StartupDiagnostics.js';
 
@@ -22,6 +25,9 @@ import { markStartupDiag, markStartupFrameSequence, startStartupDiagnostics } fr
 // STATE
 // ============================================
 let appModule = null;
+let loadLandingPrice;
+let pendingAccountIntent = null;
+const LANDING_HASHES = ['#features', '#how-it-works', '#pricing', '#faq', '#faq-privacy', '#faq-test-limits', '#faq-saved-reports'];
 let appModulePromise = null;
 let viewRevision = 0;
 let initialRouteHandled = false;
@@ -173,7 +179,9 @@ function schedulePostLoadWarmups() {
 /**
  * Show App View with lazy loading
  */
-export async function showAppView(trigger = 'programmatic', historyMode = 'push') {
+export async function showAppView(trigger = 'programmatic', historyMode = 'push', accountIntent = null) {
+  pendingAccountIntent = accountIntent || (trigger === 'retry' ? pendingAccountIntent
+    : trigger.startsWith('route:') ? accountIntentFromHash(window.location.hash) : null);
 
   // Imports/styles already share their promises; only the latest navigation may commit.
   const revision = ++viewRevision;
@@ -221,14 +229,20 @@ export async function showAppView(trigger = 'programmatic', historyMode = 'push'
     const hasGoogleReturn = /^#google_(return|error)=/.test(window.location.hash);
     // Account bootstrap owns the Google return marker, just as billing owns
     // its signed checkout parameters. Keep it until the session is checked.
-    const newUrl = hasPurchaseRedirect || hasGoogleReturn ? window.location.href : '/app' + window.location.search;
+    const newUrl = hasPurchaseRedirect || hasGoogleReturn ? window.location.href
+      : '/app' + window.location.search + (pendingAccountIntent ? accountHash(pendingAccountIntent) : '');
     updateRoute(newUrl, historyMode);
     const heading = appView.querySelector('#scenarioWorkspace:not([hidden]) h1')
       || appView.querySelector('#scenarioPicker h1');
     document.title = appPageTitle(heading);
     // An owned checkout can open a dialog during startup; keep its focus.
     if (!document.querySelector('dialog[open]')) heading?.focus({ preventScroll: true });
-    appModule?.syncAccountSignIn?.();
+    if (pendingAccountIntent) {
+      appModule?.openAccount?.(pendingAccountIntent);
+      pendingAccountIntent = null;
+    } else {
+      appModule?.syncAccountSignIn?.();
+    }
 
     await appModePaintReady;
     markStartupDiag('showAppView.complete');
@@ -247,6 +261,8 @@ export async function showAppView(trigger = 'programmatic', historyMode = 'push'
 export function showLandingView({ hash = '', historyMode = 'push', smooth = false } = {}) {
   // State guard: aktif islem varsa navigasyonu engelle
   if (isBusy()) return false;
+  pendingAccountIntent = null;
+  void loadLandingPrice?.();
   ++viewRevision;
   setLoadStatus();
 
@@ -259,8 +275,10 @@ export function showLandingView({ hash = '', historyMode = 'push', smooth = fals
     landingView.addEventListener('animationend', () => landingView.classList.remove('view-enter'), { once: true });
   }
   const target = hash ? document.getElementById(hash.slice(1)) : document.getElementById('hero-title');
-  const heading = target?.matches('h1, h2') ? target : target?.querySelector('h1, h2');
-  heading?.focus({ preventScroll: true });
+  if (target?.matches('details')) target.open = true;
+  const heading = target?.matches('h1, h2') ? target : target?.querySelector('h1, h2, summary');
+  // Leave the initial home page at the document start so Tab reaches the skip link.
+  if (initialRouteHandled || hash) heading?.focus({ preventScroll: true });
   if (hash) target?.scrollIntoView({ behavior: smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant' });
   else window.scrollTo(0, 0);
 
@@ -320,6 +338,8 @@ function handleRoute() {
 
   // Path-based routing (preferred)
   if (path === '/app' || path === '/app/') {
+    if (appModule && !accountIntentFromHash(hash) && !/^#google_(return|error)=/.test(hash)
+      && !new URLSearchParams(window.location.search).has('signature')) appModule.closeAccount?.();
     showAppView('route:/app', 'replace');
     return;
   }
@@ -338,7 +358,7 @@ function handleRoute() {
     else history.replaceState({ ...history.state, micprobeIndex: activeEntry.index }, '', activeEntry.url);
     return;
   }
-  showLandingView({ hash: ['#features', '#how-it-works'].includes(hash) ? hash : '', historyMode: 'replace' });
+  showLandingView({ hash: LANDING_HASHES.includes(hash) ? hash : '', historyMode: 'replace' });
 }
 
 // ============================================
@@ -398,6 +418,15 @@ function isPlainClick(event) {
  * Bind click handlers to navigation elements (replaces inline onclick)
  */
 function bindNavigationEvents() {
+  document.getElementById('skipToContent')?.addEventListener('click', event => {
+    if (!isPlainClick(event)) return;
+    event.preventDefault();
+    const target = document.body.classList.contains('app-mode')
+      ? document.querySelector('#scenarioWorkspace:not([hidden]) h1') || document.getElementById('scenarioPickerTitle')
+      : document.getElementById('landing-main');
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'start' });
+  });
   const mobileMenuBtn = document.getElementById('mobileMenuBtn');
   const mobileNav = document.getElementById('mobileNav');
   // Mobil menu: modal olmayan disclosure; ESC + aria-expanded OverlayController'dan
@@ -415,7 +444,8 @@ function bindNavigationEvents() {
   const appViewTriggers = [
     document.getElementById('navbarCta'),
     document.getElementById('heroLaunchBtn'),
-    document.getElementById('heroMicIcon')
+    document.getElementById('heroMicIcon'),
+    ...document.querySelectorAll('[data-open-app]')
   ];
   appViewTriggers.forEach(el => {
     if (!el) return;
@@ -426,7 +456,7 @@ function bindNavigationEvents() {
       e.preventDefault();
       markStartupDiag('appTrigger.click', { trigger: triggerName });
       closeMobileMenu();
-      showAppView(`click:${triggerName}`);
+      showAppView(`click:${triggerName}`, 'push', el.dataset.accountIntent || null);
     });
   });
 
@@ -450,7 +480,7 @@ function bindNavigationEvents() {
   document.getElementById('appLoadRetry').addEventListener('click', () => {
     // A failed module evaluation stays cached for this document. Start a new
     // document on explicit retry; CSS-only failures can recover in place.
-    if (!appModule) window.location.assign('/app' + window.location.search);
+    if (!appModule) window.location.assign('/app' + window.location.search + (pendingAccountIntent ? accountHash(pendingAccountIntent) : ''));
     else showAppView('retry', window.location.pathname.startsWith('/app') ? 'replace' : 'push');
   });
   document.getElementById('appLoadCancel').addEventListener('click', () => showLandingView());
@@ -463,6 +493,12 @@ function bindNavigationEvents() {
 
 function init() {
   markStartupDiag('landing.init.start', { readyState: document.readyState });
+  initAccountHeader();
+  document.addEventListener('micprobe:account-route', event => {
+    if (!document.body.classList.contains('app-mode') || /^#google_(return|error)=/.test(window.location.hash)
+        || new URLSearchParams(window.location.search).has('signature')) return;
+    updateRoute('/app' + window.location.search + (event.detail.intent ? accountHash(event.detail.intent) : ''), 'replace');
+  });
   // Initialize landing page features
   initNavbarScroll();
   initSmoothScroll();
@@ -480,6 +516,7 @@ function init() {
     edgeFadeEnd: 0.015
   });
   bindNavigationEvents();
+  loadLandingPrice = createLandingPricing();
   schedulePostLoadWarmups();
 
   // Handle initial route (skip animation on first load)

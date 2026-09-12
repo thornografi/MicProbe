@@ -4,13 +4,14 @@
  * DIAGNOSTIC_REPORT_READY event'ini dinler; yeni kaydin kisa sonucunu Player'in
  * yaninda gosterir. Ayrintili popup kullanici eylemiyle acilir.
  *
- * Free: Kisa sonuc ve acilabilir olcum kapsami
+ * Free: Kisa sonuc, temel sonraki adim ve acilabilir olcum kapsami
  * Premium: Ekranda talimatlar, bulgular ve metrikler; PDF istege bagli
  */
 import eventBus from '../modules/EventBus.js';
 import { EVENTS } from '../modules/constants.js';
 import premiumAccess from '../modules/PremiumAccess.js';
 import accountAccess from '../modules/AccountAccess.js';
+import { purchaseAccessNotice } from '../modules/PurchaseAccessNotice.js';
 import checkoutStateSnapshot from '../modules/CheckoutStateSnapshot.js';
 import profileController from '../controllers/ProfileController.js';
 import reportEvaluator from '../modules/ReportEvaluator.js';
@@ -19,6 +20,7 @@ import { describeTroubleshootingContext } from '../modules/TroubleshootingContex
 import { log } from '../modules/utils.js';
 import { createOverlayController } from './OverlayController.js';
 import { ReportAssessmentUI } from './ReportAssessmentUI.js';
+import { checkoutNotice } from './CheckoutNotice.js';
 import {
   reportPanelEl,
   reportPopupCloseEl,
@@ -48,10 +50,17 @@ class ReportPanelUI {
     this.troubleshootingContextEl = reportTroubleshootingContextEl;
     this.metricsGridEl = reportMetricsGridEl;
     this.recommendationsEl = reportRecommendationsEl;
+    this.observationsEl = document.getElementById('reportObservations');
     this.detailedEl = reportDetailedEl;
     this.wrapperEl = reportDetailedWrapperEl;
     this.premiumOverlayEl = premiumOverlayEl;
     this.premiumCtaEl = premiumCtaEl;
+    if (this.premiumCtaEl) {
+      this.checkoutNoticeEl = checkoutNotice();
+      this.checkoutNoticeEl.id = 'reportCheckoutNote';
+      this.premiumCtaEl.before(this.checkoutNoticeEl);
+    }
+    this.managePurchaseEl = premiumOverlayEl?.querySelector('#reportManagePurchase');
     this.premiumStatusEl = premiumStatusEl;
     this.showReportBtn = showReportBtnEl;
     this.downloadBtn = reportDownloadBtnEl;
@@ -83,6 +92,12 @@ class ReportPanelUI {
     this.inlineResultEl = document.getElementById('inlineResult');
     this.inlineTitleEl = document.getElementById('inlineResultTitle');
     this.inlineSummaryEl = document.getElementById('inlineResultSummary');
+    this.inlineNextStepEl = document.getElementById('inlineResultNextStep');
+    this.inlineGuidanceEl = document.getElementById('inlineResultGuidance');
+    this.inlineScopeEl = document.getElementById('inlineResultScope');
+    this.inlineDetailsEl = document.getElementById('inlineResultDetails');
+    this.inlineScopeDetailsEl = document.getElementById('inlineResultScopeDetails');
+    this.testGuideEl = document.getElementById('testGuide');
     this.retestBtn = document.getElementById('retestBtn');
     this.reportSetupBtn = document.getElementById('reportSetupBtn');
     this.reportRetestBtn = document.getElementById('reportRetestBtn');
@@ -112,6 +127,10 @@ class ReportPanelUI {
 
     this._onPremiumClick = () => this._startPremiumCheckout();
     this.premiumCtaEl?.addEventListener('click', this._onPremiumClick);
+    this._onManagePurchase = () => {
+      if (premiumAccess.getState().purchaseLinked && !this.workflow?.getIsBusy?.()) this.workflow?.onManagePurchase?.();
+    };
+    this.managePurchaseEl?.addEventListener('click', this._onManagePurchase);
 
     this._onDownloadClick = () => this._downloadPdf();
     this.downloadBtn?.addEventListener('click', this._onDownloadClick);
@@ -189,7 +208,7 @@ class ReportPanelUI {
       this.reportRetestBtn.disabled = busy;
     }
     if (this.reportSetupBtn) {
-      this.reportSetupBtn.textContent = canRetestCurrent ? 'Adjust test settings' : 'Back to test';
+      this.reportSetupBtn.textContent = 'Back to test';
       this.reportSetupBtn.disabled = busy;
     }
     this.assessmentPanel?.render();
@@ -198,6 +217,9 @@ class ReportPanelUI {
   _clearInlineResult() {
     this.inlineReport = null;
     if (this.inlineResultEl) this.inlineResultEl.hidden = true;
+    if (this.inlineGuidanceEl) this.inlineGuidanceEl.hidden = true;
+    if (this.inlineDetailsEl) this.inlineDetailsEl.open = false;
+    if (this.testGuideEl) this.testGuideEl.open = true;
     if (this.showReportBtn) this.showReportBtn.hidden = true;
     this.syncWorkflowActions();
   }
@@ -207,6 +229,7 @@ class ReportPanelUI {
     this._premiumRequestId++;
     eventBus.off(EVENTS.DIAGNOSTIC_REPORT_READY, this._onReportReady);
     this.premiumCtaEl?.removeEventListener('click', this._onPremiumClick);
+    this.managePurchaseEl?.removeEventListener('click', this._onManagePurchase);
     this.downloadBtn?.removeEventListener('click', this._onDownloadClick);
     this._unsubscribePremium?.();
     this._workflowSubscriptions.forEach(unsubscribe => unsubscribe());
@@ -246,14 +269,22 @@ class ReportPanelUI {
       return;
     }
     const purchase = premiumAccess.getState();
-    if (purchase.pending || purchase.connectionError) {
+    if (purchase.pending || purchase.connectionError || purchase.purchaseLinked) {
+      const report = this.currentReport;
+      const owner = purchase.userId;
+      let failed = false;
       this.premiumCtaEl.disabled = true;
       this._setPremiumStatus('Checking your existing purchase…');
       try { await premiumAccess.retryPurchaseVerification(); }
-      finally { this.premiumCtaEl.disabled = false; this._syncPremiumState(); }
+      catch { failed = true; }
+      finally {
+        this.premiumCtaEl.disabled = false; this._syncPremiumState();
+        if (failed && this.currentReport === report && premiumAccess.getState().userId === owner) {
+          this._setPremiumStatus('Access could not be checked. Please retry or use Manage purchase for help.');
+        }
+      }
       return;
     }
-    if (purchase.purchaseLinked) { this.workflow?.onManagePurchase?.(); return; }
 
     const report = this.currentReport;
     const owner = accountAccess.getState().user?.id;
@@ -308,16 +339,13 @@ class ReportPanelUI {
       return;
     }
     const pending = !!state.pending;
-    const inactive = state.purchaseLinked && !state.unlocked;
+    const notice = purchaseAccessNotice(state);
+    if (this.checkoutNoticeEl) this.checkoutNoticeEl.hidden = !!notice;
+    if (this.managePurchaseEl) this.managePurchaseEl.hidden = !state.purchaseLinked || state.unlocked;
     this._setPremiumPrompt(
-      pending ? 'Purchase verification pending' : state.connectionError ? 'Connection unavailable'
-        : inactive ? 'Premium access inactive' : 'Detailed measurements and PDF export',
-      pending ? 'We could not confirm purchase access yet. You do not need to buy again.'
-        : state.connectionError ? 'Reconnect to check your account and purchase access.'
-        : inactive ? 'A purchase is linked to your account. Review its status before making another payment.'
-        : 'Premium includes the detailed findings for this recording and optional PDF downloads. A recording does not guarantee a diagnosis.',
-      pending ? 'Retry purchase verification' : state.connectionError ? 'Retry account connection'
-        : inactive ? 'Review purchase' : 'Get Lifetime Premium'
+      notice?.title || 'Detailed guidance for this recording',
+      notice?.description || 'Explore the findings and measurements, with relevant device checks to follow. Premium also includes saved reports and PDF downloads.',
+      notice?.action || 'Get Lifetime Premium'
     );
     if (premiumAccess.isUnlocked()) {
       if (this.premiumOverlayEl) this.premiumOverlayEl.hidden = true;
@@ -328,13 +356,15 @@ class ReportPanelUI {
 
     this._clearPremiumDetails();
     if (this.premiumOverlayEl) this.premiumOverlayEl.hidden = false;
-    this._setPremiumStatus(pending ? 'We could not confirm purchase access yet. Retry when connected; your report is preserved.' : state.lastError || '');
+    this._setPremiumStatus(pending && !state.connectionError ? 'We could not confirm purchase access yet. Retry when connected; your report is preserved.' : state.lastError || '');
   }
 
   _freeResult(report = this.currentReport) {
     const calculated = reportEvaluator.evaluateFree(report, this._platformSummary);
     const accepted = report === this.currentReport ? this._acceptedSummary : report?.savedEvaluation?.public;
-    return accepted ? { ...calculated, ...accepted, findings: this._lastDetailed?.findings || calculated.findings } : calculated;
+    // Earlier saved evaluations keep their accepted result; do not invent new advice for them.
+    return accepted ? { ...calculated, ...accepted, nextStep: accepted.nextStep || '',
+      findings: this._lastDetailed?.findings || calculated.findings } : calculated;
   }
 
   _applySummary(summary) {
@@ -342,11 +372,28 @@ class ReportPanelUI {
     this._acceptedSummary = summary;
     this._platformSummary = summary.platform;
     this._renderScoreBadge(summary.overall);
-    this._renderOverall(summary.overall, summary.summary, summary.scope, summary.assessment, summary.scopeSummary);
+    this._renderOverall(summary.overall, summary.summary, summary.scope, summary.assessment, summary.scopeSummary, summary.nextStep);
     if (this.inlineReport?.run?.id === this.currentReport.run?.id) {
-      this.inlineTitleEl.textContent = summary.overall.label;
-      this.inlineSummaryEl.textContent = [summary.summary, summary.scopeSummary].filter(Boolean).join(' ');
+      this._renderInlineSummary(summary);
     }
+  }
+
+  _renderInlineSummary(summary) {
+    this.inlineTitleEl.textContent = summary.overall.label;
+    this.inlineSummaryEl.textContent = summary.summary || '';
+    this.inlineSummaryEl.hidden = !summary.summary;
+    if (this.inlineNextStepEl) {
+      this.inlineNextStepEl.textContent = summary.nextStep || '';
+      this.inlineNextStepEl.hidden = !summary.nextStep;
+    }
+    if (this.inlineScopeEl) {
+      this.inlineScopeEl.textContent = summary.scopeSummary || '';
+      this.inlineScopeEl.hidden = !summary.scopeSummary;
+    }
+    const scope = formatReportScope(summary.scope);
+    if (this.inlineScopeDetailsEl) this.inlineScopeDetailsEl.textContent = scope;
+    if (this.inlineDetailsEl) this.inlineDetailsEl.hidden = !scope;
+    if (this.inlineGuidanceEl) this.inlineGuidanceEl.hidden = !(summary.nextStep || summary.scopeSummary || scope);
   }
 
   _setPremiumStatus(message) {
@@ -391,7 +438,7 @@ class ReportPanelUI {
     this._renderScoreBadge(free.overall);
 
     // Overall skor
-    this._renderOverall(free.overall, free.summary, free.scope, free.assessment, free.scopeSummary);
+    this._renderOverall(free.overall, free.summary, free.scope, free.assessment, free.scopeSummary, free.nextStep);
 
     this._syncPremiumState();
 
@@ -400,10 +447,13 @@ class ReportPanelUI {
     if (this.resultCard?.dataset.runId === report.run?.id) {
       const isNewResult = this.inlineReport?.run?.id !== report.run.id;
       this.inlineReport = this.currentReport;
-      this.inlineTitleEl.textContent = free.overall.label;
-      this.inlineSummaryEl.textContent = [free.summary, free.scopeSummary].filter(Boolean).join(' ');
+      this._renderInlineSummary(free);
       this.inlineResultEl.hidden = false;
       if (this.showReportBtn) this.showReportBtn.hidden = false;
+      if (isNewResult) {
+        if (this.inlineDetailsEl) this.inlineDetailsEl.open = false;
+        if (this.testGuideEl) this.testGuideEl.open = false;
+      }
       if (isNewResult && !document.querySelector('dialog[open]')) {
         this.resultCard.scrollIntoView({ block: 'start' });
       }
@@ -484,6 +534,7 @@ class ReportPanelUI {
     this.troubleshootingContextEl?.replaceChildren();
     this.metricsGridEl?.replaceChildren();
     this.recommendationsEl?.replaceChildren();
+    this.observationsEl?.replaceChildren();
     if (this.wrapperEl?.getAttribute?.('data-state') !== 'error') this._setDetailedState('idle');
     this._syncPdfDownload();
   }
@@ -539,7 +590,7 @@ class ReportPanelUI {
     this.scoreBadgeEl.dataset.color = overall.color;
   }
 
-  _renderOverall(overall, summary, scope, assessment, scopeSummary) {
+  _renderOverall(overall, summary, scope, assessment, scopeSummary, nextStep) {
     scope = formatReportScope(scope);
     if (!this.overallEl) return;
 
@@ -558,10 +609,15 @@ class ReportPanelUI {
 
     textWrap.append(this._createElement('div', 'report-overall-summary', summary));
     if (scopeSummary) textWrap.append(this._createElement('p', 'report-overall-summary', scopeSummary));
+    if (nextStep) {
+      const guidance = this._createElement('div', 'report-next-step');
+      guidance.append(this._createElement('strong', '', 'What you can do'), this._createElement('p', '', nextStep));
+      textWrap.append(guidance);
+    }
     if (scope) {
       const disclosure = this._createElement('details', 'report-scope');
       disclosure.append(
-        this._createElement('summary', '', assessment?.status === 'limited' ? 'Limited assessment · What was measured' : 'What was measured'),
+        this._createElement('summary', '', 'What this test can tell you'),
         this._createElement('p', '', scope)
       );
       textWrap.append(disclosure);
@@ -640,24 +696,25 @@ class ReportPanelUI {
 
   _renderRecommendations(recommendations) {
     if (!this.recommendationsEl) return;
+    this.observationsEl?.replaceChildren();
 
     if (!recommendations || recommendations.length === 0) {
       this.recommendationsEl.replaceChildren(
-        this._createIconTextItem('rec-item', '\u2192', 'No additional recommendations found.')
+        this._createElement('p', '', 'No additional action is suggested by these measurements.')
       );
       return;
     }
 
     const CATEGORY_LABELS = {
       troubleshooting: 'Steps for your system and app', setting: 'Settings', microphone: 'Microphone', system: 'System / Performance',
-      environment: 'Environment', profile: 'Test scope', observation: 'Observations — no quality penalty'
+      environment: 'Your surroundings', observation: 'About these measurements'
     };
     const ORDER = ['troubleshooting', 'setting', 'microphone', 'system', 'environment', 'observation', 'profile'];
 
     // Kategoriye gore grupla
     const groups = {};
     for (const r of recommendations) {
-      const cat = r.category || 'profile';
+      const cat = !r.action || ['observation', 'profile'].includes(r.category) ? 'observation' : r.category || 'setting';
       (groups[cat] = groups[cat] || []).push(r);
     }
     const cats = Object.keys(groups).sort(
@@ -665,19 +722,21 @@ class ReportPanelUI {
     );
 
     const nodes = [];
+    const observations = [];
     for (const cat of cats) {
+      const target = cat === 'observation' ? observations : nodes;
       const title = this._createElement('div', `report-section-title rec-category-${cat}`, CATEGORY_LABELS[cat] || cat);
-      nodes.push(title);
+      target.push(title);
 
       for (const r of groups[cat]) {
+        const action = cat === 'observation' ? '' : r.action;
         const item = this._createElement('div', 'rec-item rec-item--rich');
         const head = this._createElement('div', 'rec-head');
-        head.append(this._createElement('span', 'rec-icon', '\u2192'));
-        head.append(this._createElement('span', 'rec-action', r.action || r.reason || r.message || ''));
+        head.append(this._createElement('span', 'rec-icon', cat === 'observation' ? 'i' : '\u2192'));
+        head.append(this._createElement('span', 'rec-action', action || r.reason || r.message || ''));
         item.append(head);
-        if (r.action && (r.reason || r.message)) item.append(this._createElement('div', 'rec-reason', r.reason || r.message));
+        if (action && (r.reason || r.message)) item.append(this._createElement('div', 'rec-reason', r.reason || r.message));
         if (r.evidence) item.append(this._createElement('div', 'rec-evidence', r.evidence));
-        if (r.confidence) item.append(this._createElement('span', `rec-confidence rec-confidence--${r.confidence}`, `Confidence: ${r.confidence}`));
         if (Array.isArray(r.steps) && r.steps.length) {
           const steps = this._createElement('ol', 'rec-steps');
           steps.append(...r.steps.map(step => this._createElement('li', '', step)));
@@ -697,10 +756,12 @@ class ReportPanelUI {
           line.append(link);
           item.append(line);
         }
-        nodes.push(item);
+        target.push(item);
       }
     }
-    this.recommendationsEl.replaceChildren(...nodes);
+    this.recommendationsEl.replaceChildren(...(nodes.length ? nodes
+      : [this._createElement('p', '', 'No additional action is suggested by these measurements.')]));
+    this.observationsEl?.replaceChildren(...observations);
   }
 }
 

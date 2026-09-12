@@ -10,19 +10,33 @@ import eventBus from '../modules/EventBus.js';
 import { EVENTS } from '../modules/constants.js';
 import { evaluatePremiumReport } from '../../server/premium-report-evaluator.js';
 
-test('guidance uses the explicitly described use across prior audio profiles, while measured runs preserve their profile', t => {
+const legacyGuidanceReport = {
+  version: '2.0', generatedAt: '2026-09-08T00:00:00.000Z', sessionId: 'saved-session',
+  run: { id: 'saved-guidance', accountOwnerId: 'captured-owner', type: 'troubleshooting' },
+  profile: { id: null, label: 'Troubleshooting', category: null },
+  communicationContext: { usage: 'voice-call' },
+  troubleshooting: {
+    version: 1, usage: 'voice-call', os: 'windows', osSource: 'user-selected', app: 'unknown', client: 'unknown',
+    symptom: 'bluetooth-change', scope: 'unknown', trigger: 'call-start'
+  },
+  device: null, recording: null, loopback: null, audioMetrics: null,
+  deepAnalysis: null, system: null, sanityCheck: null, logs: null
+};
+
+test('saved guidance keeps its described use when the current measured profile changes', t => {
   setupBrowser(t);
-  const troubleshooting = { usage: 'voice-call', os: 'windows', symptom: 'bluetooth-change', trigger: 'call-start' };
+  const guidance = structuredClone(legacyGuidanceReport);
   for (const profile of [{ id: 'raw', category: 'record' }, { id: 'discord', category: 'call' }, { id: 'telegram-voice', category: 'record' }]) {
-    const snapshot = createRunSnapshot({ profile, troubleshooting });
-    const guidance = builder.createGuidanceReport(snapshot);
-    assert.equal(guidance.communicationContext.usage, 'voice-call');
-    assert.equal(evaluatePremiumReport(guidance).recommendations[0].id, 'GUIDE_BLUETOOTH_CALL_CHANGE');
+    const snapshot = createRunSnapshot({ profile });
     builder._beginRun(profile.category === 'call' ? 'test' : 'record', { runSnapshot: snapshot });
     assert.equal(builder.build().communicationContext.usage, snapshot.communicationContext.usage);
-    const unknown = builder.createGuidanceReport(createRunSnapshot({ profile, troubleshooting: { ...troubleshooting, usage: 'unknown' } }));
-    assert.equal(evaluatePremiumReport(unknown).recommendations[0].id, 'GUIDE_UNAVAILABLE');
+    builder.restoreReport(guidance);
+    assert.equal(evaluatePremiumReport(builder.getLastReport()).recommendations[0].id, 'GUIDE_BLUETOOTH_CALL_CHANGE');
   }
+  assert.deepEqual(guidance, legacyGuidanceReport);
+  const unknown = structuredClone(guidance);
+  unknown.troubleshooting.usage = 'unknown';
+  assert.equal(evaluatePremiumReport(unknown).recommendations[0].id, 'GUIDE_UNAVAILABLE');
 });
 
 test('OS hints prioritize iPad and Android ambiguity and never invent a Windows version', () => {
@@ -147,7 +161,7 @@ test('legacy run and restore do not acquire the current OS or problem descriptio
   assert.equal(report.troubleshooting, undefined);
 });
 
-test('guidance-only report owns a fresh identity and cannot reuse samples, logs or active capture state', t => {
+test('restoring saved guidance preserves its identity and leaves active capture samples and ownership intact', t => {
   setupBrowser(t);
   let cancelled = 0;
   let logged = 0;
@@ -168,30 +182,15 @@ test('guidance-only report owns a fresh identity and cannot reuse samples, logs 
   builder._lastReport = { run: { id: 'previous-report' } };
   const priorState = { ...builder };
   const cancelsBefore = cancelled;
-  const off = eventBus.on(EVENTS.DIAGNOSTIC_REPORT_READY, () => { emitted += 1; });
+  const report = structuredClone(legacyGuidanceReport);
+  const off = eventBus.on(EVENTS.DIAGNOSTIC_REPORT_READY, restored => { emitted += 1; assert.equal(restored, report); });
   t.after(off);
-  const guideRun = Object.freeze({ ...createRunSnapshot({
-    profile: { id: 'discord', label: 'Discord', category: 'call' },
-    troubleshooting: { usage: 'voice-call', os: 'windows', app: 'discord', symptom: 'no-input' },
-    requestedSettings: { pipeline: 'worklet', bitrate: 64000 }
-  }), accountOwnerId: 'captured-owner' });
-  const report = builder.createGuidanceReport(guideRun);
-  assert.equal(report.run.id, guideRun.runId);
+  builder.restoreReport(report);
+  assert.equal(builder.getLastReport(), report);
   assert.notEqual(report.run.id, activeRun.runId);
-  assert.equal(report.run.type, 'troubleshooting');
-  assert.equal(report.run.accountOwnerId, 'captured-owner');
-  assert.equal(report.profile.id, null);
-  assert.equal(report.profile.label, 'Troubleshooting');
-  assert.equal(report.profile.pipeline, undefined);
-  assert.equal(report.profile.appliedConstraints, undefined);
-  assert.equal(report.troubleshooting, guideRun.troubleshooting);
-  assert.deepEqual(report.communicationContext, guideRun.communicationContext);
-  for (const key of ['device', 'recording', 'loopback', 'audioMetrics', 'deepAnalysis', 'system', 'sanityCheck', 'logs']) {
-    assert.equal(report[key], null, key);
-  }
-  assert.deepEqual({ ...builder }, priorState);
+  assert.deepEqual(report, legacyGuidanceReport);
+  assert.deepEqual({ ...builder }, { ...priorState, _lastReport: report });
   assert.equal(cancelled, cancelsBefore);
   assert.equal(logged, 0);
-  assert.equal(emitted, 0);
-  assert.throws(() => builder.createGuidanceReport(), /new run snapshot/);
+  assert.equal(emitted, 1);
 });

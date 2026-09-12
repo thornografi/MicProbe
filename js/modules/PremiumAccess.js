@@ -82,6 +82,7 @@ class PremiumAccess {
         && (account.premium?.pending || this.pendingPurchase)),
       purchaseLinked: !!(account.user && account.purchaseLinked),
       connectionError: !!account.error,
+      inactiveReason: account.premium?.inactiveReason || '',
       entitlement: this.entitlement,
       lastError: this.lastError,
       userId: account.user?.id || null
@@ -205,12 +206,25 @@ class PremiumAccess {
     return true;
   }
 
-  async retryPurchaseVerification() {
+  retryPurchaseVerification() {
+    if (!this.verificationPromise) {
+      this.verificationPromise = this._retryPurchaseVerification().finally(() => { this.verificationPromise = null; });
+    }
+    return this.verificationPromise;
+  }
+
+  async _retryPurchaseVerification() {
     const owner = accountAccess.getState().user?.id;
     const wasPending = !!accountAccess.getState().premium?.pending;
     await accountAccess.refresh({ sessionOnly: true });
-    const account = accountAccess.getState();
+    let account = accountAccess.getState();
     if (owner && account.user?.id === owner && !account.error) {
+      if (account.purchaseLinked && !account.premium?.unlocked) {
+        await accountAccess.api('/purchase/recheck', { method: 'POST', body: {} });
+        await accountAccess.refresh({ sessionOnly: true });
+        account = accountAccess.getState();
+        if (account.user?.id !== owner || account.error) return this.getState();
+      }
       // A linked pending purchase resolved by the session needs no purchase replay.
       if (wasPending && account.premium?.unlocked) this._clearPendingPurchase();
       else if (!account.premium?.unlocked && !account.premium?.pending && this.pendingPurchase) await this._completeAccountPurchase();
